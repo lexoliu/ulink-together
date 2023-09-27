@@ -2,17 +2,19 @@ use std::borrow::Cow;
 
 use futures_util::TryStreamExt;
 use levin::{
+    extract::Query,
+    responder::Responder,
     routing::Params,
     utils::{json, Form, Json, State},
-    Body,
+    Uri,
 };
 use mongodb::{
-    bson::{doc, oid::ObjectId, DateTime, Document},
+    bson::{doc, oid::ObjectId, Document},
     Database,
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{auth::Auth, oid_to_hex, parse_oid, user, ApiMessage};
+use crate::{auth::Auth, oid_to_hex, parse_oid, ApiMessage};
 
 #[derive(Debug, Serialize)]
 struct Channel<'a> {
@@ -26,9 +28,9 @@ struct CreateChannelForm<'a> {
     name: Cow<'a, str>,
 }
 
-pub async fn create(database: State<Database>, auth: Auth, mut body: Body) -> levin::Result<Json> {
+pub async fn create(database: State<Database>, auth: Auth, uri: Uri) -> levin::Result<Json> {
+    let Query(form) = Query::<CreateChannelForm>::from_str(uri.query().unwrap_or(""))?;
     let channel = database.collection::<Channel>("channel");
-    let form: CreateChannelForm = body.into_json().await?;
     let result = channel
         .insert_one(
             Channel {
@@ -53,46 +55,17 @@ pub async fn delete(database: State<Database>, params: Params) -> levin::Result<
 }
 
 #[derive(Debug, Deserialize)]
-pub struct GetMessageForm {
-    channel: String,
-}
-
-pub async fn get_messages(
-    database: State<Database>,
-    form: Form<GetMessageForm>,
-) -> levin::Result<Body> {
-    #[derive(Debug, Serialize, Deserialize)]
-    struct Message {
-        id: ObjectId,
-        sender: ObjectId,
-        #[serde(default)]
-        sender_name: String,
-        content: String,
-        datetime: DateTime,
-    }
-    let message = database.collection::<Message>("message");
-    let cursor = message
-        .find(doc! {"channel":parse_oid(&form.channel)?}, None)
-        .await?;
-
-    let mut result: Vec<Message> = cursor.try_collect().await?;
-
-    for message in result.iter_mut() {
-        message.sender_name = user::get_name(&database, message.sender).await?;
-    }
-
-    Body::from_json(&result)
-}
-
-#[derive(Debug,Deserialize)]
 pub struct FindForm {
     owner: Option<ObjectId>,
-    include_member:Option<ObjectId>,
+    include_member: Option<ObjectId>,
     activity: Option<ObjectId>,
 }
 
-pub async fn find(database: State<Database>, form: Form<FindForm>) -> levin::Result<Body> {
-    #[derive(Debug, Deserialize, Serialize)]
+pub async fn find(
+    database: State<Database>,
+    form: Form<FindForm>,
+) -> levin::Result<impl Responder> {
+    #[derive(Deserialize, Serialize)]
     struct Channel {
         name: String,
         member: Vec<ObjectId>,
@@ -114,5 +87,5 @@ pub async fn find(database: State<Database>, form: Form<FindForm>) -> levin::Res
     }
 
     let result: Vec<Channel> = collection.find(filter, None).await?.try_collect().await?;
-    Body::from_json(&result)
+    Ok(Json(result))
 }
