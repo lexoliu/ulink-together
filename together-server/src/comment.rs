@@ -1,11 +1,10 @@
-use std::borrow::Cow;
-
-use crate::{auth::Auth, oid_to_hex, parse_oid, user::{get_name, self}};
+use crate::{auth::Auth, oid_to_hex, parse_oid, user};
 use bytestr::ByteStr;
 use futures_util::TryStreamExt;
 use levin::{
+    responder::Responder,
     routing::Params,
-    utils::{json, Json, JsonValue, State}, Body,
+    utils::{json, Json, State},
 };
 use mongodb::{
     bson::{
@@ -14,14 +13,14 @@ use mongodb::{
         serde_helpers::{
             serialize_bson_datetime_as_rfc3339_string, serialize_object_id_as_hex_string,
         },
-        Bson, DateTime, Document,
+        DateTime,
     },
     Database,
 };
 use serde::{Deserialize, Serialize};
 
-pub async fn list(database: State<Database>,params: Params) -> levin::Result<Body> {
-    #[derive(Debug, Serialize, Deserialize)]
+pub async fn list(database: State<Database>, params: Params) -> levin::Result<impl Responder> {
+    #[derive(Serialize, Deserialize)]
     pub struct Comment {
         #[serde(rename(deserialize = "_id"))]
         #[serde(serialize_with = "serialize_object_id_as_hex_string")]
@@ -38,13 +37,17 @@ pub async fn list(database: State<Database>,params: Params) -> levin::Result<Bod
     let activity_id = parse_oid(params.get("id").unwrap())?;
 
     let collection = database.collection::<Comment>("comment");
-    let mut result:Vec<Comment> = collection.find(doc! {"activity":activity_id}, None).await?.try_collect().await?;
+    let mut result: Vec<Comment> = collection
+        .find(doc! {"activity":activity_id}, None)
+        .await?
+        .try_collect()
+        .await?;
 
-    for comment in result.iter_mut(){
-        comment.author_name=user::get_name(&database, comment.author).await?;
+    for comment in result.iter_mut() {
+        comment.author_name = user::get_name(&database, comment.author).await?;
     }
-    
-    Body::from_json(&result)
+
+    Ok(Json(result))
 }
 
 pub async fn post(

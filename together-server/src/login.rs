@@ -1,8 +1,9 @@
 use crate::{oid_to_hex, sha256, ApiMessage};
+use bytestr::ByteStr;
 use levin::utils::cookie::{Cookie, CookieJar};
 use levin::utils::Json;
 use levin::Result;
-use levin::{extract::ClientIp, utils::State, Body, Error, StatusCode};
+use levin::{extract::ClientIp, utils::State, Error, StatusCode};
 use mongodb::bson::oid::ObjectId;
 use mongodb::bson::DateTime;
 use mongodb::{bson::doc, Database};
@@ -17,21 +18,20 @@ struct Form<'a> {
     password: String,
 }
 
-#[derive(Debug, Deserialize)]
-struct User<'a> {
-    #[serde(rename = "_id")]
-    id: ObjectId,
-    password: Cow<'a, str>,
-    salt: Cow<'a, str>,
-}
-
 pub async fn handler(
-    mut body: Body,
     database: State<Database>,
     ip: ClientIp,
     mut cookies: CookieJar,
+    form: ByteStr,
 ) -> Result<(ApiMessage, CookieJar)> {
-    let form: Form = body.into_json().await?;
+    #[derive(Deserialize)]
+    struct User<'a> {
+        #[serde(rename(deserialize = "_id"))]
+        id: ObjectId,
+        password: Cow<'a, str>,
+        salt: Cow<'a, str>,
+    }
+    let Json(form) = Json::<Form>::from_str(form.as_str())?;
 
     let users = database.collection::<User>("user");
 

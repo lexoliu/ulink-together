@@ -1,14 +1,15 @@
-use std::{borrow::Cow, ops::Deref};
+use std::ops::Deref;
 
+use bytestr::ByteStr;
 use levin::{
+    responder::Responder,
     routing::Params,
     utils::{Json, State},
-    Body, Error, StatusCode,
+    Error, StatusCode,
 };
 use mongodb::{
-    bson::{doc, oid::ObjectId, serde_helpers::serialize_object_id_as_hex_string, Bson, Document},
+    bson::{doc, oid::ObjectId, serde_helpers::serialize_object_id_as_hex_string, Document},
     error::WriteFailure,
-    options::FindOneOptions,
     Database,
 };
 use rand::{distributions::Uniform, prelude::Distribution};
@@ -16,8 +17,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{auth::get_group_id, parse_oid, sha256, ApiMessage, ProjectOption};
 
-pub async fn get(database: State<Database>, params: Params) -> levin::Result<Body> {
-    #[derive(Debug, Serialize, Deserialize)]
+pub async fn get(database: State<Database>, params: Params) -> levin::Result<impl Responder> {
+    #[derive(Serialize, Deserialize)]
     pub struct User {
         email: String,
         realname: String,
@@ -29,13 +30,12 @@ pub async fn get(database: State<Database>, params: Params) -> levin::Result<Bod
     }
     let user = database.collection::<User>("user");
     let id = params.get("id").unwrap();
+    let result = user
+        .find_one(doc! {"_id":parse_oid(id)?}, None)
+        .await?
+        .ok_or(Error::msg("User not exists").set_status(StatusCode::NOT_FOUND))?;
 
-    Body::from_json(
-        &user
-            .find_one(doc! {"_id":parse_oid(id)?}, None)
-            .await?
-            .ok_or(Error::msg("User not exists").set_status(StatusCode::NOT_FOUND))?,
-    )
+    Ok(Json(result))
 }
 
 pub async fn delete(database: State<Database>, params: Params) -> levin::Result<ApiMessage> {
@@ -51,7 +51,7 @@ pub async fn delete(database: State<Database>, params: Params) -> levin::Result<
 }
 
 pub async fn get_name(database: &Database, uid: ObjectId) -> levin::Result<String> {
-    #[derive(Debug, Deserialize)]
+    #[derive(Deserialize)]
     pub struct Schema {
         realname: String,
     }
@@ -66,29 +66,30 @@ pub async fn get_name(database: &Database, uid: ObjectId) -> levin::Result<Strin
     Ok(result.realname)
 }
 
-#[derive(Debug, Deserialize)]
-struct RegisterForm<'a> {
-    email: Cow<'a, str>,
-    realname: Cow<'a, str>,
-    password: String,
-    gender: Cow<'a, str>,
-    classname: Cow<'a, str>,
-}
+pub async fn register(database: State<Database>, form: ByteStr) -> levin::Result<ApiMessage> {
+    #[derive(Deserialize)]
+    struct Form<'a> {
+        email: &'a str,
+        realname: &'a str,
+        password: &'a str,
+        gender: &'a str,
+        classname: &'a str,
+    }
 
-pub async fn register(mut body: Body, database: State<Database>) -> levin::Result<ApiMessage> {
-    #[derive(Debug, Serialize, Deserialize)]
-    pub struct User<'a> {
-        email: Cow<'a, str>,
-        realname: Cow<'a, str>,
-        gender: Cow<'a, str>,
-        description: Cow<'a, str>,
-        classname: Cow<'a, str>,
-        password: Cow<'a, str>,
-        salt: Cow<'a, str>,
+    #[derive(Serialize)]
+    struct User<'a> {
+        email: &'a str,
+        realname: &'a str,
+        gender: &'a str,
+        description: &'a str,
+        classname: &'a str,
+        password: String,
+        salt: String,
         group: ObjectId,
     }
 
-    let form: RegisterForm = body.into_json().await?;
+    let Json(form) = Json::<Form>::from_str(form.as_str())?;
+
     let user = database.collection::<User>("user");
     let salt = rand_string(16);
 
@@ -97,8 +98,8 @@ pub async fn register(mut body: Body, database: State<Database>) -> levin::Resul
             User {
                 email: form.email,
                 realname: form.realname,
-                password: sha256(form.password + &salt).into(),
-                salt: salt.into(),
+                password: sha256(form.password.to_owned() + &salt),
+                salt,
                 group: get_group_id(&database, "student").await?.unwrap(),
                 classname: form.classname,
                 gender: form.gender,

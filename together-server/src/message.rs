@@ -1,44 +1,35 @@
-use std::{borrow::Cow, str::FromStr};
-
 use bytestr::ByteStr;
 use levin::{
+    responder::Responder,
     routing::Params,
     utils::{Json, State},
-    Body, Error, StatusCode,
+    Error, StatusCode,
 };
 use mongodb::{
-    bson::{doc, oid::ObjectId, DateTime, Document, Bson},
+    bson::{doc, oid::ObjectId, Bson, DateTime},
     Database,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::{auth::Auth, parse_oid, ApiMessage};
-#[derive(Debug, Deserialize, Serialize)]
-pub struct Message<'a> {
-    #[serde(rename(deserialize = "_id"))]
-    #[serde(skip_serializing)]
-    id:Bson,
-    channel: ObjectId,
-    content: Cow<'a, str>,
-    datetime: DateTime,
-}
 
-pub async fn get(
-    database: State<Database>,
-    params: Params,
-) -> levin::Result<Json<Message<'static>>> {
+pub async fn get(database: State<Database>, params: Params) -> levin::Result<impl Responder> {
+    #[derive(Deserialize, Serialize)]
+
+    struct Message {
+        #[serde(rename(deserialize = "_id"))]
+        id: Bson,
+        channel: ObjectId,
+        content: String,
+        datetime: DateTime,
+    }
     let id = params.get("id").ok_or(Error::msg("Missing param `id`"))?;
-    let id=parse_oid(id)?;
+    let id = parse_oid(id)?;
     let message = database.collection::<Message>("message");
-    Ok(Json(
-        message
-            .find_one(doc! {"_id":id}, None)
-            .await?
-            .ok_or(Error::msg("Message not exist").set_status(StatusCode::NOT_FOUND))?,
-    ))
+    Ok(Json(message.find_one(doc! {"_id":id}, None).await?.ok_or(
+        Error::msg("Message not exist").set_status(StatusCode::NOT_FOUND),
+    )?))
 }
-
-
 
 pub async fn post(
     database: State<Database>,
@@ -46,6 +37,13 @@ pub async fn post(
     params: Params,
     auth: Auth,
 ) -> levin::Result<ApiMessage> {
+    #[derive(Serialize)]
+
+    struct Message<'a> {
+        channel: ObjectId,
+        content: &'a str,
+        datetime: DateTime,
+    }
     let channel_id = parse_oid(params.get("id").unwrap())?;
     let channel_collection = database.collection::<()>("channel");
 
@@ -62,11 +60,10 @@ pub async fn post(
 
     message_collection
         .insert_one(
-            Message{
-                id:Bson::Undefined,
-                channel:channel_id,
-                content:content.as_str().into(),
-                datetime:DateTime::now(),
+            Message {
+                channel: channel_id,
+                content: content.as_str().into(),
+                datetime: DateTime::now(),
             },
             None,
         )
@@ -87,7 +84,7 @@ pub async fn delete(
     }
     let id = parse_oid(params.get("id").unwrap())?;
 
-    collection.delete_one(doc!{"_id":id}, None).await?;
+    collection.delete_one(doc! {"_id":id}, None).await?;
 
     Ok(ApiMessage::new("Delete message sucessfully"))
 }
