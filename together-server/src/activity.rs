@@ -1,9 +1,12 @@
+use bytestr::ByteStr;
 use futures_util::TryStreamExt;
 use levin::{
+    extract::Query,
     handler::Handler,
+    responder::Responder,
     routing::Params,
-    utils::{json, Form, Json, State},
-    Body, Error, StatusCode,
+    utils::{json, Json, State},
+    Error, StatusCode,
 };
 use mongodb::bson::serde_helpers::{
     serialize_bson_datetime_as_rfc3339_string, serialize_object_id_as_hex_string,
@@ -16,33 +19,39 @@ use serde::{Deserialize, Serialize, Serializer};
 use std::{borrow::Cow, fmt::Display, str::FromStr};
 
 use crate::{
-    auth::Auth, impl_error, oid_to_hex, parse_oid, record::{create_record, get_volunteers}, user, ApiMessage,
-    ProjectOption,
+    auth::Auth,
+    impl_error, oid_to_hex, parse_oid,
+    record::{create_record, get_volunteers},
+    user, ApiMessage, ProjectOption,
 };
 
 #[derive(Debug, Deserialize)]
-pub struct ListActivityForm {
+pub struct ListActivityQuery {
     user: Option<ObjectId>,
+    display_all: Option<String>,
 }
 
-fn serialize_option_datetime<S: Serializer>(val: &Option<DateTime>, serializer: S) -> Result<S::Ok, S::Error>{
-    if let Some(datetime) = val{
-        serialize_bson_datetime_as_rfc3339_string(datetime,serializer)
-    }
-    else{
+fn serialize_option_datetime<S: Serializer>(
+    val: &Option<DateTime>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    if let Some(datetime) = val {
+        serialize_bson_datetime_as_rfc3339_string(datetime, serializer)
+    } else {
         serializer.serialize_none()
     }
 }
 
-fn serialize_oid_vec<S: Serializer>(val: &Vec<ObjectId>, serializer: S) -> Result<S::Ok, S::Error>{
+fn serialize_oid_vec<S: Serializer>(val: &Vec<ObjectId>, serializer: S) -> Result<S::Ok, S::Error> {
     serializer.collect_seq(val.into_iter().map(|v| v.to_hex()))
 }
 
-
-
-pub async fn list(database: State<Database>, form: Form<ListActivityForm>) -> levin::Result<Body> {
-    #[derive(Debug, Serialize, Deserialize)]
-    pub struct Activity {
+pub async fn list(
+    database: State<Database>,
+    query: Query<ListActivityQuery>,
+) -> levin::Result<Json<impl Serialize>> {
+    #[derive(Serialize, Deserialize)]
+    struct Activity {
         #[serde(rename(deserialize = "_id"))]
         #[serde(serialize_with = "serialize_object_id_as_hex_string")]
         id: ObjectId,
@@ -61,8 +70,11 @@ pub async fn list(database: State<Database>, form: Form<ListActivityForm>) -> le
     }
 
     let activities = database.collection::<Activity>("activity");
-    let mut filter = doc! {"state":ActivityState::NeedVolunteer.to_string()};
-    if let Some(user) = form.user {
+    let mut filter = Document::new();
+    if query.display_all.is_none() {
+        filter.insert("state", ActivityState::NeedVolunteer.to_string());
+    }
+    if let Some(user) = query.user {
         filter.insert("promoter", user);
     }
 
@@ -71,7 +83,7 @@ pub async fn list(database: State<Database>, form: Form<ListActivityForm>) -> le
     for activity in result.iter_mut() {
         activity.promoter_name = user::get_name(&database, activity.promoter).await?;
     }
-    Body::from_json(&result)
+    Ok(Json(result))
 }
 
 pub async fn get_name(
@@ -89,10 +101,8 @@ pub async fn get_name(
         .map(|schema| schema.name))
 }
 
-
-
-pub async fn get(database: State<Database>, params: Params) -> levin::Result<Body> {
-    #[derive(Debug, Serialize, Deserialize)]
+pub async fn get(database: State<Database>, params: Params) -> levin::Result<impl Responder> {
+    #[derive(Serialize, Deserialize)]
     pub struct Activity {
         state: ActivityState,
         name: String,
@@ -108,7 +118,7 @@ pub async fn get(database: State<Database>, params: Params) -> levin::Result<Bod
         description: String,
         #[serde(default)]
         #[serde(serialize_with = "serialize_oid_vec")]
-        volunteers:Vec<ObjectId>,
+        volunteers: Vec<ObjectId>,
         duration: u16, // minutes
     }
     let collection = database.collection::<Activity>("activity");
@@ -118,9 +128,9 @@ pub async fn get(database: State<Database>, params: Params) -> levin::Result<Bod
         .await?
         .ok_or(Error::msg("Activity not exists").set_status(StatusCode::NOT_FOUND))?;
     activity.name = get_name(&database, activity_id).await?.unwrap();
-    activity.volunteers=get_volunteers(&database,activity_id).await?;
+    activity.volunteers = get_volunteers(&database, activity_id).await?;
     activity.promoter_name = user::get_name(&database, activity.promoter).await?;
-    Body::from_json(&activity)
+    Ok(Json(activity))
 }
 
 // Warning: This method would not check the validity of activity and user.
@@ -144,7 +154,7 @@ pub async fn join(
     params: Params,
     auth: Auth,
 ) -> levin::Result<ApiMessage> {
-    #[derive(Debug, Serialize, Deserialize)]
+    #[derive(Serialize, Deserialize)]
     pub struct Activity {
         volunteer_num: u16,
         max_volunteer_num: Option<u16>,
@@ -175,7 +185,7 @@ pub async fn join(
     }
 
     create_record(&database, auth.uid(), activity_id).await?;
-    
+
     activity_collection
         .update_one(
             doc! {"_id":activity_id},
@@ -222,7 +232,7 @@ struct CreateActivityForm<'a> {
     duration: u16, // minutes
 }
 
-pub async fn create(database: State<Database>, auth: Auth, mut body: Body) -> levin::Result<Json> {
+pub async fn create(database: State<Database>, auth: Auth, form: ByteStr) -> levin::Result<Json> {
     #[derive(Serialize)]
     pub struct Activity<'a> {
         state: ActivityState,
@@ -237,7 +247,7 @@ pub async fn create(database: State<Database>, auth: Auth, mut body: Body) -> le
         duration: u16, // minutes
     }
     let activities = database.collection::<Activity>("activity");
-    let form: CreateActivityForm = body.into_json().await?;
+    let Json(form) = Json::<CreateActivityForm>::from_str(form.as_str())?;
     let mut date = None;
     if let Some(original) = form.date {
         date = Some(DateTime::parse_rfc3339_str(original.as_ref())?);
@@ -304,35 +314,22 @@ impl Display for ActivityState {
 // TODO: support transaction
 pub fn turn(target_state: ActivityState) -> impl Handler<(State<Database>, Params)> {
     move |database: State<Database>, params: Params| async move {
-        #[derive(Deserialize)]
-        struct Activity {
-            state: ActivityState,
-        }
-
-        let collection = database.collection::<Activity>("acitivty");
+        let collection = database.collection::<Document>("activity");
         let id = parse_oid(params.get("id").unwrap())?;
 
-        let oringal_state = collection
-            .find_one(
-                doc! {"_id":id},
-                ProjectOption::new(doc! {"_id":0,"state":1}),
-            )
+        collection
+            .find_one(doc! {"_id":id}, ProjectOption::new(None))
             .await?
-            .ok_or(Error::msg("Activity not exists").set_status(StatusCode::NOT_FOUND))?
-            .state;
-
-        if let ActivityState::Ended = oringal_state {
-            return Err(Error::msg("Activity has already ended").set_status(StatusCode::FORBIDDEN));
-        }
+            .ok_or(Error::msg("Activity not exists").set_status(StatusCode::NOT_FOUND))?;
 
         collection
             .update_one(
                 doc! {"_id":id},
-                doc! {"state":target_state.to_string()},
+                doc! {"$set":{"state":target_state.to_string()}},
                 None,
             )
             .await?;
 
-        Ok(ApiMessage::new(format!("Activity is {} now", target_state)))
+        Ok::<ApiMessage, levin::Error>(ApiMessage::new(format!("Activity is {} now", target_state)))
     }
 }
