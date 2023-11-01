@@ -8,14 +8,14 @@ mod message;
 mod record;
 mod resource;
 mod user;
+mod utils;
 
 use activity::ActivityState;
 use auth::{AuthExt, AuthMiddleware};
 use hyper::Server;
 use levin::{utils::State, CreateRouteNode, Route};
 use levin_hyper::use_hyper;
-use mongodb::bson::Document;
-use mongodb::{bson::oid::ObjectId, Client};
+use mongodb::Client;
 
 #[async_std::main]
 async fn main() -> levin::Result<()> {
@@ -64,10 +64,7 @@ async fn main() -> levin::Result<()> {
                 "/:id".at(message::get),
                 "/:id".delete(message::delete),
             ]),
-            "/resource".route([
-                "".post(resource::create),
-                "/:filename".at(resource::access)
-            ]),
+            "/resource".route(["".post(resource::create), "/:filename".at(resource::access)]),
             "/auth/check/:authority".at(check_authority),
         ])
         .middleware(AuthMiddleware),
@@ -99,43 +96,6 @@ pub async fn check_authority(
     }))
 }
 
-pub fn sha256(v: impl AsRef<[u8]>) -> String {
-    use ring::digest::{digest, SHA256};
-    hex::encode(digest(&SHA256, v.as_ref()))
-}
-
-#[derive(Debug, serde::Serialize)]
-pub struct ApiMessage {
-    message: std::borrow::Cow<'static, str>,
-}
-
-impl ApiMessage {
-    pub fn new(message: impl Into<std::borrow::Cow<'static, str>>) -> Self {
-        Self {
-            message: message.into(),
-        }
-    }
-}
-
-impl levin::responder::Responder for ApiMessage {
-    fn respond_to(
-        self,
-        request: &levin::Request,
-        response: &mut levin::Response,
-    ) -> levin::Result<()> {
-        levin::utils::Json(self).respond_to(request, response)
-    }
-}
-
-pub fn oid_to_hex(oid: mongodb::bson::Bson) -> Option<String> {
-    oid.as_object_id().map(|oid| oid.to_hex())
-}
-
-pub fn parse_oid(oid: &str) -> levin::Result<ObjectId> {
-    oid.parse()
-        .map_err(|error| levin::Error::new(error, levin::StatusCode::BAD_REQUEST))
-}
-
 #[macro_export]
 macro_rules! impl_error {
     ($ty:ident,$message:expr) => {
@@ -159,32 +119,4 @@ macro_rules! impl_error {
 
         impl std::error::Error for $ty {}
     };
-}
-
-struct ProjectOption(Document);
-
-impl ProjectOption {
-    pub fn new(doc: impl Into<Option<Document>>) -> Self {
-        Self(doc.into().unwrap_or(mongodb::bson::doc! {"_id":1}))
-    }
-}
-
-impl From<ProjectOption> for Option<mongodb::options::FindOneOptions> {
-    fn from(value: ProjectOption) -> Self {
-        Some(
-            mongodb::options::FindOneOptions::builder()
-                .projection(value.0)
-                .build(),
-        )
-    }
-}
-
-impl From<ProjectOption> for Option<mongodb::options::FindOptions> {
-    fn from(value: ProjectOption) -> Self {
-        Some(
-            mongodb::options::FindOptions::builder()
-                .projection(value.0)
-                .build(),
-        )
-    }
 }
