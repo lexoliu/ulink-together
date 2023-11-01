@@ -66,6 +66,22 @@ pub async fn get_name(database: &Database, uid: ObjectId) -> levin::Result<Strin
     Ok(result.realname)
 }
 
+pub async fn get_classname(database: &Database, uid: ObjectId) -> levin::Result<String> {
+    #[derive(Deserialize)]
+    pub struct Schema {
+        classname: String,
+    }
+    let collection = database.collection::<Schema>("user");
+    let result = collection
+        .find_one(
+            doc! {"_id":uid},
+            ProjectOption::new(doc! {"_id":0,"classname":1}),
+        )
+        .await?
+        .ok_or(Error::msg("User not exists").set_status(StatusCode::NOT_FOUND))?;
+    Ok(result.classname)
+}
+
 pub async fn register(database: State<Database>, form: ByteStr) -> levin::Result<ApiMessage> {
     #[derive(Deserialize)]
     struct Form<'a> {
