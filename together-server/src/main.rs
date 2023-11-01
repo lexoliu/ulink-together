@@ -6,69 +6,82 @@ mod comment;
 mod login;
 mod message;
 mod record;
+mod resource;
 mod user;
 
 use activity::ActivityState;
 use auth::{AuthExt, AuthMiddleware};
-use levin::middleware::ErrorHandlingMiddleware;
-use levin::{utils::state::State, CreateRouteNode, Route};
-use levin_hyper::{use_hyper, Server};
+use hyper::Server;
+use levin::{utils::State, CreateRouteNode, Route};
+use levin_hyper::use_hyper;
 use mongodb::bson::Document;
 use mongodb::{bson::oid::ObjectId, Client};
 
-#[tokio::main]
-async fn main() {
+#[async_std::main]
+async fn main() -> levin::Result<()> {
     femme::start();
     let database = Client::with_uri_str("mongodb://localhost:27017")
         .await
         .unwrap()
         .database("together");
-    let route = Route::from(["/api/v1".route([
+    let route: Route = Route::from(["/api/v1".route([
         "".route([
             "/user".route([
                 "/:id".at(user::get).guard("view_user"),
                 "/:id".delete(user::delete).guard("delete_user"),
             ]),
-            "/channel".route(["/:id".post(message::post), "/:id".delete(channel::delete)]),
-            "/channel".post(channel::create).guard("create_channel"),
-            "/channel/find".at(channel::find),
-            "/activity".post(activity::create).guard("create_activity"),
-            "/activity".at(activity::list),
+            "/channel".route([
+                "".at(channel::find),
+                "".post(channel::create).guard("create_channel"),
+                "/:id".post(message::post),
+                "/:id".delete(channel::delete),
+            ]),
             "/activity".route([
+                "".at(activity::find),
+                "".post(activity::create).guard("create_activity"),
                 "/:id".at(activity::get),
                 "/:id".delete(activity::delete),
                 "/:id".route([
-                    "/join".post(activity::join),
+                    "/apply".post(activity::apply),
                     "/comment".post(comment::post).guard("send_comment"),
                     "/comment".at(comment::list),
-                    "/going".at(activity::turn(ActivityState::Going)),
-                    "/end".at(activity::turn(ActivityState::Ended)),
-                    "/cancel".at(activity::turn(ActivityState::Canneled))
+                    "/need_volunteer".post(activity::turn(ActivityState::NeedVolunteer)),
+                    "/go".post(activity::turn(ActivityState::Going)),
+                    "/end".post(activity::turn(ActivityState::Ended)),
+                    "/cancel".post(activity::turn(ActivityState::Canceled)),
                 ]),
             ]),
             "/record".route([
-                "/find".at(record::find),
-                "/:id/done".post(record::mark_done),
+                "".at(record::find),
+                "/:id".route([
+                    "/done".post(record::mark_done),
+                    "/approve_apply".post(record::approve_apply),
+                    "/disapprove_apply".post(record::disapprove_apply),
+                ]),
             ]),
-            "/message/:id".at(message::get),
-            "/message/:id".delete(message::delete),
+            "/mesaage".route([
+                "".at(message::find),
+                "/:id".at(message::get),
+                "/:id".delete(message::delete),
+            ]),
+            "/resource".route([
+                "".post(resource::create),
+                "/:filename".at(resource::access)
+            ]),
             "/auth/check/:authority".at(check_authority),
-            "/check_mail/:email".at(check_mail::handler),
         ])
         .middleware(AuthMiddleware),
-        "".route([
-            "/test".at(|| async { "Test" }),
-            "/login".post(login::handler),
-            "/user".post(user::register),
-        ]),
+        "".route(["/login".post(login::handler), "/user".post(user::register)]),
     ])])
     .middleware(State(database))
-    .middleware(ErrorHandlingMiddleware::json());
+    .error_handling(|error| async move {
+        levin::utils::Json(levin::utils::json!({"message":error.to_string()}))
+    });
 
     Server::bind(&([127, 0, 0, 1], 8080).into())
         .serve(use_hyper(route.build()))
-        .await
-        .unwrap();
+        .await?;
+    Ok(())
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -158,14 +171,20 @@ impl ProjectOption {
 
 impl From<ProjectOption> for Option<mongodb::options::FindOneOptions> {
     fn from(value: ProjectOption) -> Self {
-        Some(mongodb::options::FindOneOptions::builder()
-                    .projection(value.0)
-                    .build())
+        Some(
+            mongodb::options::FindOneOptions::builder()
+                .projection(value.0)
+                .build(),
+        )
     }
 }
 
 impl From<ProjectOption> for Option<mongodb::options::FindOptions> {
     fn from(value: ProjectOption) -> Self {
-        Some(mongodb::options::FindOptions::builder().projection(value.0).build())
+        Some(
+            mongodb::options::FindOptions::builder()
+                .projection(value.0)
+                .build(),
+        )
     }
 }
