@@ -5,8 +5,8 @@ edition = "2021"
 
 [dependencies]
 tokio = { version = "1.32.0" ,features = ["macros","rt-multi-thread"]}
-levin-hyper = { path = "../../../levin4/LEVIN_PREVIEW/levin-hyper" }
-levin = { path = "../../../levin4/LEVIN_PREVIEW/levin" }
+levin-hyper = { path = "../../LEVIN_PREVIEW/levin-hyper" }
+levin = { path = "../../LEVIN_PREVIEW/levin" }
 mongodb = "2.6.1"
 serde = { version = "1.0.188" ,features = ["derive"]}
 bytes = "1.5.0"
