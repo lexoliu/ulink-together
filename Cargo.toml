@@ -2,7 +2,7 @@
 members = [
     "server",
     "cli",
-    "app2",
+    "app",
 ]
 resolver = "2"
 
