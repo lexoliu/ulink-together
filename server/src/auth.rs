@@ -1,42 +1,42 @@
-use mongodb::bson::Document;
-use mongodb::bson::{doc, oid::ObjectId};
-use mongodb::{Collection, Database};
-use serde::Deserialize;
+use bson::oid::ObjectId;
 use skyzen::extract::Extractor;
 use skyzen::utils::{cookie::Cookie, State};
 use skyzen::{
     header::{self, HeaderMap},
-    Error, Request, ResultExt, StatusCode,
+    Error, Request, StatusCode,
 };
+use sqlx::Row;
 
-use crate::utils::{parse_oid, ProjectOption};
+use crate::{database::AppDatabase, utils::parse_oid};
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Auth {
     uid: ObjectId,
     group: ObjectId,
-    collection: Collection<Document>,
+    database: AppDatabase,
 }
 
 #[derive(Clone)]
 pub struct AuthSession {
-    database: State<Database>,
+    database: State<AppDatabase>,
     headers: HeaderMap,
 }
 
-#[derive(Debug, Deserialize)]
-struct Group {
-    #[serde(rename(deserialize = "_id"))]
-    id: ObjectId,
+fn expired_error() -> skyzen::Error {
+    Error::msg("Session expired").set_status(StatusCode::FORBIDDEN)
 }
 
 pub async fn get_group_id(
-    database: &Database,
+    database: &AppDatabase,
     name: &str,
-) -> Result<Option<ObjectId>, mongodb::error::Error> {
-    let collection = database.collection::<Group>("group");
-    let result = collection.find_one(doc! {"code":name}, None).await?;
-    Ok(result.map(|v| v.id))
+) -> Result<Option<ObjectId>, sqlx::Error> {
+    let row = sqlx::query("SELECT id FROM groups WHERE code = ?1")
+        .bind(name)
+        .fetch_optional(database.sqlx())
+        .await?;
+    Ok(row
+        .and_then(|row| row.try_get::<String, _>("id").ok())
+        .and_then(|hex| ObjectId::parse_str(hex).ok()))
 }
 
 impl Auth {
@@ -45,14 +45,7 @@ impl Auth {
     }
 
     pub async fn match_authority(&self, authority: &str) -> skyzen::Result<bool> {
-        let result = self
-            .collection
-            .find_one(
-                doc! {"_id":self.group,"group":{"$or":[{"authority":"*"},{"authority":authority}]}},
-                ProjectOption::new(None),
-            )
-            .await?;
-        Ok(result.is_some())
+        match_group_authority(&self.database, &self.group, authority).await
     }
 
     pub async fn ensure_authority(&self, authority: &str) -> skyzen::Result<()> {
@@ -66,7 +59,7 @@ impl Auth {
 
 impl Extractor for AuthSession {
     async fn extract(request: &mut Request) -> skyzen::Result<Self> {
-        let database = request.extensions().get::<State<Database>>().cloned();
+        let database = request.extensions().get::<State<AppDatabase>>().cloned();
         let headers = request.headers().clone();
         let database = database.ok_or_else(|| Error::msg("Database should be provided"))?;
         Ok(AuthSession { database, headers })
@@ -78,24 +71,11 @@ impl AuthSession {
         auth(&self.database, &self.headers).await
     }
 }
-#[derive(Debug, Deserialize)]
-struct Session {
-    uid: ObjectId,
-}
 
-#[derive(Debug, Deserialize)]
-struct User {
-    group: ObjectId,
-}
-
-fn expired_error() -> skyzen::Error {
-    Error::msg("Session expired").set_status(StatusCode::FORBIDDEN)
-}
-
-async fn auth(database: &Database, headermap: &HeaderMap) -> skyzen::Result<Auth> {
+async fn auth(database: &AppDatabase, headermap: &HeaderMap) -> skyzen::Result<Auth> {
     let cookies = headermap
         .get(header::COOKIE)
-        .ok_or(expired_error())?
+        .ok_or_else(expired_error)?
         .as_bytes();
     let cookie = Cookie::split_parse_encoded(core::str::from_utf8(cookies)?)
         .find_map(|cookie| {
@@ -106,25 +86,63 @@ async fn auth(database: &Database, headermap: &HeaderMap) -> skyzen::Result<Auth
             }
             None
         })
-        .ok_or(expired_error())?;
-    let session = parse_oid(cookie.value())?;
-    let session_collection = database.collection::<Session>("session");
+        .ok_or_else(expired_error)?;
+    let session_id = parse_oid(cookie.value())?;
+    let session_hex = session_id.to_hex();
+    let pool = database.sqlx();
 
-    let uid: ObjectId = session_collection
-        .find_one(doc! {"_id":session}, None)
+    let session = sqlx::query("SELECT user_id FROM sessions WHERE id = ?1")
+        .bind(&session_hex)
+        .fetch_optional(pool)
         .await?
-        .ok_or(expired_error())?
-        .uid;
-    let user_collection = database.collection::<User>("user");
-    let group = user_collection
-        .find_one(doc! {"_id":uid}, None)
+        .ok_or_else(expired_error)?;
+    let uid_hex: String = session.try_get("user_id").map_err(|_| expired_error())?;
+    let uid = ObjectId::parse_str(&uid_hex).map_err(|_| expired_error())?;
+
+    let user_row = sqlx::query("SELECT group_id FROM users WHERE id = ?1")
+        .bind(&uid_hex)
+        .fetch_optional(pool)
         .await?
-        .status(StatusCode::INTERNAL_SERVER_ERROR)?
-        .group;
+        .ok_or_else(expired_error)?;
+    let group_hex: String = user_row.try_get("group_id").map_err(|_| expired_error())?;
+    let group = ObjectId::parse_str(&group_hex).map_err(|_| expired_error())?;
 
     Ok(Auth {
         uid,
         group,
-        collection: database.collection("group"),
+        database: database.clone(),
     })
+}
+
+async fn match_group_authority(
+    database: &AppDatabase,
+    group: &ObjectId,
+    authority: &str,
+) -> skyzen::Result<bool> {
+    let group_hex = group.to_hex();
+    let pool = database.sqlx();
+
+    if let Some(row) = sqlx::query("SELECT allow_all_authorities FROM groups WHERE id = ?1")
+        .bind(&group_hex)
+        .fetch_optional(pool)
+        .await?
+    {
+        let allow_all: i64 = row.try_get("allow_all_authorities").unwrap_or(0);
+        if allow_all != 0 {
+            return Ok(true);
+        }
+    } else {
+        return Ok(false);
+    }
+
+    let has_authority = sqlx::query(
+        "SELECT 1 FROM group_authorities WHERE group_id = ?1 AND authority = ?2 LIMIT 1",
+    )
+    .bind(&group_hex)
+    .bind(authority)
+    .fetch_optional(pool)
+    .await?
+    .is_some();
+
+    Ok(has_authority)
 }

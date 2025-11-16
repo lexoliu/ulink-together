@@ -1,50 +1,52 @@
-use crate::utils::{oid_to_hex, sha256, ApiMessage};
-use mongodb::bson::oid::ObjectId;
-use mongodb::bson::DateTime;
-use mongodb::{bson::doc, Database};
-use serde::{Deserialize, Serialize};
+use crate::{
+    database::AppDatabase,
+    utils::{sha256, ApiMessage},
+};
+use bson::oid::ObjectId;
+use serde::Deserialize;
 use skyzen::utils::cookie::{Cookie, CookieJar};
 use skyzen::utils::Json;
 use skyzen::Result;
 use skyzen::{extract::ClientIp, utils::State, Error, StatusCode};
-use std::borrow::Cow;
+use sqlx::Row;
 use std::net::IpAddr;
 use time::{Duration, OffsetDateTime};
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct Form<'a> {
-    email: Cow<'a, str>,
+    email: std::borrow::Cow<'a, str>,
     password: String,
 }
 
 pub async fn handler(
-    database: State<Database>,
+    database: State<AppDatabase>,
     ip: ClientIp,
     mut cookies: CookieJar,
     form: Json<Form<'_>>,
 ) -> Result<(ApiMessage, CookieJar)> {
     #[derive(Deserialize)]
-    struct User<'a> {
-        #[serde(rename(deserialize = "_id"))]
-        id: ObjectId,
-        password: Cow<'a, str>,
-        salt: Cow<'a, str>,
+    struct UserRow {
+        id: String,
+        password_hash: String,
+        salt: String,
     }
     let Json(form) = form;
 
-    let users = database.collection::<User>("user");
+    let users = sqlx::query("SELECT id, password_hash, salt FROM users WHERE email = ?1")
+        .bind(form.email.as_ref())
+        .fetch_optional(database.sqlx())
+        .await?;
 
-    // TODO: send email to check if user logins from a new ip address
+    let row =
+        users.ok_or_else(|| Error::msg("User not exists").set_status(StatusCode::NOT_FOUND))?;
+    let user_id: String = row.try_get("id")?;
+    let password_hash: String = row.try_get("password_hash")?;
+    let salt: String = row.try_get("salt")?;
 
-    let user = users
-        .find_one(doc! {"email":form.email.as_ref()}, None)
-        .await?
-        .ok_or(Error::msg("User not exists").set_status(StatusCode::NOT_FOUND))?;
-
-    if sha256(form.password + user.salt.as_ref()) == user.password {
-        let session = generate_session(&database, user.id, ip.0).await?;
+    if sha256(form.password + &salt) == password_hash {
+        let session = generate_session(&database, &user_id, ip.0).await?;
         cookies.add(
-            Cookie::build(("uid", user.id.to_hex()))
+            Cookie::build(("uid", user_id.clone()))
                 .expires(OffsetDateTime::now_utc() + Duration::weeks(2))
                 .path("/")
                 .build(),
@@ -60,35 +62,23 @@ pub async fn handler(
         return Err(Error::msg("Wrong email or password").set_status(StatusCode::FORBIDDEN));
     }
 
-    //check_mail(&database, id)
-
     Ok(((ApiMessage::new("Login successfully")), cookies))
 }
 
-#[derive(Debug, Serialize)]
-struct Session {
-    uid: ObjectId,
-    generated_date: DateTime,
-    ip: String,
-}
-
 async fn generate_session(
-    database: &Database,
-    uid: ObjectId,
+    database: &AppDatabase,
+    uid_hex: &str,
     ip: IpAddr,
 ) -> skyzen::Result<String> {
-    let session = database.collection::<Session>("session");
+    let session_id = ObjectId::new().to_hex();
 
-    let result = session
-        .insert_one(
-            Session {
-                uid,
-                generated_date: DateTime::now(),
-                ip: ip.to_string(),
-            },
-            None,
-        )
+    sqlx::query("INSERT INTO sessions (id, user_id, generated_at, ip) VALUES (?1, ?2, ?3, ?4)")
+        .bind(&session_id)
+        .bind(uid_hex)
+        .bind(OffsetDateTime::now_utc().to_string())
+        .bind(ip.to_string())
+        .execute(database.sqlx())
         .await?;
 
-    Ok(oid_to_hex(result.inserted_id).unwrap())
+    Ok(session_id)
 }

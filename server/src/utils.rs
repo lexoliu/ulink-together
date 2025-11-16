@@ -1,6 +1,4 @@
-use mongodb::bson::{
-    oid::ObjectId, serde_helpers::serialize_bson_datetime_as_rfc3339_string, DateTime, Document,
-};
+use bson::{oid::ObjectId, serde_helpers::serialize_bson_datetime_as_rfc3339_string, DateTime};
 use serde::Serializer;
 
 pub fn serialize_option_datetime<S: Serializer>(
@@ -42,39 +40,11 @@ impl skyzen::responder::Responder for ApiMessage {
     }
 }
 
-pub fn oid_to_hex(oid: mongodb::bson::Bson) -> Option<String> {
-    oid.as_object_id().map(|oid| oid.to_hex())
+pub fn oid_to_hex(oid: &ObjectId) -> String {
+    oid.to_hex()
 }
 
 pub fn parse_oid(oid: &str) -> skyzen::Result<ObjectId> {
     oid.parse()
         .map_err(|error| skyzen::Error::new(error, skyzen::StatusCode::BAD_REQUEST))
-}
-
-pub struct ProjectOption(Document);
-
-impl ProjectOption {
-    pub fn new(doc: impl Into<Option<Document>>) -> Self {
-        Self(doc.into().unwrap_or(mongodb::bson::doc! {"_id":1}))
-    }
-}
-
-impl From<ProjectOption> for Option<mongodb::options::FindOneOptions> {
-    fn from(value: ProjectOption) -> Self {
-        Some(
-            mongodb::options::FindOneOptions::builder()
-                .projection(value.0)
-                .build(),
-        )
-    }
-}
-
-impl From<ProjectOption> for Option<mongodb::options::FindOptions> {
-    fn from(value: ProjectOption) -> Self {
-        Some(
-            mongodb::options::FindOptions::builder()
-                .projection(value.0)
-                .build(),
-        )
-    }
 }

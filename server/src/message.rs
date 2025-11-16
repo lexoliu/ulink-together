@@ -1,139 +1,61 @@
+use crate::{auth::AuthSession, database::AppDatabase, utils::ApiMessage};
 use bytestr::ByteStr;
-use futures_util::TryStreamExt;
-use mongodb::{
-    bson::{doc, oid::ObjectId, Bson, DateTime, Document},
-    Database,
-};
-use serde::{Deserialize, Serialize};
 use skyzen::{
     extract::Query,
-    responder::Responder,
     routing::Params,
     utils::{Json, State},
     Error, StatusCode,
 };
 
-use crate::{
-    auth::AuthSession,
-    utils::{parse_oid, ApiMessage},
-};
-
-#[derive(Debug, Deserialize)]
+#[derive(Debug, serde::Deserialize)]
 pub(crate) struct FindQuery {
-    start_date: Option<DateTime>,
-    end_date: Option<DateTime>,
-    channel: ObjectId,
-    sender: Option<ObjectId>,
+    start_date: Option<String>,
+    end_date: Option<String>,
+    channel: String,
+    sender: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct Message {
-    #[serde(rename(deserialize = "_id"))]
-    id: Bson,
-    channel: ObjectId,
+    id: String,
+    channel: String,
     content: String,
-    datetime: DateTime,
+    datetime: String,
 }
 
 pub async fn find(
-    database: State<Database>,
-    query: Query<FindQuery>,
+    _database: State<AppDatabase>,
+    _query: Query<FindQuery>,
     session: AuthSession,
-) -> skyzen::Result<impl Responder> {
+) -> skyzen::Result<Json<serde_json::Value>> {
     session.into_auth().await?;
-    let collection = database.collection::<Message>("message");
-    let Query(query) = query;
-    let mut filter = Document::new();
-    filter.insert("channel", query.channel);
-    let mut daterange = Document::new();
-    if let Some(date) = query.start_date {
-        daterange.insert("$gte", date);
-    }
-
-    if let Some(date) = query.end_date {
-        filter.insert("$lte", date);
-    }
-
-    filter.insert("datetime", daterange);
-
-    if let Some(sender) = query.sender {
-        filter.insert("sender", sender);
-    }
-
-    let result: Vec<Message> = collection.find(filter, None).await?.try_collect().await?;
-    Ok(Json(result))
+    Err(Error::msg("Message API is being migrated to SQL").set_status(StatusCode::NOT_IMPLEMENTED))
 }
 
 pub async fn get(
-    database: State<Database>,
-    params: Params,
+    _database: State<AppDatabase>,
+    _params: Params,
     session: AuthSession,
-) -> skyzen::Result<impl Responder> {
+) -> skyzen::Result<Json<serde_json::Value>> {
     session.into_auth().await?;
-    let id = params.get("id")?;
-    let id = parse_oid(id)?;
-    let message = database.collection::<Message>("message");
-    Ok(Json(message.find_one(doc! {"_id":id}, None).await?.ok_or(
-        Error::msg("Message not exist").set_status(StatusCode::NOT_FOUND),
-    )?))
+    Err(Error::msg("Message API is being migrated to SQL").set_status(StatusCode::NOT_IMPLEMENTED))
 }
 
 pub async fn post(
-    database: State<Database>,
-    content: ByteStr,
-    params: Params,
+    _database: State<AppDatabase>,
+    _content: ByteStr,
+    _params: Params,
     session: AuthSession,
 ) -> skyzen::Result<ApiMessage> {
-    let auth = session.into_auth().await?;
-    #[derive(Serialize)]
-
-    struct Message<'a> {
-        channel: ObjectId,
-        content: &'a str,
-        datetime: DateTime,
-    }
-    let channel_id = parse_oid(params.get("id")?)?;
-    let channel_collection = database.collection::<()>("channel");
-
-    let result = channel_collection
-        .find_one(doc! {"_id":channel_id,"member":auth.uid()}, None)
-        .await?;
-
-    if !(auth.match_authority("send_message_anyway").await? || result.is_some()) {
-        return Err(
-            Error::msg("You have no access to this channel").set_status(StatusCode::FORBIDDEN)
-        );
-    }
-    let message_collection = database.collection("message");
-
-    message_collection
-        .insert_one(
-            Message {
-                channel: channel_id,
-                content: content.as_str().into(),
-                datetime: DateTime::now(),
-            },
-            None,
-        )
-        .await?;
-    Ok(ApiMessage::new("Post message successfully"))
+    session.into_auth().await?;
+    Err(Error::msg("Message API is being migrated to SQL").set_status(StatusCode::NOT_IMPLEMENTED))
 }
 
 pub async fn delete(
-    database: State<Database>,
-    params: Params,
+    _database: State<AppDatabase>,
+    _params: Params,
     session: AuthSession,
 ) -> skyzen::Result<ApiMessage> {
-    let auth = session.into_auth().await?;
-    let collection: mongodb::Collection<()> = database.collection::<()>("message");
-    if !auth.match_authority("delete_message_anyway").await? {
-        return Err(
-            Error::msg("You have no access to this channel").set_status(StatusCode::FORBIDDEN)
-        );
-    }
-    let id = parse_oid(params.get("id")?)?;
-
-    collection.delete_one(doc! {"_id":id}, None).await?;
-
-    Ok(ApiMessage::new("Delete message sucessfully"))
+    session.into_auth().await?;
+    Err(Error::msg("Message API is being migrated to SQL").set_status(StatusCode::NOT_IMPLEMENTED))
 }

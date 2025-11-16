@@ -1,13 +1,14 @@
 use std::path::Path;
 
-use crate::{auth::AuthSession, utils::oid_to_hex};
+use crate::{auth::AuthSession, database::AppDatabase};
 use async_std::{
     fs::File,
     io::{self, BufReader},
 };
-use mongodb::{bson::doc, Database};
+use bson::oid::ObjectId;
 use serde::Deserialize;
 use skyzen::{extract::Query, routing::Params, utils::State, Body, Error, StatusCode};
+use time::OffsetDateTime;
 
 #[derive(Debug, Deserialize)]
 pub struct CreateResourceQuery {
@@ -16,7 +17,7 @@ pub struct CreateResourceQuery {
 
 pub async fn create(
     session: AuthSession,
-    database: State<Database>,
+    database: State<AppDatabase>,
     body: Body,
     query: Query<CreateResourceQuery>,
 ) -> skyzen::Result<String> {
@@ -26,15 +27,24 @@ pub async fn create(
         .split_once('.')
         .map(|(b, e)| (b.to_owned(), e.to_owned()))
         .unwrap_or_else(|| (name, "unknown".to_string()));
-    let collection = database.collection("resource");
-    let result = collection
-        .insert_one(doc! {"creator":auth.uid(),"name":&base}, None)
-        .await?;
-    let id = oid_to_hex(result.inserted_id).unwrap();
-    let mut file = File::create(format!("./resource/{id}.{}", extension)).await?;
+    let id = ObjectId::new();
+    let id_hex = id.to_hex();
+
+    sqlx::query(
+        "INSERT INTO resources (id, creator_id, name, extension, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+    )
+    .bind(&id_hex)
+    .bind(auth.uid().to_hex())
+    .bind(&base)
+    .bind(&extension)
+    .bind(OffsetDateTime::now_utc().to_string())
+    .execute(database.sqlx())
+    .await?;
+
+    let mut file = File::create(format!("./resource/{id_hex}.{}", extension)).await?;
     io::copy(&mut body.into_reader(), &mut file).await?;
     file.sync_all().await?;
-    Ok(id)
+    Ok(id_hex)
 }
 
 pub async fn access(params: Params, session: AuthSession) -> skyzen::Result<Body> {

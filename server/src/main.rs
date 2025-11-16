@@ -3,6 +3,7 @@ mod auth;
 mod channel;
 mod check_mail;
 mod comment;
+mod database;
 mod login;
 mod message;
 mod record;
@@ -10,17 +11,20 @@ mod resource;
 mod user;
 mod utils;
 
-use mongodb::Client;
+use database::AppDatabase;
 use skyzen::{
     middleware::ErrorHandlingMiddleware, routing::Router, utils::State, CreateRouteNode, Route,
 };
+use std::env;
 
 #[skyzen::main]
 async fn main() -> Router {
-    let database = Client::with_uri_str("mongodb://localhost:27017")
+    let sqlx_database_url =
+        env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite://together.db".to_string());
+    let sqlx_pool = database::build_database(&sqlx_database_url)
         .await
-        .unwrap()
-        .database("together");
+        .expect("connect sql database");
+    let database = AppDatabase::new(sqlx_pool);
 
     Route::new(("/api/v1".route((
         "".route((

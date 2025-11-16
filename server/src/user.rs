@@ -1,10 +1,4 @@
-use std::ops::Deref;
-
-use mongodb::{
-    bson::{doc, oid::ObjectId, serde_helpers::serialize_object_id_as_hex_string, Document},
-    error::WriteFailure,
-    Database,
-};
+use bson::oid::ObjectId;
 use rand::{distributions::Uniform, prelude::Distribution};
 use serde::{Deserialize, Serialize};
 use skyzen::{
@@ -13,10 +7,12 @@ use skyzen::{
     utils::{Json, State},
     Error, StatusCode,
 };
+use sqlx::Row;
 
 use crate::{
     auth::{get_group_id, AuthSession},
-    utils::{parse_oid, sha256, ApiMessage, ProjectOption},
+    database::AppDatabase,
+    utils::{parse_oid, sha256, ApiMessage},
 };
 
 #[derive(Deserialize)]
@@ -29,131 +25,139 @@ pub(crate) struct RegisterForm {
 }
 
 pub async fn get(
-    database: State<Database>,
+    database: State<AppDatabase>,
     params: Params,
     session: AuthSession,
 ) -> skyzen::Result<impl Responder> {
     let auth = session.into_auth().await?;
     auth.ensure_authority("view_user").await?;
-    #[derive(Serialize, Deserialize)]
+    #[derive(Serialize)]
     pub struct User {
         email: String,
         realname: String,
         gender: String,
         description: String,
         classname: String,
-        #[serde(serialize_with = "serialize_object_id_as_hex_string")]
         group: ObjectId,
     }
-    let user = database.collection::<User>("user");
-    let id = params.get("id")?;
-    let result = user
-        .find_one(doc! {"_id":parse_oid(id)?}, None)
-        .await?
-        .ok_or(Error::msg("User not exists").set_status(StatusCode::NOT_FOUND))?;
 
-    Ok(Json(result))
+    let id = parse_oid(params.get("id")?)?;
+    let hex = id.to_hex();
+    let pool = database.sqlx();
+    let row = sqlx::query(
+        "SELECT email, realname, gender, description, classname, group_id FROM users WHERE id = ?1",
+    )
+    .bind(&hex)
+    .fetch_optional(pool)
+    .await?;
+
+    let row = row.ok_or_else(|| Error::msg("User not exists").set_status(StatusCode::NOT_FOUND))?;
+    let group_hex: String = row.try_get("group_id")?;
+    let group = ObjectId::parse_str(group_hex).map_err(|_| {
+        Error::msg("User group malformed").set_status(StatusCode::INTERNAL_SERVER_ERROR)
+    })?;
+
+    Ok(Json(User {
+        email: row.try_get("email")?,
+        realname: row.try_get("realname")?,
+        gender: row.try_get("gender")?,
+        description: row.try_get("description")?,
+        classname: row.try_get("classname")?,
+        group,
+    }))
 }
 
 pub async fn delete(
-    database: State<Database>,
+    database: State<AppDatabase>,
     params: Params,
     session: AuthSession,
 ) -> skyzen::Result<ApiMessage> {
     let auth = session.into_auth().await?;
     auth.ensure_authority("delete_user").await?;
-    let user = database.collection::<Document>("user");
-    let id = params.get("id")?;
-    let result = user.delete_one(doc! {"_id":parse_oid(id)?}, None).await?;
+    let id = parse_oid(params.get("id")?)?;
+    let result = sqlx::query("DELETE FROM users WHERE id = ?1")
+        .bind(id.to_hex())
+        .execute(database.sqlx())
+        .await?;
 
-    if result.deleted_count == 0 {
+    if result.rows_affected() == 0 {
         return Err(Error::msg("User not exists").set_status(StatusCode::NOT_FOUND));
     }
 
     Ok(ApiMessage::new("Delete successfully"))
 }
 
-pub async fn get_name(database: &Database, uid: ObjectId) -> skyzen::Result<String> {
-    #[derive(Deserialize)]
-    pub struct Schema {
-        realname: String,
-    }
-    let collection = database.collection::<Schema>("user");
-    let result = collection
-        .find_one(
-            doc! {"_id":uid},
-            ProjectOption::new(doc! {"_id":0,"realname":1}),
-        )
-        .await?
-        .ok_or(Error::msg("User not exists").set_status(StatusCode::NOT_FOUND))?;
-    Ok(result.realname)
+pub async fn get_name(database: &AppDatabase, uid: ObjectId) -> skyzen::Result<String> {
+    let row = sqlx::query("SELECT realname FROM users WHERE id = ?1")
+        .bind(uid.to_hex())
+        .fetch_optional(database.sqlx())
+        .await?;
+    row.and_then(|row| row.try_get("realname").ok())
+        .ok_or_else(|| Error::msg("User not exists").set_status(StatusCode::NOT_FOUND))
 }
 
-pub async fn get_classname(database: &Database, uid: ObjectId) -> skyzen::Result<String> {
-    #[derive(Deserialize)]
-    pub struct Schema {
-        classname: String,
-    }
-    let collection = database.collection::<Schema>("user");
-    let result = collection
-        .find_one(
-            doc! {"_id":uid},
-            ProjectOption::new(doc! {"_id":0,"classname":1}),
-        )
-        .await?
-        .ok_or(Error::msg("User not exists").set_status(StatusCode::NOT_FOUND))?;
-    Ok(result.classname)
+pub async fn get_classname(database: &AppDatabase, uid: ObjectId) -> skyzen::Result<String> {
+    let row = sqlx::query("SELECT classname FROM users WHERE id = ?1")
+        .bind(uid.to_hex())
+        .fetch_optional(database.sqlx())
+        .await?;
+    row.and_then(|row| row.try_get("classname").ok())
+        .ok_or_else(|| Error::msg("User not exists").set_status(StatusCode::NOT_FOUND))
 }
 
 pub async fn register(
-    database: State<Database>,
+    database: State<AppDatabase>,
     form: Json<RegisterForm>,
 ) -> skyzen::Result<ApiMessage> {
-    #[derive(Serialize)]
-    struct User<'a> {
-        email: &'a str,
-        realname: &'a str,
-        gender: &'a str,
-        description: &'a str,
-        classname: &'a str,
-        password: String,
-        salt: String,
-        group: ObjectId,
-    }
-
     let Json(form) = form;
-
-    let user = database.collection::<User>("user");
     let salt = rand_string(16);
+    let password = sha256(form.password.clone() + &salt);
+    let Some(group_id) = get_group_id(&database, "student").await? else {
+        return Err(
+            Error::msg("Student group not found").set_status(StatusCode::INTERNAL_SERVER_ERROR)
+        );
+    };
+    let user_id = ObjectId::new();
 
-    let result = user
-        .insert_one(
-            User {
-                email: form.email.as_str(),
-                realname: form.realname.as_str(),
-                password: sha256(form.password.clone() + &salt),
-                salt,
-                group: get_group_id(&database, "student").await?.unwrap(),
-                classname: form.classname.as_str(),
-                gender: form.gender.as_str(),
-                description: "",
-            },
-            None,
-        )
-        .await;
+    let result = sqlx::query(
+        r#"
+        INSERT INTO users (
+            id,
+            email,
+            realname,
+            gender,
+            description,
+            classname,
+            password_hash,
+            salt,
+            group_id
+        ) VALUES (?1, ?2, ?3, ?4, '', ?5, ?6, ?7, ?8)
+        "#,
+    )
+    .bind(user_id.to_hex())
+    .bind(&form.email)
+    .bind(&form.realname)
+    .bind(&form.gender)
+    .bind(&form.classname)
+    .bind(password)
+    .bind(&salt)
+    .bind(group_id.to_hex())
+    .execute(database.sqlx())
+    .await;
 
-    if let Err(error) = result {
-        if let mongodb::error::ErrorKind::Write(error) = error.kind.deref() {
-            if let WriteFailure::WriteError(error) = error {
-                if error.code == 11000 {
+    match result {
+        Ok(_) => Ok(ApiMessage::new("Register successfully")),
+        Err(sqlx::Error::Database(error)) => {
+            if let Some(code) = error.code() {
+                // SQLITE_CONSTRAINT
+                if code == "2067" || code == "1555" {
                     return Err(Error::msg("User already exists").set_status(StatusCode::FORBIDDEN));
                 }
             }
+            Err(sqlx::Error::Database(error).into())
         }
-        return Err(error.into());
+        Err(error) => Err(error.into()),
     }
-
-    Ok(ApiMessage::new("Register successfully"))
 }
 
 static STRING_MAP: &[u8] = b"1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
