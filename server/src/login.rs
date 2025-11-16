@@ -24,12 +24,6 @@ pub async fn handler(
     mut cookies: CookieJar,
     form: Json<Form<'_>>,
 ) -> Result<(ApiMessage, CookieJar)> {
-    #[derive(Deserialize)]
-    struct UserRow {
-        id: String,
-        password_hash: String,
-        salt: String,
-    }
     let Json(form) = form;
 
     let users = sqlx::query("SELECT id, password_hash, salt FROM users WHERE email = ?1")

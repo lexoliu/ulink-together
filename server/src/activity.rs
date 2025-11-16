@@ -387,12 +387,3 @@ pub async fn turn_canceled(
 ) -> skyzen::Result<ApiMessage> {
     change_state(database, params, session, ActivityState::Canneled).await
 }
-
-pub async fn get_name(database: &AppDatabase, id: ObjectId) -> Result<Option<String>, sqlx::Error> {
-    sqlx::query("SELECT name FROM activities WHERE id = ?1")
-        .bind(id.to_hex())
-        .fetch_optional(database.sqlx())
-        .await?
-        .map(|row| row.try_get("name"))
-        .transpose()
-}

@@ -96,15 +96,6 @@ pub async fn get_name(database: &AppDatabase, uid: ObjectId) -> skyzen::Result<S
         .ok_or_else(|| Error::msg("User not exists").set_status(StatusCode::NOT_FOUND))
 }
 
-pub async fn get_classname(database: &AppDatabase, uid: ObjectId) -> skyzen::Result<String> {
-    let row = sqlx::query("SELECT classname FROM users WHERE id = ?1")
-        .bind(uid.to_hex())
-        .fetch_optional(database.sqlx())
-        .await?;
-    row.and_then(|row| row.try_get("classname").ok())
-        .ok_or_else(|| Error::msg("User not exists").set_status(StatusCode::NOT_FOUND))
-}
-
 pub async fn register(
     database: State<AppDatabase>,
     form: Json<RegisterForm>,

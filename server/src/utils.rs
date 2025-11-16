@@ -1,16 +1,4 @@
-use bson::{oid::ObjectId, serde_helpers::serialize_bson_datetime_as_rfc3339_string, DateTime};
-use serde::Serializer;
-
-pub fn serialize_option_datetime<S: Serializer>(
-    val: &Option<DateTime>,
-    serializer: S,
-) -> Result<S::Ok, S::Error> {
-    if let Some(datetime) = val {
-        serialize_bson_datetime_as_rfc3339_string(datetime, serializer)
-    } else {
-        serializer.serialize_none()
-    }
-}
+use bson::oid::ObjectId;
 
 pub fn sha256(v: impl AsRef<[u8]>) -> String {
     use ring::digest::{digest, SHA256};
@@ -38,10 +26,6 @@ impl skyzen::responder::Responder for ApiMessage {
     ) -> skyzen::Result<()> {
         skyzen::utils::Json(self).respond_to(request, response)
     }
-}
-
-pub fn oid_to_hex(oid: &ObjectId) -> String {
-    oid.to_hex()
 }
 
 pub fn parse_oid(oid: &str) -> skyzen::Result<ObjectId> {

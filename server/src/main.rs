@@ -1,7 +1,6 @@
 mod activity;
 mod auth;
 mod channel;
-mod check_mail;
 mod comment;
 mod database;
 mod login;
