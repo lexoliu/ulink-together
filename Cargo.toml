@@ -1,0 +1,11 @@
+[workspace]
+members = [
+    "server",
+    "cli",
+    "app2",
+]
+resolver = "2"
+
+[workspace.dependencies]
+skyzen = { git = "https://github.com/zen-rs/skyzen" }
+zenwave = { git = "https://github.com/zen-rs/zenwave" }

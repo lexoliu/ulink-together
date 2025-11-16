@@ -1,0 +1,235 @@
+use std::{
+    future::Future,
+    io::Write as _,
+    net::{IpAddr, SocketAddr},
+    pin::Pin,
+};
+
+use crate::Endpoint;
+use futures_util::{stream::MapOk, TryStreamExt};
+use http_body_util::{BodyDataStream, StreamBody};
+use hyper::{
+    body::{Frame, Incoming},
+    service::Service,
+};
+use hyper_util::{rt::TokioIo, server::conn::auto::Builder as HyperBuilder};
+use tokio::{net::TcpListener, signal};
+
+type BoxedStdError = Box<dyn std::error::Error + Send + Sync + 'static>;
+type BoxFuture<T> = Pin<Box<dyn Send + Future<Output = T> + 'static>>;
+
+/// Initialize a pretty logger once per process.
+pub fn init_logging() {
+    use env_logger::Env;
+    use std::sync::Once;
+
+    static INIT: Once = Once::new();
+    INIT.call_once(|| {
+        env_logger::Builder::from_env(Env::default().default_filter_or("info"))
+            .format(|buf, record| {
+                let ts = buf.timestamp_millis();
+                writeln!(
+                    buf,
+                    "[{} {:>5} {}] {}",
+                    ts,
+                    record.level(),
+                    record.target(),
+                    record.args()
+                )
+            })
+            .init();
+    });
+}
+
+/// Apply CLI overrides such as `--addr` or `--port` to configure the listener.
+pub fn apply_cli_overrides(args: impl IntoIterator<Item = String>) {
+    let mut args = args.into_iter();
+    let _ = args.next(); // binary name
+    let mut listen = None;
+    let mut host = None;
+    let mut port = None;
+
+    while let Some(arg) = args.next() {
+        if let Some(value) = arg.strip_prefix("--listen=") {
+            listen = Some(value.to_owned());
+        } else if let Some(value) = arg.strip_prefix("--addr=") {
+            listen = Some(value.to_owned());
+        } else if let Some(value) = arg.strip_prefix("--host=") {
+            host = Some(value.to_owned());
+        } else if let Some(value) = arg.strip_prefix("--port=") {
+            port = Some(value.to_owned());
+        } else {
+            match arg.as_str() {
+                "--listen" | "--addr" => {
+                    if let Some(value) = args.next() {
+                        listen = Some(value);
+                    }
+                }
+                "--host" => {
+                    if let Some(value) = args.next() {
+                        host = Some(value);
+                    }
+                }
+                "--port" | "-p" => {
+                    if let Some(value) = args.next() {
+                        port = Some(value);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    if let Some(addr) = listen {
+        match addr.parse::<SocketAddr>() {
+            Ok(socket) => {
+                std::env::set_var("SKYZEN_ADDRESS", socket.to_string());
+                log::info!("Configured listener address via CLI: {socket}");
+            }
+            Err(error) => log::warn!("Ignoring invalid --listen address `{addr}`: {error}"),
+        }
+        return;
+    }
+
+    if host.is_none() && port.is_none() {
+        return;
+    }
+
+    let mut candidate = server_addr();
+    if let Some(host) = host {
+        match host.parse::<IpAddr>() {
+            Ok(ip) => candidate.set_ip(ip),
+            Err(error) => {
+                log::warn!("Ignoring invalid --host `{host}`: {error}");
+                return;
+            }
+        }
+    }
+    if let Some(port) = port {
+        match port.parse::<u16>() {
+            Ok(value) => candidate.set_port(value),
+            Err(error) => {
+                log::warn!("Ignoring invalid --port `{port}`: {error}");
+                return;
+            }
+        }
+    }
+
+    std::env::set_var("SKYZEN_ADDRESS", candidate.to_string());
+    log::info!("Configured listener address via CLI: {candidate}");
+}
+
+/// Build the Tokio runtime and serve the provided endpoint over Hyper.
+///
+/// # Panics
+///
+/// Panics if the Tokio runtime fails to initialize.
+pub fn launch<Fut, E>(factory: impl FnOnce() -> Fut)
+where
+    Fut: Future<Output = E> + Send + 'static,
+    E: Endpoint + Clone + Send + Sync + 'static,
+{
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("Failed to build Tokio runtime");
+
+    runtime.block_on(async move {
+        let endpoint = factory().await;
+        match run_server(endpoint).await {
+            Ok(()) => log::info!("Skyzen server shut down gracefully"),
+            Err(error) => log::error!("Skyzen server terminated: {error}"),
+        }
+    });
+}
+
+async fn run_server<E>(endpoint: E) -> std::io::Result<()>
+where
+    E: Endpoint + Clone + Send + Sync + 'static,
+{
+    let addr = server_addr();
+    let listener = TcpListener::bind(addr).await?;
+    log::info!("Skyzen listening on http://{addr}");
+
+    let shutdown_signal = signal::ctrl_c();
+    tokio::pin!(shutdown_signal);
+
+    loop {
+        tokio::select! {
+            biased;
+            _ = shutdown_signal.as_mut() => {
+                log::info!("Ctrl+C received, stopping accept loop");
+                break;
+            }
+            accept_result = listener.accept() => {
+                let (stream, peer) = accept_result?;
+                log::debug!("Accepted connection from {peer}");
+                let service = IntoService::new(endpoint.clone());
+                tokio::spawn(async move {
+                    let builder = HyperBuilder::new(hyper_util::rt::TokioExecutor::new());
+                    if let Err(error) = builder
+                        .serve_connection(TokioIo::new(stream), service)
+                        .await
+                    {
+                        log::error!("Hyper connection error: {error}");
+                    }
+                });
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn server_addr() -> SocketAddr {
+    std::env::var("SKYZEN_ADDRESS")
+        .unwrap_or_else(|_| "0.0.0.0:8787".to_owned())
+        .parse()
+        .unwrap_or_else(|error| panic!("Invalid SKYZEN_ADDRESS value: {error}"))
+}
+
+#[derive(Debug)]
+struct IntoService<E> {
+    endpoint: E,
+}
+
+impl<E: Endpoint + Clone> IntoService<E> {
+    const fn new(endpoint: E) -> Self {
+        Self { endpoint }
+    }
+}
+
+impl<E: Endpoint + Send + Sync + Clone + 'static> Service<hyper::Request<Incoming>>
+    for IntoService<E>
+{
+    type Response = hyper::Response<
+        StreamBody<MapOk<crate::Body, fn(crate::utils::Bytes) -> Frame<crate::utils::Bytes>>>,
+    >;
+    type Error = BoxedStdError;
+    type Future = BoxFuture<Result<Self::Response, Self::Error>>;
+
+    fn call(&self, mut req: hyper::Request<Incoming>) -> Self::Future {
+        let mut endpoint = self.endpoint.clone();
+        let fut = async move {
+            let on_upgrade = hyper::upgrade::on(&mut req);
+            let mut request: crate::Request =
+                crate::Request::from(req.map(BodyDataStream::new).map(crate::Body::from_stream));
+            request.extensions_mut().insert(on_upgrade);
+            let response = endpoint.respond(&mut request).await;
+            let response: Result<hyper::Response<crate::Body>, BoxedStdError> =
+                response.map_err(crate::Error::into_inner);
+
+            response.map(|response| {
+                response.map(|body| {
+                    let body: MapOk<
+                        crate::Body,
+                        fn(crate::utils::Bytes) -> Frame<crate::utils::Bytes>,
+                    > = body.map_ok(Frame::data);
+                    StreamBody::new(body)
+                })
+            })
+        };
+
+        Box::pin(fut)
+    }
+}
