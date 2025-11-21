@@ -1,6 +1,4 @@
-use sqlx::{migrate::Migrator, sqlite::SqlitePoolOptions, Pool, Sqlite};
-
-static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
+use sqlx::{Pool, Sqlite};
 
 /// Aggregates every persistence backend we currently depend on.
 #[derive(Clone)]
@@ -19,10 +17,5 @@ impl AppDatabase {
 }
 
 pub async fn build_database(database_url: &str) -> sqlx::Result<Pool<Sqlite>> {
-    let pool = SqlitePoolOptions::new()
-        .max_connections(10)
-        .connect(database_url)
-        .await?;
-    MIGRATOR.run(&pool).await?;
-    Ok(pool)
+    todo!()
 }

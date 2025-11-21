@@ -10,12 +10,11 @@ crate-type = ["lib", "staticlib", "cdylib"]
 [dependencies]
 waterui = { git = "https://github.com/water-rs/waterui", branch = "dev" }
 waterui-ffi = { git = "https://github.com/water-rs/waterui", branch = "dev" }
-zenwave = { git = "https://github.com/zen-rs/zenwave", rev = "18c1dff7baa41e57c9faa23f44e5e4cbc275be46" }
+zenwave.workspace = true
 tokio = { version = "1.39", features = ["macros", "rt-multi-thread", "sync"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10"
 futures = "0.3"
 url = "2.5"
-http-kit = { git = "https://github.com/zen-rs/http-kit", rev = "76c0553b3ecd9ebfc7c2bf0691da82f1775b71aa" }
 thiserror = "1.0"

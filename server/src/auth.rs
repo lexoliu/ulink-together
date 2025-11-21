@@ -57,11 +57,18 @@ impl Auth {
     }
 }
 
+#[skyzen::error]
+pub enum AuthSessionError {
+    #[error("Database should be provided", status = 500)]
+    DatabaseMissing,
+}
+
 impl Extractor for AuthSession {
-    async fn extract(request: &mut Request) -> skyzen::Result<Self> {
+    type Error = AuthSessionError;
+    async fn extract(request: &mut Request) -> Result<Self, Self::Error> {
         let database = request.extensions().get::<State<AppDatabase>>().cloned();
         let headers = request.headers().clone();
-        let database = database.ok_or_else(|| Error::msg("Database should be provided"))?;
+        let database = database.ok_or(AuthSessionError::DatabaseMissing)?;
         Ok(AuthSession { database, headers })
     }
 }

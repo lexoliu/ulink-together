@@ -1,4 +1,5 @@
 use bson::oid::ObjectId;
+use skyzen::utils::{json::JsonEncodingError, Json};
 
 pub fn sha256(v: impl AsRef<[u8]>) -> String {
     use ring::digest::{digest, SHA256};
@@ -19,12 +20,13 @@ impl ApiMessage {
 }
 
 impl skyzen::responder::Responder for ApiMessage {
+    type Error = JsonEncodingError;
     fn respond_to(
         self,
         request: &skyzen::Request,
         response: &mut skyzen::Response,
-    ) -> skyzen::Result<()> {
-        skyzen::utils::Json(self).respond_to(request, response)
+    ) -> Result<(), Self::Error> {
+        Json(self).respond_to(request, response)
     }
 }
 
