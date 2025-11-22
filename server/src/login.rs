@@ -1,8 +1,8 @@
 use crate::{
     database::AppDatabase,
-    utils::{sha256, ApiMessage},
+    utils::{sha256, ApiMessage, Id},
 };
-use bson::oid::ObjectId;
+
 use serde::Deserialize;
 use skyzen::utils::cookie::{Cookie, CookieJar};
 use skyzen::utils::Json;
@@ -11,8 +11,9 @@ use skyzen::{extract::ClientIp, utils::State, Error, StatusCode};
 use sqlx::Row;
 use std::net::IpAddr;
 use time::{Duration, OffsetDateTime};
+use utoipa::ToSchema;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub(crate) struct Form<'a> {
     email: std::borrow::Cow<'a, str>,
     password: String,
@@ -64,7 +65,7 @@ async fn generate_session(
     uid_hex: &str,
     ip: IpAddr,
 ) -> skyzen::Result<String> {
-    let session_id = ObjectId::new().to_hex();
+    let session_id = Id::new().to_string();
 
     sqlx::query("INSERT INTO sessions (id, user_id, generated_at, ip) VALUES (?1, ?2, ?3, ?4)")
         .bind(&session_id)

@@ -1,9 +1,9 @@
 use crate::{
     auth::{Auth, AuthSession},
     database::AppDatabase,
-    utils::{parse_oid, ApiMessage},
+    utils::{parse_oid, ApiMessage, Id},
 };
-use bson::oid::ObjectId;
+
 use serde::{Deserialize, Serialize};
 use skyzen::{
     routing::Params,
@@ -12,14 +12,15 @@ use skyzen::{
 };
 use sqlx::{QueryBuilder, Row, Sqlite};
 use time::OffsetDateTime;
+use utoipa::ToSchema;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct FindForm {
-    user: Option<ObjectId>,
-    activity: Option<ObjectId>,
+    user: Option<Id>,
+    activity: Option<Id>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum RecordState {
     Todo,
@@ -53,32 +54,32 @@ impl TryFrom<&str> for RecordState {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct RecordEntry {
     #[serde(rename = "id")]
-    record_id: ObjectId,
-    user: ObjectId,
-    activity: ObjectId,
+    record_id: Id,
+    user: Id,
+    activity: Id,
     state: RecordState,
 }
 
-fn parse_db_oid(value: &str) -> skyzen::Result<ObjectId> {
-    ObjectId::parse_str(value).map_err(|_| {
+fn parse_db_oid(value: &str) -> skyzen::Result<Id> {
+    value.parse().map_err(|_| {
         Error::msg("Corrupted identifier").set_status(StatusCode::INTERNAL_SERVER_ERROR)
     })
 }
 
 pub async fn create_record(
     database: &AppDatabase,
-    uid: ObjectId,
-    activity_id: ObjectId,
+    uid: Id,
+    activity_id: Id,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
         "INSERT INTO records (id, activity_id, user_id, state, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)",
     )
-    .bind(ObjectId::new().to_hex())
-    .bind(activity_id.to_hex())
-    .bind(uid.to_hex())
+    .bind(Id::new().to_string())
+    .bind(activity_id.to_string())
+    .bind(uid.to_string())
     .bind(RecordState::Todo.as_str())
     .bind(OffsetDateTime::now_utc().to_string())
     .execute(database.sqlx())
@@ -88,18 +89,18 @@ pub async fn create_record(
 
 pub async fn get_volunteers(
     database: &AppDatabase,
-    activity_id: ObjectId,
-) -> Result<Vec<ObjectId>, sqlx::Error> {
+    activity_id: Id,
+) -> Result<Vec<Id>, sqlx::Error> {
     let rows =
         sqlx::query("SELECT user_id FROM records WHERE activity_id = ?1 AND state != 'canneled'")
-            .bind(activity_id.to_hex())
+            .bind(activity_id.to_string())
             .fetch_all(database.sqlx())
             .await?;
 
     let mut volunteers = Vec::with_capacity(rows.len());
     for row in rows {
         if let Ok(hex) = row.try_get::<String, _>("user_id") {
-            if let Ok(oid) = ObjectId::parse_str(&hex) {
+            if let Ok(oid) = hex.parse() {
                 volunteers.push(oid);
             }
         }
@@ -108,6 +109,8 @@ pub async fn get_volunteers(
     Ok(volunteers)
 }
 
+/// Find records by various criteria
+#[skyzen::openapi]
 pub async fn find(
     database: State<AppDatabase>,
     form: Form<FindForm>,
@@ -121,13 +124,13 @@ pub async fn find(
     );
 
     if let Some(user) = form.user {
-        builder.push(" AND user_id = ").push_bind(user.to_hex());
+        builder.push(" AND user_id = ").push_bind(user.to_string());
     }
 
     if let Some(activity) = form.activity {
         builder
             .push(" AND activity_id = ")
-            .push_bind(activity.to_hex());
+            .push_bind(activity.to_string());
     }
 
     let records = builder.build().fetch_all(database.sqlx()).await?;
@@ -150,10 +153,10 @@ pub async fn find(
 async fn update_record_state(
     database: &AppDatabase,
     auth: &Auth,
-    record_id: ObjectId,
+    record_id: Id,
     state: RecordState,
 ) -> skyzen::Result<()> {
-    let record_hex = record_id.to_hex();
+    let record_hex = record_id.to_string();
     let row = sqlx::query("SELECT activity_id FROM records WHERE id = ?1")
         .bind(&record_hex)
         .fetch_optional(database.sqlx())
@@ -168,7 +171,9 @@ async fn update_record_state(
         .ok_or_else(|| Error::msg("Activity not exists").set_status(StatusCode::NOT_FOUND))?;
     let promoter_hex: String = activity.try_get("promoter_id")?;
 
-    if promoter_hex != auth.uid().to_hex() && !auth.match_authority("manage_record_anyway").await? {
+    if promoter_hex != auth.uid().to_string()
+        && !auth.match_authority("manage_record_anyway").await?
+    {
         return Err(
             Error::msg("You have no access to this activity").set_status(StatusCode::FORBIDDEN)
         );
@@ -184,6 +189,8 @@ async fn update_record_state(
     Ok(())
 }
 
+/// Mark a volunteer's task as done
+#[skyzen::openapi]
 pub async fn mark_done(
     database: State<AppDatabase>,
     session: AuthSession,
@@ -195,6 +202,8 @@ pub async fn mark_done(
     Ok(ApiMessage::new("Mark done successfully"))
 }
 
+/// Disapprove apply
+#[skyzen::openapi]
 pub async fn approve_apply(
     database: State<AppDatabase>,
     session: AuthSession,
@@ -206,6 +215,8 @@ pub async fn approve_apply(
     Ok(ApiMessage::new("Approve apply successfully"))
 }
 
+/// Disapprove a volunteer's application
+#[skyzen::openapi]
 pub async fn disapprove_apply(
     database: State<AppDatabase>,
     session: AuthSession,

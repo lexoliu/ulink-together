@@ -585,7 +585,6 @@ dependencies = [
  "ahash",
  "base64 0.22.1",
  "bitvec",
- "chrono",
  "getrandom 0.2.16",
  "getrandom 0.3.4",
  "hex",
@@ -3915,7 +3914,7 @@ dependencies = [
 [[package]]
 name = "skyzen"
 version = "0.1.0"
-source = "git+https://github.com/zen-rs/skyzen#4e0d84cb8fce9c215e3f3755fb301f59ab484250"
+source = "git+https://github.com/zen-rs/skyzen#9a4b6e84281656fde16758dec481db55ee1761d2"
 dependencies = [
  "async-channel 2.5.0",
  "async-fs 2.2.0",
@@ -3933,7 +3932,6 @@ dependencies = [
  "itoa",
  "js-sys",
  "linkme",
- "log",
  "matchit",
  "mime_guess",
  "multer",
@@ -3959,7 +3957,7 @@ dependencies = [
 [[package]]
 name = "skyzen-core"
 version = "0.1.0"
-source = "git+https://github.com/zen-rs/skyzen#4e0d84cb8fce9c215e3f3755fb301f59ab484250"
+source = "git+https://github.com/zen-rs/skyzen#9a4b6e84281656fde16758dec481db55ee1761d2"
 dependencies = [
  "executor-core 0.1.0",
  "eyre",
@@ -3969,7 +3967,7 @@ dependencies = [
 [[package]]
 name = "skyzen-macros"
 version = "0.1.0"
-source = "git+https://github.com/zen-rs/skyzen#4e0d84cb8fce9c215e3f3755fb301f59ab484250"
+source = "git+https://github.com/zen-rs/skyzen#9a4b6e84281656fde16758dec481db55ee1761d2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4627,11 +4625,11 @@ name = "together-server"
 version = "0.1.0"
 dependencies = [
  "async-std",
- "bson",
  "bytes",
  "bytestr",
  "futures-util",
  "hex",
+ "linkme",
  "log",
  "rand 0.8.5",
  "ring 0.16.20",
@@ -4640,6 +4638,8 @@ dependencies = [
  "sqlx",
  "time",
  "tokio",
+ "tracing",
+ "utoipa",
  "uuid",
 ]
 

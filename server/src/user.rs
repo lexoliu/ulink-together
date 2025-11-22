@@ -1,21 +1,22 @@
-use bson::oid::ObjectId;
+use std::str::FromStr;
+
 use rand::{distributions::Uniform, prelude::Distribution};
 use serde::{Deserialize, Serialize};
 use skyzen::{
-    responder::Responder,
     routing::Params,
     utils::{Json, State},
     Error, StatusCode,
 };
 use sqlx::Row;
+use utoipa::ToSchema;
 
 use crate::{
     auth::{get_group_id, AuthSession},
     database::AppDatabase,
-    utils::{parse_oid, sha256, ApiMessage},
+    utils::{sha256, ApiMessage, Id},
 };
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub(crate) struct RegisterForm {
     email: String,
     realname: String,
@@ -24,36 +25,40 @@ pub(crate) struct RegisterForm {
     classname: String,
 }
 
+#[derive(Serialize, ToSchema)]
+pub struct User {
+    email: String,
+    realname: String,
+    gender: String,
+    description: String,
+    classname: String,
+    group: Id,
+}
+
+skyzen::ignore_openapi!(AuthSession);
+
+/// Get user information by ID
+#[skyzen::openapi]
 pub async fn get(
     database: State<AppDatabase>,
     params: Params,
     session: AuthSession,
-) -> skyzen::Result<impl Responder> {
+) -> skyzen::Result<Json<User>> {
     let auth = session.into_auth().await?;
     auth.ensure_authority("view_user").await?;
-    #[derive(Serialize)]
-    pub struct User {
-        email: String,
-        realname: String,
-        gender: String,
-        description: String,
-        classname: String,
-        group: ObjectId,
-    }
 
-    let id = parse_oid(params.get("id")?)?;
-    let hex = id.to_hex();
+    let id = params.get("id")?.parse::<Id>()?;
     let pool = database.sqlx();
     let row = sqlx::query(
         "SELECT email, realname, gender, description, classname, group_id FROM users WHERE id = ?1",
     )
-    .bind(&hex)
+    .bind(&id.to_string())
     .fetch_optional(pool)
     .await?;
 
     let row = row.ok_or_else(|| Error::msg("User not exists").set_status(StatusCode::NOT_FOUND))?;
-    let group_hex: String = row.try_get("group_id")?;
-    let group = ObjectId::parse_str(group_hex).map_err(|_| {
+    let group_id: String = row.try_get("group_id")?;
+    let group = Id::from_str(&group_id).map_err(|_| {
         Error::msg("User group malformed").set_status(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
 
@@ -67,6 +72,8 @@ pub async fn get(
     }))
 }
 
+/// Delete a user by ID
+#[skyzen::openapi]
 pub async fn delete(
     database: State<AppDatabase>,
     params: Params,
@@ -74,9 +81,9 @@ pub async fn delete(
 ) -> skyzen::Result<ApiMessage> {
     let auth = session.into_auth().await?;
     auth.ensure_authority("delete_user").await?;
-    let id = parse_oid(params.get("id")?)?;
+    let id = params.get("id")?.parse::<Id>()?;
     let result = sqlx::query("DELETE FROM users WHERE id = ?1")
-        .bind(id.to_hex())
+        .bind(id.to_string())
         .execute(database.sqlx())
         .await?;
 
@@ -87,15 +94,17 @@ pub async fn delete(
     Ok(ApiMessage::new("Delete successfully"))
 }
 
-pub async fn get_name(database: &AppDatabase, uid: ObjectId) -> skyzen::Result<String> {
+pub async fn get_name(database: &AppDatabase, uid: Id) -> skyzen::Result<String> {
     let row = sqlx::query("SELECT realname FROM users WHERE id = ?1")
-        .bind(uid.to_hex())
+        .bind(uid.to_string())
         .fetch_optional(database.sqlx())
         .await?;
     row.and_then(|row| row.try_get("realname").ok())
         .ok_or_else(|| Error::msg("User not exists").set_status(StatusCode::NOT_FOUND))
 }
 
+/// Register a new user
+#[skyzen::openapi]
 pub async fn register(
     database: State<AppDatabase>,
     form: Json<RegisterForm>,
@@ -108,7 +117,7 @@ pub async fn register(
             Error::msg("Student group not found").set_status(StatusCode::INTERNAL_SERVER_ERROR)
         );
     };
-    let user_id = ObjectId::new();
+    let user_id = Id::new();
 
     let result = sqlx::query(
         r#"
@@ -125,14 +134,14 @@ pub async fn register(
         ) VALUES (?1, ?2, ?3, ?4, '', ?5, ?6, ?7, ?8)
         "#,
     )
-    .bind(user_id.to_hex())
+    .bind(user_id.to_string())
     .bind(&form.email)
     .bind(&form.realname)
     .bind(&form.gender)
     .bind(&form.classname)
     .bind(password)
     .bind(&salt)
-    .bind(group_id.to_hex())
+    .bind(group_id.to_string())
     .execute(database.sqlx())
     .await;
 

@@ -2,9 +2,8 @@ use crate::{
     auth::AuthSession,
     database::AppDatabase,
     record, user,
-    utils::{parse_oid, ApiMessage},
+    utils::{parse_oid, ApiMessage, Id},
 };
-use bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 use skyzen::{
     extract::Query,
@@ -13,14 +12,16 @@ use skyzen::{
     Error, StatusCode,
 };
 use sqlx::{QueryBuilder, Row, Sqlite};
+use utoipa::ToSchema;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct ListActivityQuery {
-    user: Option<ObjectId>,
+    #[schema(value_type = String, nullable)]
+    user: Option<Id>,
     display_all: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ActivityState {
     Going,
@@ -50,14 +51,16 @@ impl ActivityState {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ActivitySummary {
-    id: ObjectId,
+    #[schema(value_type = String)]
+    id: Id,
     name: String,
     location: String,
     volunteer_num: u16,
     max_volunteer_num: Option<u16>,
-    promoter: ObjectId,
+    #[schema(value_type = String)]
+    promoter: Id,
     promoter_name: String,
     date: Option<String>,
     brief_description: String,
@@ -65,23 +68,23 @@ pub struct ActivitySummary {
     state: ActivityState,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ActivityDetail {
-    id: ObjectId,
+    id: Id,
     name: String,
     location: String,
     volunteer_num: u16,
     max_volunteer_num: Option<u16>,
-    promoter: ObjectId,
+    promoter: Id,
     promoter_name: String,
     date: Option<String>,
     description: String,
-    volunteers: Vec<ObjectId>,
+    volunteers: Vec<Id>,
     duration: u16,
     state: ActivityState,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub(crate) struct CreateActivityForm {
     name: String,
     date: Option<String>,
@@ -92,15 +95,15 @@ pub(crate) struct CreateActivityForm {
     duration: u16,
 }
 
-fn parse_db_oid(hex: &str) -> skyzen::Result<ObjectId> {
-    ObjectId::parse_str(hex).map_err(|_| {
+fn parse_db_oid(hex: &str) -> skyzen::Result<Id> {
+    hex.parse().map_err(|_| {
         Error::msg("Corrupted activity data").set_status(StatusCode::INTERNAL_SERVER_ERROR)
     })
 }
 
 fn build_activity_summary(
     row: &sqlx::sqlite::SqliteRow,
-    promoter: ObjectId,
+    promoter: Id,
     promoter_name: String,
 ) -> skyzen::Result<ActivitySummary> {
     let state =
@@ -124,6 +127,8 @@ fn build_activity_summary(
     })
 }
 
+/// List activities
+#[skyzen::openapi]
 pub async fn list(
     database: State<AppDatabase>,
     query: Query<ListActivityQuery>,
@@ -142,7 +147,9 @@ pub async fn list(
     }
 
     if let Some(user) = query.user {
-        builder.push(" AND promoter_id = ").push_bind(user.to_hex());
+        builder
+            .push(" AND promoter_id = ")
+            .push_bind(user.to_string());
     }
 
     let rows = builder.build().fetch_all(database.sqlx()).await?;
@@ -157,6 +164,8 @@ pub async fn list(
     Ok(Json(result))
 }
 
+/// Get activity detail by ID
+#[skyzen::openapi]
 pub async fn get(
     database: State<AppDatabase>,
     params: Params,
@@ -167,7 +176,7 @@ pub async fn get(
     let row = sqlx::query(
         "SELECT id, promoter_id, name, location, state, volunteer_num, max_volunteer_num, date, description, duration_minutes FROM activities WHERE id = ?1",
     )
-    .bind(id.to_hex())
+    .bind(id.to_string())
     .fetch_optional(database.sqlx())
     .await?
     .ok_or_else(|| Error::msg("Activity not exists").set_status(StatusCode::NOT_FOUND))?;
@@ -198,6 +207,8 @@ pub async fn get(
     }))
 }
 
+/// Join an activity
+#[skyzen::openapi]
 pub async fn join(
     database: State<AppDatabase>,
     params: Params,
@@ -207,7 +218,7 @@ pub async fn join(
     let activity_id = parse_oid(params.get("id")?)?;
 
     let row = sqlx::query("SELECT volunteer_num, max_volunteer_num FROM activities WHERE id = ?1")
-        .bind(activity_id.to_hex())
+        .bind(activity_id.to_string())
         .fetch_optional(database.sqlx())
         .await?
         .ok_or_else(|| Error::msg("Activity not exists").set_status(StatusCode::NOT_FOUND))?;
@@ -223,8 +234,8 @@ pub async fn join(
 
     let existing =
         sqlx::query("SELECT 1 FROM records WHERE activity_id = ?1 AND user_id = ?2 LIMIT 1")
-            .bind(activity_id.to_hex())
-            .bind(auth.uid().to_hex())
+            .bind(activity_id.to_string())
+            .bind(auth.uid().to_string())
             .fetch_optional(database.sqlx())
             .await?;
     if existing.is_some() {
@@ -233,13 +244,15 @@ pub async fn join(
 
     record::create_record(&database, auth.uid(), activity_id).await?;
     sqlx::query("UPDATE activities SET volunteer_num = volunteer_num + 1 WHERE id = ?1")
-        .bind(activity_id.to_hex())
+        .bind(activity_id.to_string())
         .execute(database.sqlx())
         .await?;
 
     Ok(ApiMessage::new("Join activity successfully"))
 }
 
+/// Delete an activity
+#[skyzen::openapi]
 pub async fn delete(
     database: State<AppDatabase>,
     params: Params,
@@ -248,13 +261,13 @@ pub async fn delete(
     let auth = session.into_auth().await?;
     let id = parse_oid(params.get("id")?)?;
     let activity = sqlx::query("SELECT promoter_id FROM activities WHERE id = ?1")
-        .bind(id.to_hex())
+        .bind(id.to_string())
         .fetch_optional(database.sqlx())
         .await?
         .ok_or_else(|| Error::msg("Activity not exists").set_status(StatusCode::NOT_FOUND))?;
     let promoter_hex: String = activity.try_get("promoter_id")?;
 
-    if promoter_hex != auth.uid().to_hex()
+    if promoter_hex != auth.uid().to_string()
         && !auth.match_authority("delete_activity_anyway").await?
     {
         return Err(
@@ -263,13 +276,14 @@ pub async fn delete(
     }
 
     sqlx::query("DELETE FROM activities WHERE id = ?1")
-        .bind(id.to_hex())
+        .bind(id.to_string())
         .execute(database.sqlx())
         .await?;
 
     Ok(ApiMessage::new("Delete activity successfully"))
 }
 
+#[skyzen::openapi]
 pub async fn create(
     database: State<AppDatabase>,
     session: AuthSession,
@@ -287,7 +301,7 @@ pub async fn create(
         brief_description,
         duration,
     } = form;
-    let id = ObjectId::new();
+    let id = Id::new();
 
     sqlx::query(
         r#"
@@ -306,8 +320,8 @@ pub async fn create(
         ) VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7, ?8, ?9, ?10)
         "#,
     )
-    .bind(id.to_hex())
-    .bind(auth.uid().to_hex())
+    .bind(id.to_string())
+    .bind(auth.uid().to_string())
     .bind(&name)
     .bind(&location)
     .bind(ActivityState::NeedVolunteer.as_str())
@@ -347,7 +361,7 @@ async fn change_state(
     let id = parse_oid(params.get("id")?)?;
     sqlx::query("UPDATE activities SET state = ?1 WHERE id = ?2")
         .bind(state.as_str())
-        .bind(id.to_hex())
+        .bind(id.to_string())
         .execute(database.sqlx())
         .await?;
     Ok(ApiMessage::new(format!(
@@ -356,6 +370,8 @@ async fn change_state(
     )))
 }
 
+/// Change activity state to `Need Volunteer`
+#[skyzen::openapi]
 pub async fn turn_need_volunteer(
     database: State<AppDatabase>,
     params: Params,
@@ -364,6 +380,7 @@ pub async fn turn_need_volunteer(
     change_state(database, params, session, ActivityState::NeedVolunteer).await
 }
 
+#[skyzen::openapi]
 pub async fn turn_going(
     database: State<AppDatabase>,
     params: Params,
@@ -372,6 +389,8 @@ pub async fn turn_going(
     change_state(database, params, session, ActivityState::Going).await
 }
 
+/// Change activity state to `Ended`
+#[skyzen::openapi]
 pub async fn turn_ended(
     database: State<AppDatabase>,
     params: Params,
@@ -380,6 +399,8 @@ pub async fn turn_ended(
     change_state(database, params, session, ActivityState::Ended).await
 }
 
+/// Change activity state to `Canceled`
+#[skyzen::openapi]
 pub async fn turn_canceled(
     database: State<AppDatabase>,
     params: Params,

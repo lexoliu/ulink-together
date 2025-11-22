@@ -16,6 +16,42 @@ use skyzen::{
 };
 use std::env;
 
+pub fn api() -> Route {
+    Route::new((
+        "/user".route("/{id}".at(user::get).delete(user::delete)),
+        "/channel"
+            .at(channel::find)
+            .post(channel::create)
+            .route(("/{id}".post(message::post).delete(channel::delete),)),
+        "/activity"
+            .at(activity::list)
+            .post(activity::create)
+            .route(("/{id}".at(activity::get).delete(activity::delete).route((
+                "/apply".post(activity::join),
+                "/comment".at(comment::list).post(comment::post),
+                "/need_volunteer".post(activity::turn_need_volunteer),
+                "/go".post(activity::turn_going),
+                "/end".post(activity::turn_ended),
+                "/cancel".post(activity::turn_canceled),
+            )),)),
+        "/record".at(record::find).route(("/{id}".route((
+            "/done".post(record::mark_done),
+            "/approve_apply".post(record::approve_apply),
+            "/disapprove_apply".post(record::disapprove_apply),
+        )),)),
+        "/mesaage"
+            .at(message::find)
+            .route(("/{id}".at(message::get).delete(message::delete),)),
+        "/resource"
+            .post(resource::create)
+            .route(("/{filename}".at(resource::access),)),
+        "/auth/check/{authority}".at(check_authority),
+        "/login".post(login::handler),
+        "/user".post(user::register),
+    ))
+    .enable_api_doc()
+}
+
 #[skyzen::main]
 async fn main() -> Router {
     let sqlx_database_url =
@@ -25,63 +61,23 @@ async fn main() -> Router {
         .expect("connect sql database");
     let database = AppDatabase::new(sqlx_pool);
 
-    Route::new(("/api/v1".route((
-        "".route((
-            "/user".route(("/{id}".at(user::get), "/{id}".delete(user::delete))),
-            "/channel".route((
-                "".at(channel::find),
-                "".post(channel::create),
-                "/{id}".post(message::post),
-                "/{id}".delete(channel::delete),
-            )),
-            "/activity".route((
-                "".at(activity::list),
-                "".post(activity::create),
-                "/{id}".at(activity::get),
-                "/{id}".delete(activity::delete),
-                "/{id}".route((
-                    "/apply".post(activity::join),
-                    "/comment".post(comment::post),
-                    "/comment".at(comment::list),
-                    "/need_volunteer".post(activity::turn_need_volunteer),
-                    "/go".post(activity::turn_going),
-                    "/end".post(activity::turn_ended),
-                    "/cancel".post(activity::turn_canceled),
-                )),
-            )),
-            "/record".route((
-                "".at(record::find),
-                "/{id}".route((
-                    "/done".post(record::mark_done),
-                    "/approve_apply".post(record::approve_apply),
-                    "/disapprove_apply".post(record::disapprove_apply),
-                )),
-            )),
-            "/mesaage".route((
-                "".at(message::find),
-                "/{id}".at(message::get),
-                "/{id}".delete(message::delete),
-            )),
-            "/resource".route((
-                "".post(resource::create),
-                "/{filename}".at(resource::access),
-            )),
-            "/auth/check/{authority}".at(check_authority),
-        )),
-        "".route(("/login".post(login::handler), "/user".post(user::register))),
-    )),))
-    .middleware(State(database))
-    .middleware(ErrorHandlingMiddleware::new(|error| async move {
-        skyzen::utils::Json(skyzen::utils::json!({"message": error.to_string()}))
-    }))
-    .build()
+    let route = Route::new("/api/v1".route(api()));
+
+    route
+        .middleware(State(database))
+        .middleware(ErrorHandlingMiddleware::new(|error| async move {
+            skyzen::utils::Json(skyzen::utils::json!({"message": error.to_string()}))
+        }))
+        .build()
 }
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, utoipa::ToSchema)]
 pub struct CheckAuthorityResult {
     result: bool,
 }
 
+/// Check if the current user has the specified authority
+#[skyzen::openapi]
 pub async fn check_authority(
     session: auth::AuthSession,
     params: skyzen::routing::Params,

@@ -1,11 +1,11 @@
 use std::path::Path;
 
-use crate::{auth::AuthSession, database::AppDatabase};
+use crate::{auth::AuthSession, database::AppDatabase, utils::Id};
 use async_std::{
     fs::File,
     io::{self, BufReader},
 };
-use bson::oid::ObjectId;
+
 use serde::Deserialize;
 use skyzen::{extract::Query, routing::Params, utils::State, Body, Error, StatusCode};
 use time::OffsetDateTime;
@@ -27,14 +27,14 @@ pub async fn create(
         .split_once('.')
         .map(|(b, e)| (b.to_owned(), e.to_owned()))
         .unwrap_or_else(|| (name, "unknown".to_string()));
-    let id = ObjectId::new();
-    let id_hex = id.to_hex();
+    let id = Id::new();
+    let id_hex = id.to_string();
 
     sqlx::query(
         "INSERT INTO resources (id, creator_id, name, extension, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
     )
     .bind(&id_hex)
-    .bind(auth.uid().to_hex())
+    .bind(auth.uid().to_string())
     .bind(&base)
     .bind(&extension)
     .bind(OffsetDateTime::now_utc().to_string())

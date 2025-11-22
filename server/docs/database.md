@@ -21,7 +21,7 @@ The initial migration lives in `migrations/20240220100000_init.sql`. It introduc
 - `resources`: stores metadata for uploaded files.
 - `check_mails`: tracks verification emails.
 
-The schema intentionally stores identifiers as `TEXT` because Mongo `ObjectId`s are serialized as hex strings. This keeps the two persistence layers interoperable and simplifies later migrations.
+The schema intentionally stores identifiers as `TEXT` because Mongo `Id`s are serialized as hex strings. This keeps the two persistence layers interoperable and simplifies later migrations.
 
 ## Application Layer
 
