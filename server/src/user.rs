@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 use skyzen::{
     routing::Params,
     utils::{Json, State},
-    Error, StatusCode,
 };
 use sqlx::Row;
 use utoipa::ToSchema;
@@ -37,37 +36,57 @@ pub struct User {
 
 skyzen::ignore_openapi!(AuthSession);
 
+#[skyzen::error]
+pub enum GetUserError {
+    #[error("User not exists", status = NOT_FOUND)]
+    NotFound,
+
+    #[error("Invalid user ID", status = BAD_REQUEST)]
+    InvalidUserId,
+
+    #[error("Forbidden", status = FORBIDDEN)]
+    Auth,
+}
+
 /// Get user information by ID
 #[skyzen::openapi]
 pub async fn get(
     database: State<AppDatabase>,
     params: Params,
     session: AuthSession,
-) -> skyzen::Result<Json<User>> {
-    let auth = session.into_auth().await?;
-    auth.ensure_authority("view_user").await?;
+) -> Result<Json<User>, GetUserError> {
+    let auth = session
+        .into_auth()
+        .await
+        .map_err(|_| GetUserError::Auth)?;
+    auth.ensure_authority("view_user")
+        .await
+        .map_err(|_| GetUserError::Auth)?;
 
-    let id = params.get("id")?.parse::<Id>()?;
+    let id = params
+        .get("id")
+        .map_err(|_| GetUserError::InvalidUserId)?
+        .parse::<Id>()
+        .map_err(|_| GetUserError::InvalidUserId)?;
     let pool = database.sqlx();
     let row = sqlx::query(
         "SELECT email, realname, gender, description, classname, group_id FROM users WHERE id = ?1",
     )
     .bind(&id.to_string())
     .fetch_optional(pool)
-    .await?;
+    .await
+    .expect("Database error");
 
-    let row = row.ok_or_else(|| Error::msg("User not exists").set_status(StatusCode::NOT_FOUND))?;
-    let group_id: String = row.try_get("group_id")?;
-    let group = Id::from_str(&group_id).map_err(|_| {
-        Error::msg("User group malformed").set_status(StatusCode::INTERNAL_SERVER_ERROR)
-    })?;
+    let row = row.ok_or(GetUserError::NotFound)?;
+    let group_id: String = row.get("group_id");
+    let group = Id::from_str(&group_id).expect("Database error");
 
     Ok(Json(User {
-        email: row.try_get("email")?,
-        realname: row.try_get("realname")?,
-        gender: row.try_get("gender")?,
-        description: row.try_get("description")?,
-        classname: row.try_get("classname")?,
+        email: row.get("email"),
+        realname: row.get("realname"),
+        gender: row.get("gender"),
+        description: row.get("description"),
+        classname: row.get("classname"),
         group,
     }))
 }
@@ -78,29 +97,58 @@ pub async fn delete(
     database: State<AppDatabase>,
     params: Params,
     session: AuthSession,
-) -> skyzen::Result<ApiMessage> {
-    let auth = session.into_auth().await?;
-    auth.ensure_authority("delete_user").await?;
-    let id = params.get("id")?.parse::<Id>()?;
+) -> Result<ApiMessage, DeleteUserError> {
+    let auth = session
+        .into_auth()
+        .await
+        .map_err(|_| DeleteUserError::Auth)?;
+    auth.ensure_authority("delete_user")
+        .await
+        .map_err(|_| DeleteUserError::Auth)?;
+    let id = params
+        .get("id")
+        .map_err(|_| DeleteUserError::InvalidUserId)?
+        .parse::<Id>()
+        .map_err(|_| DeleteUserError::InvalidUserId)?;
     let result = sqlx::query("DELETE FROM users WHERE id = ?1")
         .bind(id.to_string())
         .execute(database.sqlx())
-        .await?;
+        .await
+        .expect("Database error");
 
     if result.rows_affected() == 0 {
-        return Err(Error::msg("User not exists").set_status(StatusCode::NOT_FOUND));
+        return Err(DeleteUserError::NotFound);
     }
 
     Ok(ApiMessage::new("Delete successfully"))
 }
 
-pub async fn get_name(database: &AppDatabase, uid: Id) -> skyzen::Result<String> {
+#[skyzen::error]
+pub enum DeleteUserError {
+    #[error("User not exists", status = NOT_FOUND)]
+    NotFound,
+
+    #[error("Invalid user ID", status = BAD_REQUEST)]
+    InvalidUserId,
+
+    #[error("Forbidden", status = FORBIDDEN)]
+    Auth,
+}
+
+pub async fn get_name(database: &AppDatabase, uid: Id) -> Result<String, GetNameError> {
     let row = sqlx::query("SELECT realname FROM users WHERE id = ?1")
         .bind(uid.to_string())
         .fetch_optional(database.sqlx())
-        .await?;
-    row.and_then(|row| row.try_get("realname").ok())
-        .ok_or_else(|| Error::msg("User not exists").set_status(StatusCode::NOT_FOUND))
+        .await
+        .expect("Database error");
+    row.and_then(|row| row.get("realname"))
+        .ok_or(GetNameError::NotFound)
+}
+
+#[skyzen::error]
+pub enum GetNameError {
+    #[error("User not exists", status = NOT_FOUND)]
+    NotFound,
 }
 
 /// Register a new user
@@ -108,15 +156,13 @@ pub async fn get_name(database: &AppDatabase, uid: Id) -> skyzen::Result<String>
 pub async fn register(
     database: State<AppDatabase>,
     form: Json<RegisterForm>,
-) -> skyzen::Result<ApiMessage> {
+) -> Result<ApiMessage, RegisterError> {
     let Json(form) = form;
     let salt = rand_string(16);
     let password = sha256(form.password.clone() + &salt);
-    let Some(group_id) = get_group_id(&database, "student").await? else {
-        return Err(
-            Error::msg("Student group not found").set_status(StatusCode::INTERNAL_SERVER_ERROR)
-        );
-    };
+    let group_id = get_group_id(&database, "student")
+        .await
+        .ok_or(RegisterError::StudentGroupMissing)?;
     let user_id = Id::new();
 
     let result = sqlx::query(
@@ -151,13 +197,22 @@ pub async fn register(
             if let Some(code) = error.code() {
                 // SQLITE_CONSTRAINT
                 if code == "2067" || code == "1555" {
-                    return Err(Error::msg("User already exists").set_status(StatusCode::FORBIDDEN));
+                    return Err(RegisterError::AlreadyExists);
                 }
             }
-            Err(sqlx::Error::Database(error).into())
+            panic!("Database error: {}", error);
         }
-        Err(error) => Err(error.into()),
+        Err(error) => panic!("Database error: {error}"),
     }
+}
+
+#[skyzen::error]
+pub enum RegisterError {
+    #[error("Student group not found", status = INTERNAL_SERVER_ERROR)]
+    StudentGroupMissing,
+
+    #[error("User already exists", status = FORBIDDEN)]
+    AlreadyExists,
 }
 
 static STRING_MAP: &[u8] = b"1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";

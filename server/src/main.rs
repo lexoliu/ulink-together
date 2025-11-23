@@ -10,6 +10,7 @@ mod resource;
 mod user;
 mod utils;
 
+use crate::auth::AuthError;
 use database::AppDatabase;
 use skyzen::{
     middleware::ErrorHandlingMiddleware, routing::Router, utils::State, CreateRouteNode, Route,
@@ -39,7 +40,7 @@ pub fn api() -> Route {
             "/approve_apply".post(record::approve_apply),
             "/disapprove_apply".post(record::disapprove_apply),
         )),)),
-        "/mesaage"
+        "/message"
             .at(message::find)
             .route(("/{id}".at(message::get).delete(message::delete),)),
         "/resource"
@@ -81,35 +82,10 @@ pub struct CheckAuthorityResult {
 pub async fn check_authority(
     session: auth::AuthSession,
     params: skyzen::routing::Params,
-) -> skyzen::Result<skyzen::utils::Json<CheckAuthorityResult>> {
+) -> Result<skyzen::utils::Json<CheckAuthorityResult>, AuthError> {
     let auth = session.into_auth().await?;
-    let authority = params.get("authority")?;
+    let authority = params.get("authority").expect("Param not found");
     Ok(skyzen::utils::Json(CheckAuthorityResult {
         result: auth.match_authority(authority).await?,
     }))
-}
-
-#[macro_export]
-macro_rules! impl_error {
-    ($ty:ident,$message:expr) => {
-        #[doc = concat!("The error type of `", stringify!($ty), "`.")]
-        #[derive(Debug)]
-        pub struct $ty {
-            _priv: (),
-        }
-
-        impl $ty {
-            pub(crate) fn new() -> Self {
-                Self { _priv: () }
-            }
-        }
-
-        impl std::fmt::Display for $ty {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                f.write_str($message)
-            }
-        }
-
-        impl std::error::Error for $ty {}
-    };
 }

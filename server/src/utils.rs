@@ -72,10 +72,16 @@ impl skyzen::responder::Responder for ApiMessage {
     }
 }
 
-pub fn parse_oid(value: &str) -> skyzen::Result<Id> {
-    value.parse().map_err(|_| {
-        skyzen::Error::msg("Invalid identifier").set_status(skyzen::StatusCode::BAD_REQUEST)
-    })
+#[skyzen::error]
+pub enum ParseIdError {
+    #[error("Invalid identifier", status = BAD_REQUEST)]
+    InvalidIdentifier,
+}
+
+pub type ParseIdResult<T> = Result<T, ParseIdError>;
+
+pub fn parse_oid(value: &str) -> ParseIdResult<Id> {
+    value.parse().map_err(|_| ParseIdError::InvalidIdentifier)
 }
 
 #[cfg(test)]
