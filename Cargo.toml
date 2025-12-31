@@ -1,11 +1,10 @@
 [workspace]
 members = [
-    "server",
-    "cli",
-    "app",
+    "server"
 ]
 resolver = "2"
 
 [workspace.dependencies]
-skyzen = { git = "https://github.com/zen-rs/skyzen" }
-zenwave = { git = "https://github.com/zen-rs/zenwave" }
+skyzen = "0.1"
+zenwave = "0.3"
+tracing = "0.1"

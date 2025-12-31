@@ -60,9 +60,7 @@ pub async fn create(
     io::copy(&mut body.into_reader(), &mut file)
         .await
         .expect("Write resource file failed");
-    file.sync_all()
-        .await
-        .expect("Flush resource file failed");
+    file.sync_all().await.expect("Flush resource file failed");
     Ok(id_hex)
 }
 
@@ -101,6 +99,10 @@ pub async fn access(params: Params, session: AuthSession) -> Result<Body, Access
     let file = File::open(&full_path)
         .await
         .expect("Open resource file failed");
-    let len = file.metadata().await.expect("Read resource metadata failed").len() as usize;
+    let len = file
+        .metadata()
+        .await
+        .expect("Read resource metadata failed")
+        .len() as usize;
     Ok(Body::from_reader(BufReader::new(file), len))
 }
