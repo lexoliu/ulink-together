@@ -6,12 +6,11 @@ use crate::{
     utils::{parse_oid, ApiMessage, Id},
 };
 
-use bytestr::ByteStr;
 use serde::Serialize;
 use skyzen::{
     extract::Query,
     routing::Params,
-    utils::{Json, State},
+    utils::{ByteStr, Json, State},
 };
 use sqlx::Row;
 use time::OffsetDateTime;
@@ -67,33 +66,53 @@ pub async fn find(
         AuthError::SessionExpired => FindMessagesError::SessionExpired,
         _ => FindMessagesError::Forbidden,
     })?;
-    let Query(query) = query;
+    let Query(query_params) = query;
     let channel_id =
-        parse_oid(&query.channel).map_err(|_| FindMessagesError::InvalidChannelId)?;
+        parse_oid(&query_params.channel).map_err(|_| FindMessagesError::InvalidChannelId)?;
 
-    let mut builder = sqlx::QueryBuilder::new(
-        "SELECT id, channel_id, sender_id, content, sent_at FROM messages WHERE channel_id = ",
+    let start = query_params.start_date.as_deref();
+    let end = query_params.end_date.as_deref();
+    let sender_hex = match &query_params.sender {
+        Some(sender) => Some(
+            parse_oid(sender)
+                .map_err(|_| FindMessagesError::InvalidSenderId)?
+                .to_string(),
+        ),
+        None => None,
+    };
+
+    let mut sql_text = String::from(
+        "SELECT id, channel_id, sender_id, content, sent_at FROM messages WHERE channel_id = ?1",
     );
-    builder.push_bind(channel_id.to_string());
-
-    if let Some(start) = &query.start_date {
-        builder.push(" AND sent_at >= ").push_bind(start);
+    let mut bind_idx = 1;
+    if start.is_some() {
+        bind_idx += 1;
+        sql_text.push_str(&format!(" AND sent_at >= ?{bind_idx}"));
     }
-    if let Some(end) = &query.end_date {
-        builder.push(" AND sent_at <= ").push_bind(end);
+    if end.is_some() {
+        bind_idx += 1;
+        sql_text.push_str(&format!(" AND sent_at <= ?{bind_idx}"));
     }
-    if let Some(sender) = &query.sender {
-        let sender_id =
-            parse_oid(sender).map_err(|_| FindMessagesError::InvalidSenderId)?;
-        builder
-            .push(" AND sender_id = ")
-            .push_bind(sender_id.to_string());
+    if sender_hex.is_some() {
+        bind_idx += 1;
+        sql_text.push_str(&format!(" AND sender_id = ?{bind_idx}"));
+    }
+    sql_text.push_str(" ORDER BY sent_at DESC");
+
+    let sql = database.sql(&sql_text);
+    let mut db_query = sqlx::query(sql.as_ref());
+    db_query = db_query.bind(channel_id.to_string());
+    if let Some(start) = start {
+        db_query = db_query.bind(start);
+    }
+    if let Some(end) = end {
+        db_query = db_query.bind(end);
+    }
+    if let Some(sender_hex) = sender_hex {
+        db_query = db_query.bind(sender_hex);
     }
 
-    builder.push(" ORDER BY sent_at DESC");
-
-    let rows = builder
-        .build()
+    let rows = db_query
         .fetch_all(database.sqlx())
         .await
         .expect("Database error");
@@ -152,7 +171,9 @@ pub async fn get(
     )
     .map_err(|_| GetMessageError::InvalidMessageId)?;
     let row = sqlx::query(
-        "SELECT id, channel_id, sender_id, content, sent_at FROM messages WHERE id = ?1",
+        database
+            .sql("SELECT id, channel_id, sender_id, content, sent_at FROM messages WHERE id = ?1")
+            .as_ref(),
     )
     .bind(id.to_string())
     .fetch_optional(database.sqlx())
@@ -180,7 +201,11 @@ pub async fn get(
 }
 
 async fn ensure_channel_member(database: &AppDatabase, channel: &Id, user: &Id) -> bool {
-    sqlx::query("SELECT 1 FROM channel_members WHERE channel_id = ?1 AND user_id = ?2 LIMIT 1")
+    sqlx::query(
+        database
+            .sql("SELECT 1 FROM channel_members WHERE channel_id = ?1 AND user_id = ?2 LIMIT 1")
+            .as_ref(),
+    )
         .bind(channel.to_string())
         .bind(user.to_string())
         .fetch_optional(database.sqlx())
@@ -226,7 +251,11 @@ pub async fn post(
     let id = Id::new();
     let now = OffsetDateTime::now_utc().to_string();
     sqlx::query(
-        "INSERT INTO messages (id, channel_id, sender_id, content, sent_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+        database
+            .sql(
+                "INSERT INTO messages (id, channel_id, sender_id, content, sent_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            )
+            .as_ref(),
     )
     .bind(id.to_string())
     .bind(channel_id.to_string())
@@ -272,7 +301,11 @@ pub async fn delete(
             .map_err(|_| DeleteMessageError::InvalidMessageId)?,
     )
     .map_err(|_| DeleteMessageError::InvalidMessageId)?;
-    let row = sqlx::query("SELECT sender_id FROM messages WHERE id = ?1")
+    let row = sqlx::query(
+        database
+            .sql("SELECT sender_id FROM messages WHERE id = ?1")
+            .as_ref(),
+    )
         .bind(id.to_string())
         .fetch_optional(database.sqlx())
         .await
@@ -289,7 +322,7 @@ pub async fn delete(
         return Err(DeleteMessageError::Forbidden);
     }
 
-    sqlx::query("DELETE FROM messages WHERE id = ?1")
+    sqlx::query(database.sql("DELETE FROM messages WHERE id = ?1").as_ref())
         .bind(id.to_string())
         .execute(database.sqlx())
         .await

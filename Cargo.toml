@@ -1,10 +1,14 @@
 [workspace]
 members = [
-    "server"
+    "models",
+    "server",
+    "app",
 ]
 resolver = "2"
 
 [workspace.dependencies]
-skyzen = "0.1"
-zenwave = "0.3"
+skyzen = { git = "file:///Users/lexoliu/Coding/skyzen", branch = "dev" }
+zenwave = { version = "0.3", default-features = false, features = ["hyper-backend"] }
 tracing = "0.1"
+waterui = { path = "../waterui" }
+waterui-ffi = { path = "../waterui/ffi" }

@@ -4,10 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+models = { path = "../models", features = ["openapi"] }
 tokio = { version = "1.32.0", features = ["macros", "rt-multi-thread"] }
 skyzen.workspace = true
 async-std = "1.12.0"
-sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "macros", "sqlite", "uuid", "chrono", "migrate"] }
+sqlx = { version = "0.7", features = ["runtime-async-std-rustls", "macros", "sqlite", "postgres", "uuid", "chrono", "migrate"] }
 serde = { version = "1.0.188" ,features = ["derive"]}
 bytes = "1.5.0"
 ring = "0.16.20"
@@ -21,3 +22,6 @@ uuid = { version = "1.4", features = ["serde", "v4"] }
 utoipa = "5.4.0"
 linkme = "0.3.35"
 tracing = "0.1.41"
+
+[features]
+openapi = []

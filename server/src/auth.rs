@@ -28,7 +28,7 @@ fn expired_error() -> AuthError {
 }
 
 pub async fn get_group_id(database: &AppDatabase, name: &str) -> Option<Id> {
-    let row = sqlx::query("SELECT id FROM groups WHERE code = ?1")
+    let row = sqlx::query(database.sql("SELECT id FROM groups WHERE code = ?1").as_ref())
         .bind(name)
         .fetch_optional(database.sqlx())
         .await
@@ -83,6 +83,7 @@ impl Extractor for AuthSession {
         Ok(AuthSession { database, headers })
     }
 }
+skyzen::ignore_openapi!(AuthSession);
 
 impl AuthSession {
     pub async fn into_auth(self) -> Result<Auth, AuthError> {
@@ -110,7 +111,7 @@ async fn auth(database: &AppDatabase, headermap: &HeaderMap) -> Result<Auth, Aut
     let session_hex = session_id.to_string();
     let pool = database.sqlx();
 
-    let session = sqlx::query("SELECT user_id FROM sessions WHERE id = ?1")
+    let session = sqlx::query(database.sql("SELECT user_id FROM sessions WHERE id = ?1").as_ref())
         .bind(&session_hex)
         .fetch_optional(pool)
         .await
@@ -119,7 +120,7 @@ async fn auth(database: &AppDatabase, headermap: &HeaderMap) -> Result<Auth, Aut
     let uid_hex: String = session.try_get("user_id").map_err(|_| expired_error())?;
     let uid = uid_hex.parse().map_err(|_| expired_error())?;
 
-    let user_row = sqlx::query("SELECT group_id FROM users WHERE id = ?1")
+    let user_row = sqlx::query(database.sql("SELECT group_id FROM users WHERE id = ?1").as_ref())
         .bind(&uid_hex)
         .fetch_optional(pool)
         .await
@@ -143,7 +144,8 @@ async fn match_group_authority(
     let group_hex = group.to_string();
     let pool = database.sqlx();
 
-    if let Some(row) = sqlx::query("SELECT allow_all_authorities FROM groups WHERE id = ?1")
+    if let Some(row) =
+        sqlx::query(database.sql("SELECT allow_all_authorities FROM groups WHERE id = ?1").as_ref())
         .bind(&group_hex)
         .fetch_optional(pool)
         .await
@@ -158,7 +160,11 @@ async fn match_group_authority(
     }
 
     let has_authority = sqlx::query(
-        "SELECT 1 FROM group_authorities WHERE group_id = ?1 AND authority = ?2 LIMIT 1",
+        database
+            .sql(
+                "SELECT 1 FROM group_authorities WHERE group_id = ?1 AND authority = ?2 LIMIT 1",
+            )
+            .as_ref(),
     )
     .bind(&group_hex)
     .bind(authority)

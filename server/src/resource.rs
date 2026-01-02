@@ -19,6 +19,9 @@ pub struct CreateResourceQuery {
 pub enum CreateResourceError {
     #[error("Session expired", status = FORBIDDEN)]
     SessionExpired,
+
+    #[error("Invalid resource name", status = BAD_REQUEST)]
+    InvalidName,
 }
 
 pub async fn create(
@@ -32,10 +35,11 @@ pub async fn create(
         .await
         .map_err(|_| CreateResourceError::SessionExpired)?;
     let Query(CreateResourceQuery { name }) = query;
-    let (base, extension) = name
-        .split_once('.')
-        .map(|(b, e)| (b.to_owned(), e.to_owned()))
-        .unwrap_or_else(|| (name, "unknown".to_string()));
+    let sanitized_name = sanitize_filename(&name).ok_or(CreateResourceError::InvalidName)?;
+    let (base, extension) = sanitized_name
+        .rsplit_once('.')
+        .map(|(b, e)| (b.to_owned(), sanitize_extension(e)))
+        .unwrap_or_else(|| (sanitized_name.to_owned(), "unknown".to_string()));
     let id = Id::new();
     let id_hex = id.to_string();
 
@@ -43,7 +47,11 @@ pub async fn create(
         .await
         .expect("Create resource directory failed");
     sqlx::query(
-        "INSERT INTO resources (id, creator_id, name, extension, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+        database
+            .sql(
+                "INSERT INTO resources (id, creator_id, name, extension, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            )
+            .as_ref(),
     )
     .bind(&id_hex)
     .bind(auth.uid().to_string())
@@ -81,14 +89,8 @@ pub async fn access(params: Params, session: AuthSession) -> Result<Body, Access
     let filename = params
         .get("filename")
         .map_err(|_| AccessResourceError::IllegalAccess)?;
+    let filename = sanitize_filename(filename).ok_or(AccessResourceError::IllegalAccess)?;
     let filename = Path::new(filename);
-
-    if filename
-        .components()
-        .any(|component| matches!(component, Component::ParentDir))
-    {
-        return Err(AccessResourceError::IllegalAccess);
-    }
 
     let resource_dir = Path::new("./resource");
     let full_path = resource_dir.join(filename);
@@ -105,4 +107,28 @@ pub async fn access(params: Params, session: AuthSession) -> Result<Body, Access
         .expect("Read resource metadata failed")
         .len() as usize;
     Ok(Body::from_reader(BufReader::new(file), len))
+}
+
+fn sanitize_filename(name: &str) -> Option<&str> {
+    if name.is_empty() {
+        return None;
+    }
+    let path = Path::new(name);
+    let mut components = path.components();
+    match (components.next(), components.next()) {
+        (Some(Component::Normal(os)), None) if os.to_str() == Some(name) => Some(name),
+        _ => None,
+    }
+}
+
+fn sanitize_extension(extension: &str) -> String {
+    let filtered: String = extension
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .collect();
+    if filtered.is_empty() {
+        "unknown".to_string()
+    } else {
+        filtered
+    }
 }

@@ -1,11 +1,8 @@
-use std::{fmt::Display, str::FromStr};
-
-use skyzen::{
-    openapi::ResponderOpenApiSchema,
-    utils::{json::JsonEncodingError, Json},
-};
+use skyzen::utils::{json::JsonEncodingError, Json};
 use utoipa::ToSchema;
-use uuid::Uuid;
+
+// Re-export Id from models crate
+pub use models::Id;
 
 pub fn sha256(v: impl AsRef<[u8]>) -> String {
     use ring::digest::{digest, SHA256};
@@ -15,42 +12,6 @@ pub fn sha256(v: impl AsRef<[u8]>) -> String {
 #[derive(Debug, serde::Serialize, ToSchema)]
 pub struct ApiMessage {
     message: std::borrow::Cow<'static, str>,
-}
-
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, utoipa::ToSchema,
-)]
-#[schema(value_type = String)]
-#[serde(transparent)]
-pub struct Id(Uuid);
-
-impl Id {
-    pub fn new() -> Self {
-        Self(Uuid::new_v4())
-    }
-}
-
-impl ResponderOpenApiSchema for ApiMessage {
-    fn register_schemas(defs: &mut std::collections::BTreeMap<String, skyzen::openapi::SchemaRef>) {
-        Json::<ApiMessage>::register_schemas(defs);
-    }
-
-    fn responder_schemas() -> Option<Vec<skyzen::openapi::ResponseSchema>> {
-        Json::<ApiMessage>::responder_schemas()
-    }
-}
-
-impl Display for Id {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl FromStr for Id {
-    type Err = uuid::Error;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self(Uuid::from_str(s)?))
-    }
 }
 
 impl ApiMessage {
@@ -69,6 +30,16 @@ impl skyzen::responder::Responder for ApiMessage {
         response: &mut skyzen::Response,
     ) -> Result<(), Self::Error> {
         Json(self).respond_to(request, response)
+    }
+
+    fn openapi() -> Option<Vec<skyzen::openapi::ResponseSchema>> {
+        <Json<ApiMessage> as skyzen::Responder>::openapi()
+    }
+
+    fn register_openapi_schemas(
+        defs: &mut std::collections::BTreeMap<String, skyzen::openapi::SchemaRef>,
+    ) {
+        <Json<ApiMessage> as skyzen::Responder>::register_openapi_schemas(defs);
     }
 }
 

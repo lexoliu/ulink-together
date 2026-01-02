@@ -55,12 +55,14 @@ pub fn api() -> Route {
 
 #[skyzen::main]
 async fn main() -> Router {
-    let sqlx_database_url =
-        env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite://together.db".to_string());
+    let sqlx_database_url = parse_database_url().unwrap_or_else(|| "sqlite://together.db".to_string());
     let sqlx_pool = database::build_database(&sqlx_database_url)
         .await
         .expect("connect sql database");
-    let database = AppDatabase::new(sqlx_pool);
+    let database = AppDatabase::new(
+        sqlx_pool,
+        database::database_kind_from_url(&sqlx_database_url),
+    );
 
     let route = Route::new("/api/v1".route(api()));
 
@@ -70,6 +72,17 @@ async fn main() -> Router {
             skyzen::utils::Json(skyzen::utils::json!({"message": error.to_string()}))
         }))
         .build()
+}
+
+fn parse_database_url() -> Option<String> {
+    let mut args = env::args().skip(1);
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--database-url" | "--db" => return args.next(),
+            _ => {}
+        }
+    }
+    None
 }
 
 #[derive(Debug, serde::Serialize, utoipa::ToSchema)]

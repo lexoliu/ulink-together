@@ -4,11 +4,10 @@ use crate::{
     user,
     utils::{parse_oid, Id},
 };
-use bytestr::ByteStr;
 use serde::Serialize;
 use skyzen::{
     routing::Params,
-    utils::{Json, State},
+    utils::{ByteStr, Json, State},
 };
 use sqlx::Row;
 use time::OffsetDateTime;
@@ -56,7 +55,11 @@ pub async fn list(
         parse_oid(params.get("id").map_err(|_| ListCommentsError::InvalidActivityId)?)
             .map_err(|_| ListCommentsError::InvalidActivityId)?;
     let rows = sqlx::query(
-        "SELECT id, author_id, content, created_at FROM activity_comments WHERE activity_id = ?1 ORDER BY created_at DESC",
+        database
+            .sql(
+                "SELECT id, author_id, content, created_at FROM activity_comments WHERE activity_id = ?1 ORDER BY created_at DESC",
+            )
+            .as_ref(),
     )
     .bind(activity_id.to_string())
     .fetch_all(database.sqlx())
@@ -125,7 +128,11 @@ pub async fn post(
     let now = OffsetDateTime::now_utc().to_string();
 
     sqlx::query(
-        "INSERT INTO activity_comments (id, activity_id, author_id, content, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+        database
+            .sql(
+                "INSERT INTO activity_comments (id, activity_id, author_id, content, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            )
+            .as_ref(),
     )
     .bind(id.to_string())
     .bind(activity_id.to_string())

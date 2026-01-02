@@ -1,40 +1,18 @@
 use std::str::FromStr;
 
+use models::{RegisterForm, User};
 use rand::{distributions::Uniform, prelude::Distribution};
-use serde::{Deserialize, Serialize};
 use skyzen::{
     routing::Params,
     utils::{Json, State},
 };
 use sqlx::Row;
-use utoipa::ToSchema;
 
 use crate::{
     auth::{get_group_id, AuthSession},
     database::AppDatabase,
     utils::{sha256, ApiMessage, Id},
 };
-
-#[derive(Deserialize, ToSchema)]
-pub(crate) struct RegisterForm {
-    email: String,
-    realname: String,
-    password: String,
-    gender: String,
-    classname: String,
-}
-
-#[derive(Serialize, ToSchema)]
-pub struct User {
-    email: String,
-    realname: String,
-    gender: String,
-    description: String,
-    classname: String,
-    group: Id,
-}
-
-skyzen::ignore_openapi!(AuthSession);
 
 #[skyzen::error]
 pub enum GetUserError {
@@ -55,10 +33,7 @@ pub async fn get(
     params: Params,
     session: AuthSession,
 ) -> Result<Json<User>, GetUserError> {
-    let auth = session
-        .into_auth()
-        .await
-        .map_err(|_| GetUserError::Auth)?;
+    let auth = session.into_auth().await.map_err(|_| GetUserError::Auth)?;
     auth.ensure_authority("view_user")
         .await
         .map_err(|_| GetUserError::Auth)?;
@@ -70,7 +45,11 @@ pub async fn get(
         .map_err(|_| GetUserError::InvalidUserId)?;
     let pool = database.sqlx();
     let row = sqlx::query(
-        "SELECT email, realname, gender, description, classname, group_id FROM users WHERE id = ?1",
+        database
+            .sql(
+                "SELECT email, realname, gender, description, classname, group_id FROM users WHERE id = ?1",
+            )
+            .as_ref(),
     )
     .bind(&id.to_string())
     .fetch_optional(pool)
@@ -110,7 +89,7 @@ pub async fn delete(
         .map_err(|_| DeleteUserError::InvalidUserId)?
         .parse::<Id>()
         .map_err(|_| DeleteUserError::InvalidUserId)?;
-    let result = sqlx::query("DELETE FROM users WHERE id = ?1")
+    let result = sqlx::query(database.sql("DELETE FROM users WHERE id = ?1").as_ref())
         .bind(id.to_string())
         .execute(database.sqlx())
         .await
@@ -136,7 +115,7 @@ pub enum DeleteUserError {
 }
 
 pub async fn get_name(database: &AppDatabase, uid: Id) -> Result<String, GetNameError> {
-    let row = sqlx::query("SELECT realname FROM users WHERE id = ?1")
+    let row = sqlx::query(database.sql("SELECT realname FROM users WHERE id = ?1").as_ref())
         .bind(uid.to_string())
         .fetch_optional(database.sqlx())
         .await
@@ -166,7 +145,9 @@ pub async fn register(
     let user_id = Id::new();
 
     let result = sqlx::query(
-        r#"
+        database
+            .sql(
+                r#"
         INSERT INTO users (
             id,
             email,
@@ -179,6 +160,8 @@ pub async fn register(
             group_id
         ) VALUES (?1, ?2, ?3, ?4, '', ?5, ?6, ?7, ?8)
         "#,
+            )
+            .as_ref(),
     )
     .bind(user_id.to_string())
     .bind(&form.email)
@@ -219,7 +202,7 @@ static STRING_MAP: &[u8] = b"1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNO
 
 pub fn rand_string(len: usize) -> String {
     let mut rng = rand::thread_rng();
-    let uniform = Uniform::from(0..61);
+    let uniform = Uniform::from(0..STRING_MAP.len());
 
     let mut vec = Vec::with_capacity(len);
     for _ in 0..len {
@@ -227,4 +210,83 @@ pub fn rand_string(len: usize) -> String {
     }
 
     unsafe { String::from_utf8_unchecked(vec) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::database::build_test_database;
+    use skyzen::utils::{Json, State};
+    use sqlx::Row;
+
+    async fn setup_db() -> (AppDatabase, Id) {
+        let database = build_test_database().await;
+        let group_id = Id::new();
+        sqlx::query(
+            database
+                .sql("INSERT INTO groups (id, code, allow_all_authorities) VALUES (?1, 'student', 0)")
+                .as_ref(),
+        )
+            .bind(group_id.to_string())
+            .execute(database.sqlx())
+            .await
+            .expect("insert group");
+        (database, group_id)
+    }
+
+    #[tokio::test]
+    async fn register_inserts_user_with_hashed_password() {
+        let (database, group_id) = setup_db().await;
+        let form = RegisterForm {
+            email: "test@example.com".to_string(),
+            realname: "Test User".to_string(),
+            password: "secret".to_string(),
+            gender: "other".to_string(),
+            classname: "Class A".to_string(),
+        };
+
+        let result = register(State(database.clone()), Json(form)).await;
+        assert!(result.is_ok());
+
+        let row = sqlx::query(
+            database
+                .sql("SELECT email, password_hash, salt, group_id FROM users WHERE email = ?1")
+                .as_ref(),
+        )
+        .bind("test@example.com")
+        .fetch_one(database.sqlx())
+        .await
+        .expect("fetch user");
+        let salt: String = row.get("salt");
+        let password_hash: String = row.get("password_hash");
+
+        assert_eq!(row.get::<String, _>("email"), "test@example.com");
+        assert_eq!(password_hash, sha256("secret".to_string() + &salt));
+        assert_eq!(row.get::<String, _>("group_id"), group_id.to_string());
+    }
+
+    #[tokio::test]
+    async fn register_returns_already_exists_on_duplicate_email() {
+        let (database, _group_id) = setup_db().await;
+        let form = RegisterForm {
+            email: "duplicate@example.com".to_string(),
+            realname: "Dup User".to_string(),
+            password: "secret".to_string(),
+            gender: "other".to_string(),
+            classname: "Class B".to_string(),
+        };
+
+        let first = register(State(database.clone()), Json(RegisterForm {
+            email: form.email.clone(),
+            realname: form.realname.clone(),
+            password: form.password.clone(),
+            gender: form.gender.clone(),
+            classname: form.classname.clone(),
+        }))
+        .await;
+        assert!(first.is_ok());
+
+        let second = register(State(database), Json(form)).await;
+        assert!(matches!(second, Err(RegisterError::AlreadyExists)));
+    }
 }

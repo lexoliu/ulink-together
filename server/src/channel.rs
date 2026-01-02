@@ -85,7 +85,11 @@ fn parse_db_oid(value: &str) -> Result<Id, FindChannelsError> {
 }
 
 async fn members_of(database: &AppDatabase, channel_hex: &str) -> Result<Vec<Id>, FindChannelsError> {
-    let rows = sqlx::query("SELECT user_id FROM channel_members WHERE channel_id = ?1")
+    let rows = sqlx::query(
+        database
+            .sql("SELECT user_id FROM channel_members WHERE channel_id = ?1")
+            .as_ref(),
+    )
         .bind(channel_hex)
         .fetch_all(database.sqlx())
         .await
@@ -117,7 +121,11 @@ pub async fn create(
     let now = OffsetDateTime::now_utc().to_string();
 
     sqlx::query(
-        "INSERT INTO channels (id, name, owner_id, activity_id, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+        database
+            .sql(
+                "INSERT INTO channels (id, name, owner_id, activity_id, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            )
+            .as_ref(),
     )
     .bind(id.to_string())
     .bind(&name)
@@ -128,7 +136,11 @@ pub async fn create(
     .await
     .expect("Database error");
 
-    sqlx::query("INSERT INTO channel_members (channel_id, user_id) VALUES (?1, ?2)")
+    sqlx::query(
+        database
+            .sql("INSERT INTO channel_members (channel_id, user_id) VALUES (?1, ?2)")
+            .as_ref(),
+    )
         .bind(id.to_string())
         .bind(auth.uid().to_string())
         .execute(database.sqlx())
@@ -158,7 +170,11 @@ pub async fn delete(
             .map_err(|_| DeleteChannelError::InvalidChannelId)?,
     )
     .map_err(|_| DeleteChannelError::InvalidChannelId)?;
-    let row = sqlx::query("SELECT owner_id FROM channels WHERE id = ?1")
+    let row = sqlx::query(
+        database
+            .sql("SELECT owner_id FROM channels WHERE id = ?1")
+            .as_ref(),
+    )
         .bind(id.to_string())
         .fetch_optional(database.sqlx())
         .await
@@ -175,7 +191,7 @@ pub async fn delete(
         return Err(DeleteChannelError::Forbidden);
     }
 
-    sqlx::query("DELETE FROM channels WHERE id = ?1")
+    sqlx::query(database.sql("DELETE FROM channels WHERE id = ?1").as_ref())
         .bind(id.to_string())
         .execute(database.sqlx())
         .await
@@ -197,25 +213,41 @@ pub async fn find(
     })?;
     let Form(form) = form;
 
-    let mut builder =
-        sqlx::QueryBuilder::new("SELECT id, name, owner_id, activity_id FROM channels WHERE 1=1");
-    if let Some(owner) = form.owner {
-        builder
-            .push(" AND owner_id = ")
-            .push_bind(owner.to_string());
+    let owner = form.owner.map(|id| id.to_string());
+    let activity = form.activity.map(|id| id.to_string());
+    let member = form.include_member.map(|id| id.to_string());
+
+    let mut sql_text =
+        String::from("SELECT id, name, owner_id, activity_id FROM channels WHERE 1=1");
+    let mut bind_idx = 0;
+    if owner.is_some() {
+        bind_idx += 1;
+        sql_text.push_str(&format!(" AND owner_id = ?{bind_idx}"));
     }
-    if let Some(activity) = form.activity {
-        builder
-            .push(" AND activity_id = ")
-            .push_bind(activity.to_string());
+    if activity.is_some() {
+        bind_idx += 1;
+        sql_text.push_str(&format!(" AND activity_id = ?{bind_idx}"));
     }
-    if let Some(member) = form.include_member {
-        builder.push(" AND id IN (SELECT channel_id FROM channel_members WHERE user_id = ");
-        builder.push_bind(member.to_string()).push(")");
+    if member.is_some() {
+        bind_idx += 1;
+        sql_text.push_str(&format!(
+            " AND id IN (SELECT channel_id FROM channel_members WHERE user_id = ?{bind_idx})"
+        ));
     }
 
-    let rows = builder
-        .build()
+    let sql = database.sql(&sql_text);
+    let mut query = sqlx::query(sql.as_ref());
+    if let Some(owner) = owner {
+        query = query.bind(owner);
+    }
+    if let Some(activity) = activity {
+        query = query.bind(activity);
+    }
+    if let Some(member) = member {
+        query = query.bind(member);
+    }
+
+    let rows = query
         .fetch_all(database.sqlx())
         .await
         .expect("Database error");

@@ -4,95 +4,13 @@ use crate::{
     record, user,
     utils::{parse_oid, ApiMessage, Id},
 };
-use serde::{Deserialize, Serialize};
+use models::{ActivityDetail, ActivityState, ActivitySummary, CreateActivityForm, ListActivityQuery};
 use skyzen::{
     extract::Query,
     routing::Params,
     utils::{Json, State},
 };
-use sqlx::{QueryBuilder, Row, Sqlite};
-use utoipa::ToSchema;
-
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct ListActivityQuery {
-    #[schema(value_type = String, nullable)]
-    user: Option<Id>,
-    display_all: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum ActivityState {
-    Going,
-    NeedVolunteer,
-    Ended,
-    Canneled,
-}
-
-impl ActivityState {
-    fn as_str(self) -> &'static str {
-        match self {
-            ActivityState::Going => "going",
-            ActivityState::NeedVolunteer => "need_volunteer",
-            ActivityState::Ended => "ended",
-            ActivityState::Canneled => "canneled",
-        }
-    }
-
-    fn from_db(value: &str) -> Option<Self> {
-        Some(match value {
-            "going" => ActivityState::Going,
-            "need_volunteer" => ActivityState::NeedVolunteer,
-            "ended" => ActivityState::Ended,
-            "canneled" => ActivityState::Canneled,
-            _ => return None,
-        })
-    }
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct ActivitySummary {
-    #[schema(value_type = String)]
-    id: Id,
-    name: String,
-    location: String,
-    volunteer_num: u16,
-    max_volunteer_num: Option<u16>,
-    #[schema(value_type = String)]
-    promoter: Id,
-    promoter_name: String,
-    date: Option<String>,
-    brief_description: String,
-    duration: u16,
-    state: ActivityState,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct ActivityDetail {
-    id: Id,
-    name: String,
-    location: String,
-    volunteer_num: u16,
-    max_volunteer_num: Option<u16>,
-    promoter: Id,
-    promoter_name: String,
-    date: Option<String>,
-    description: String,
-    volunteers: Vec<Id>,
-    duration: u16,
-    state: ActivityState,
-}
-
-#[derive(Debug, Deserialize, ToSchema)]
-pub(crate) struct CreateActivityForm {
-    name: String,
-    date: Option<String>,
-    max_volunteer_num: Option<u16>,
-    description: String,
-    location: String,
-    brief_description: String,
-    duration: u16,
-}
+use sqlx::Row;
 
 #[skyzen::error]
 pub enum ListActivitiesError {
@@ -119,28 +37,32 @@ pub async fn list(
         AuthError::SessionExpired => ListActivitiesError::SessionExpired,
         _ => ListActivitiesError::Forbidden,
     })?;
-    let Query(query) = query;
-    let mut builder = QueryBuilder::<Sqlite>::new(
+    let Query(query_params) = query;
+    let user_filter = query_params.user.map(|user| user.to_string());
+
+    let mut sql_text = String::from(
         "SELECT id, promoter_id, name, location, state, volunteer_num, max_volunteer_num, date, brief_description, duration_minutes FROM activities WHERE 1=1",
     );
-
-    if query.display_all.is_none() {
-        builder
-            .push(" AND state = ")
-            .push_bind(ActivityState::NeedVolunteer.as_str());
+    let mut bind_idx = 0;
+    if query_params.display_all.is_none() {
+        bind_idx += 1;
+        sql_text.push_str(&format!(" AND state = ?{bind_idx}"));
+    }
+    if user_filter.is_some() {
+        bind_idx += 1;
+        sql_text.push_str(&format!(" AND promoter_id = ?{bind_idx}"));
     }
 
-    if let Some(user) = query.user {
-        builder
-            .push(" AND promoter_id = ")
-            .push_bind(user.to_string());
+    let sql = database.sql(&sql_text);
+    let mut query = sqlx::query(sql.as_ref());
+    if query_params.display_all.is_none() {
+        query = query.bind(ActivityState::NeedVolunteer.as_str());
+    }
+    if let Some(user) = user_filter {
+        query = query.bind(user);
     }
 
-    let rows = builder
-        .build()
-        .fetch_all(database.sqlx())
-        .await
-        .expect("Database error");
+    let rows = query.fetch_all(database.sqlx()).await.expect("Database error");
 
     let mut result = Vec::with_capacity(rows.len());
     for row in rows {
@@ -215,7 +137,11 @@ pub async fn get(
     )
     .map_err(|_| GetActivityError::InvalidActivityId)?;
     let row = sqlx::query(
-        "SELECT id, promoter_id, name, location, state, volunteer_num, max_volunteer_num, date, description, duration_minutes FROM activities WHERE id = ?1",
+        database
+            .sql(
+                "SELECT id, promoter_id, name, location, state, volunteer_num, max_volunteer_num, date, description, duration_minutes FROM activities WHERE id = ?1",
+            )
+            .as_ref(),
     )
     .bind(id.to_string())
     .fetch_optional(database.sqlx())
@@ -304,12 +230,37 @@ pub async fn join(
     )
     .map_err(|_| JoinActivityError::InvalidActivityId)?;
 
-    let row = sqlx::query("SELECT volunteer_num, max_volunteer_num FROM activities WHERE id = ?1")
-        .bind(activity_id.to_string())
-        .fetch_optional(database.sqlx())
+    let mut conn = database
+        .sqlx()
+        .acquire()
         .await
-        .expect("Database error")
-        .ok_or(JoinActivityError::NotFound)?;
+        .expect("Database error");
+    let conn = conn.as_mut();
+    let begin_stmt = match database.kind() {
+        crate::database::DatabaseKind::Sqlite => "BEGIN IMMEDIATE",
+        crate::database::DatabaseKind::Postgres => "BEGIN",
+    };
+    sqlx::query(begin_stmt)
+        .execute(&mut *conn)
+        .await
+        .expect("Database error");
+
+    let row = sqlx::query(
+        database
+            .sql("SELECT volunteer_num, max_volunteer_num FROM activities WHERE id = ?1")
+            .as_ref(),
+    )
+        .bind(activity_id.to_string())
+        .fetch_optional(&mut *conn)
+        .await
+        .expect("Database error");
+    let row = match row {
+        Some(row) => row,
+        None => {
+            let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
+            return Err(JoinActivityError::NotFound);
+        }
+    };
 
     let volunteer_num = row
         .try_get::<i64, _>("volunteer_num")
@@ -319,27 +270,41 @@ pub async fn join(
         .expect("Database error")
     {
         if volunteer_num >= max {
+            let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
             return Err(JoinActivityError::Full);
         }
     }
 
     let existing =
-        sqlx::query("SELECT 1 FROM records WHERE activity_id = ?1 AND user_id = ?2 LIMIT 1")
+        sqlx::query(
+            database
+                .sql("SELECT 1 FROM records WHERE activity_id = ?1 AND user_id = ?2 LIMIT 1")
+                .as_ref(),
+        )
             .bind(activity_id.to_string())
             .bind(auth.uid().to_string())
-            .fetch_optional(database.sqlx())
+            .fetch_optional(&mut *conn)
             .await
             .expect("Database error");
     if existing.is_some() {
+        let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
         return Err(JoinActivityError::AlreadyJoined);
     }
 
-    record::create_record(&database, auth.uid(), activity_id)
+    record::create_record(&database, &mut *conn, auth.uid(), activity_id)
         .await
         .expect("Database error");
-    sqlx::query("UPDATE activities SET volunteer_num = volunteer_num + 1 WHERE id = ?1")
+    sqlx::query(
+        database
+            .sql("UPDATE activities SET volunteer_num = volunteer_num + 1 WHERE id = ?1")
+            .as_ref(),
+    )
         .bind(activity_id.to_string())
-        .execute(database.sqlx())
+        .execute(&mut *conn)
+        .await
+        .expect("Database error");
+    sqlx::query("COMMIT")
+        .execute(&mut *conn)
         .await
         .expect("Database error");
 
@@ -378,7 +343,11 @@ pub async fn delete(
             .map_err(|_| DeleteActivityError::InvalidActivityId)?,
     )
     .map_err(|_| DeleteActivityError::InvalidActivityId)?;
-    let activity = sqlx::query("SELECT promoter_id FROM activities WHERE id = ?1")
+    let activity = sqlx::query(
+        database
+            .sql("SELECT promoter_id FROM activities WHERE id = ?1")
+            .as_ref(),
+    )
         .bind(id.to_string())
         .fetch_optional(database.sqlx())
         .await
@@ -395,7 +364,11 @@ pub async fn delete(
         return Err(DeleteActivityError::Forbidden);
     }
 
-    sqlx::query("DELETE FROM activities WHERE id = ?1")
+    sqlx::query(
+        database
+            .sql("DELETE FROM activities WHERE id = ?1")
+            .as_ref(),
+    )
         .bind(id.to_string())
         .execute(database.sqlx())
         .await
@@ -439,7 +412,9 @@ pub async fn create(
     let id = Id::new();
 
     sqlx::query(
-        r#"
+        database
+            .sql(
+                r#"
         INSERT INTO activities (
             id,
             promoter_id,
@@ -454,6 +429,8 @@ pub async fn create(
             duration_minutes
         ) VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7, ?8, ?9, ?10)
         "#,
+            )
+            .as_ref(),
     )
     .bind(id.to_string())
     .bind(auth.uid().to_string())
@@ -517,7 +494,11 @@ async fn change_state(
             .map_err(|_| ChangeActivityStateError::InvalidActivityId)?,
     )
     .map_err(|_| ChangeActivityStateError::InvalidActivityId)?;
-    sqlx::query("UPDATE activities SET state = ?1 WHERE id = ?2")
+    sqlx::query(
+        database
+            .sql("UPDATE activities SET state = ?1 WHERE id = ?2")
+            .as_ref(),
+    )
         .bind(state.as_str())
         .bind(id.to_string())
         .execute(database.sqlx())
@@ -632,7 +613,7 @@ pub async fn turn_canceled(
     params: Params,
     session: AuthSession,
 ) -> Result<ApiMessage, TurnCanceledError> {
-    change_state(database, params, session, ActivityState::Canneled)
+    change_state(database, params, session, ActivityState::Canceled)
         .await
         .map_err(|err| match err {
             ChangeActivityStateError::SessionExpired => TurnCanceledError::SessionExpired,
