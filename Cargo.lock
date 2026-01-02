@@ -5038,6 +5038,7 @@ dependencies = [
  "rand 0.8.5",
  "ring 0.16.20",
  "serde",
+ "serde_json",
  "skyzen",
  "sqlx",
  "time",

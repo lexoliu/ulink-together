@@ -5,6 +5,8 @@ mod comment;
 mod database;
 mod login;
 mod message;
+mod notification;
+mod push;
 mod record;
 mod resource;
 mod user;
@@ -46,6 +48,10 @@ pub fn api() -> Route {
         "/resource"
             .post(resource::create)
             .route(("/{filename}".at(resource::access),)),
+        "/notification"
+            .at(notification::list)
+            .post(notification::create),
+        "/push".at(push::handler),
         "/auth/check/{authority}".at(check_authority),
         "/login".post(login::handler),
         "/user".post(user::register),
@@ -63,11 +69,13 @@ async fn main() -> Router {
         sqlx_pool,
         database::database_kind_from_url(&sqlx_database_url),
     );
+    let push_hub = push::PushHub::new();
 
     let route = Route::new("/api/v1".route(api()));
 
     route
         .middleware(State(database))
+        .middleware(State(push_hub))
         .middleware(ErrorHandlingMiddleware::new(|error| async move {
             skyzen::utils::Json(skyzen::utils::json!({"message": error.to_string()}))
         }))

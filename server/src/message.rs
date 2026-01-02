@@ -3,6 +3,7 @@ use std::str::FromStr;
 use crate::{
     auth::{AuthError, AuthSession},
     database::AppDatabase,
+    push::{MessagePush, PushHub},
     utils::{parse_oid, ApiMessage, Id},
 };
 
@@ -229,6 +230,7 @@ pub enum PostMessageError {
 pub async fn post(
     database: State<AppDatabase>,
     content: ByteStr,
+    hub: State<PushHub>,
     params: Params,
     session: AuthSession,
 ) -> Result<ApiMessage, PostMessageError> {
@@ -261,10 +263,19 @@ pub async fn post(
     .bind(channel_id.to_string())
     .bind(auth.uid().to_string())
     .bind(content.as_str())
-    .bind(now)
+    .bind(&now)
     .execute(database.sqlx())
     .await
     .expect("Database error");
+
+    let push_payload = MessagePush {
+        id,
+        channel: channel_id,
+        sender: auth.uid(),
+        content: content.as_str().to_owned(),
+        datetime: now.clone(),
+    };
+    push_message_to_channel(&database, &hub, &channel_id, &push_payload).await;
 
     Ok(ApiMessage::new("Post message successfully"))
 }
@@ -329,4 +340,44 @@ pub async fn delete(
         .expect("Database error");
 
     Ok(ApiMessage::new("Delete message sucessfully"))
+}
+
+async fn push_message_to_channel(
+    database: &AppDatabase,
+    hub: &PushHub,
+    channel_id: &Id,
+    payload: &MessagePush,
+) {
+    let rows = sqlx::query(
+        database
+            .sql("SELECT user_id FROM channel_members WHERE channel_id = ?1")
+            .as_ref(),
+    )
+    .bind(channel_id.to_string())
+    .fetch_all(database.sqlx())
+    .await;
+
+    let rows = match rows {
+        Ok(rows) => rows,
+        Err(err) => {
+            tracing::error!(error = %err, "Failed to load channel members for push");
+            return;
+        }
+    };
+
+    let mut users = Vec::with_capacity(rows.len());
+    for row in rows {
+        let user_hex: String = match row.try_get("user_id") {
+            Ok(user_hex) => user_hex,
+            Err(err) => {
+                tracing::error!(error = %err, "Failed to decode channel member id");
+                continue;
+            }
+        };
+        if let Ok(user_id) = user_hex.parse() {
+            users.push(user_id);
+        }
+    }
+
+    hub.send_json_to_users(users, "message", payload).await;
 }
