@@ -746,130 +746,110 @@ FUNCTION get_leaderboard(limit):
 
 === Wireframe: Activity Square
 
-// Hand-drawn style wireframe with annotations
-#let sketch-stroke = 1.5pt + rgb("#4a5568")
-#let sketch-fill = rgb("#f7fafc")
-#let accent = rgb("#3182ce")
-#let annotation = rgb("#718096")
+// Sketch-style wireframe (hand-drawn aesthetic)
+#let sketch-blue = rgb("#2B7CD0")
+#let sketch-light = rgb("#E8F4FD")
+
+// Hand-drawn image placeholder - simple empty box
+#let sketch-img(w, h) = box(width: w, height: h, stroke: 1.5pt + sketch-blue, radius: 3pt, fill: sketch-light)
+
+// Sketch box
+#let sketch-box(content, w: 100%, r: 6pt) = box(
+  width: w,
+  stroke: 1.5pt + sketch-blue,
+  radius: r,
+  inset: 8pt,
+  fill: white,
+  content
+)
 
 #figure(
-  grid(columns: (3fr, 1fr), gutter: 15pt,
-    // Main wireframe - iPad frame
-    box(stroke: 3pt + rgb("#2d3748"), radius: 20pt, inset: 8pt, fill: rgb("#1a202c"))[
-      #box(stroke: sketch-stroke, radius: 12pt, fill: sketch-fill, inset: 0pt, width: 100%)[
-        // Status bar
-        #box(width: 100%, fill: rgb("#edf2f7"), inset: 6pt)[
-          #text(size: 7pt, fill: annotation)[9:41 AM #h(1fr) 100%]
-        ]
+  box(width: 85%, stroke: 2pt + sketch-blue, radius: 12pt, inset: 12pt, fill: sketch-light)[
+    #set text(fill: sketch-blue, size: 9pt)
 
-        // Navigation bar
-        #box(width: 100%, fill: white, inset: 8pt)[
-          #grid(columns: (auto, 1fr, auto),
-            text(size: 9pt, fill: accent)[< Back],
-            align(center)[#text(weight: "bold", size: 11pt)[Activity Square]],
-            text(size: 9pt, fill: accent)[Search]
-          )
-        ]
-        #line(length: 100%, stroke: 0.5pt + rgb("#e2e8f0"))
+    // Title annotation
+    #align(center)[
+      #text(size: 11pt, weight: "bold")[Activity Square Screen]
+      #v(4pt)
+      #text(size: 8pt)[(iPad wireframe sketch)]
+    ]
+    #v(8pt)
 
-        // Content area
-        #box(inset: 10pt)[
-          // Activity Card 1
-          #box(width: 100%, stroke: sketch-stroke, radius: 10pt, fill: white, inset: 10pt)[
-            #box(width: 40pt, height: 40pt, fill: rgb("#bee3f8"), radius: 8pt, stroke: 1pt + accent)[
-              #align(center + horizon)[
-                // Photo icon: mountains + sun
-                #box(width: 24pt, height: 18pt, stroke: 0.8pt + accent, radius: 2pt, fill: white, clip: true)[
-                  #place(bottom + left, dy: 2pt)[#polygon(fill: rgb("#90cdf4"), (0pt, 10pt), (8pt, 3pt), (16pt, 10pt))]
-                  #place(bottom + right, dy: 2pt, dx: -2pt)[#polygon(fill: accent, (0pt, 8pt), (5pt, 2pt), (10pt, 8pt))]
-                  #place(top + right, dx: -4pt, dy: 3pt)[#circle(radius: 2.5pt, fill: rgb("#faf089"))]
-                ]
-              ]
+    // Main screen sketch
+    #sketch-box(r: 10pt)[
+      // Nav bar
+      #grid(columns: (1fr, 2fr, 1fr),
+        [< back],
+        align(center)[*Activity Square*],
+        align(right)[search]
+      )
+      #line(length: 100%, stroke: 1pt + sketch-blue)
+      #v(6pt)
+
+      // Card 1
+      #sketch-box()[
+        #grid(columns: (auto, 1fr), gutter: 10pt,
+          sketch-img(35pt, 35pt),
+          [
+            *Campus Cleanup* \
+            #text(size: 8pt)[location: Main Building] \
+            #text(size: 8pt)[date: Mar 15 | 2h]
+            #v(2pt)
+            #box(width: 100%, height: 8pt, stroke: 1pt + sketch-blue, radius: 4pt)[
+              #box(width: 30%, height: 8pt, fill: sketch-blue, radius: 4pt)[]
             ]
-            #h(8pt)
-            #box(width: 100% - 55pt)[
-              #text(weight: "bold", size: 10pt)[Campus Cleanup] \
-              #text(size: 8pt, fill: annotation)[Main Building | Mar 15 | 2h] \
-              #v(3pt)
-              #box(width: 100%, height: 6pt, fill: rgb("#e2e8f0"), radius: 3pt)[
-                #box(width: 25%, height: 6pt, fill: rgb("#48bb78"), radius: 3pt)[]
-              ]
-              #text(size: 7pt, fill: annotation)[5/20 volunteers]
-            ]
-            #v(6pt)
-            #align(right)[#box(fill: accent, radius: 6pt, inset: (x: 12pt, y: 5pt))[
-              #text(fill: white, size: 8pt, weight: "bold")[Join]
-            ]]
+            #text(size: 7pt)[5/20 volunteers]
           ]
-          #v(8pt)
+        )
+        #align(right)[#box(stroke: 1.5pt + sketch-blue, radius: 4pt, inset: 4pt)[Join]]
+      ]
+      #v(6pt)
 
-          // Activity Card 2
-          #box(width: 100%, stroke: sketch-stroke, radius: 10pt, fill: white, inset: 10pt)[
-            #box(width: 40pt, height: 40pt, fill: rgb("#feebc8"), radius: 8pt, stroke: 1pt + rgb("#ed8936"))[
-              #align(center + horizon)[
-                // Photo icon: mountains + sun (orange variant)
-                #box(width: 24pt, height: 18pt, stroke: 0.8pt + rgb("#ed8936"), radius: 2pt, fill: white, clip: true)[
-                  #place(bottom + left, dy: 2pt)[#polygon(fill: rgb("#fbd38d"), (0pt, 10pt), (8pt, 3pt), (16pt, 10pt))]
-                  #place(bottom + right, dy: 2pt, dx: -2pt)[#polygon(fill: rgb("#ed8936"), (0pt, 8pt), (5pt, 2pt), (10pt, 8pt))]
-                  #place(top + right, dx: -4pt, dy: 3pt)[#circle(radius: 2.5pt, fill: rgb("#faf089"))]
-                ]
-              ]
+      // Card 2
+      #sketch-box()[
+        #grid(columns: (auto, 1fr), gutter: 10pt,
+          sketch-img(35pt, 35pt),
+          [
+            *Library Helper* \
+            #text(size: 8pt)[location: Library] \
+            #text(size: 8pt)[ongoing | 1h]
+            #v(2pt)
+            #box(width: 100%, height: 8pt, stroke: 1pt + sketch-blue, radius: 4pt)[
+              #box(width: 60%, height: 8pt, fill: sketch-blue, radius: 4pt)[]
             ]
-            #h(8pt)
-            #box(width: 100% - 55pt)[
-              #text(weight: "bold", size: 10pt)[Library Helper] \
-              #text(size: 8pt, fill: annotation)[Library | Ongoing | 1h] \
-              #v(3pt)
-              #box(width: 100%, height: 6pt, fill: rgb("#e2e8f0"), radius: 3pt)[
-                #box(width: 60%, height: 6pt, fill: rgb("#ed8936"), radius: 3pt)[]
-              ]
-              #text(size: 7pt, fill: annotation)[3/5 volunteers]
-            ]
-            #v(6pt)
-            #align(right)[#box(fill: accent, radius: 6pt, inset: (x: 12pt, y: 5pt))[
-              #text(fill: white, size: 8pt, weight: "bold")[Join]
-            ]]
+            #text(size: 7pt)[3/5 volunteers]
           ]
-          #v(8pt)
+        )
+        #align(right)[#box(stroke: 1.5pt + sketch-blue, radius: 4pt, inset: 4pt)[Join]]
+      ]
+      #v(6pt)
 
-          // Placeholder card
-          #box(width: 100%, stroke: (dash: "dashed", paint: annotation, thickness: 1pt), radius: 10pt, inset: 15pt)[
-            #align(center)[#text(fill: annotation, size: 9pt)[More activities...]]
-          ]
-        ]
-
-        // Tab bar
-        #line(length: 100%, stroke: 0.5pt + rgb("#e2e8f0"))
-        #box(width: 100%, fill: rgb("#f7fafc"), inset: 8pt)[
-          #grid(columns: (1fr,) * 5, align: center,
-            text(size: 8pt, fill: annotation)[Home],
-            text(size: 8pt, fill: annotation)[Records],
-            text(size: 8pt, fill: accent, weight: "bold")[Square],
-            text(size: 8pt, fill: annotation)[Board],
-            text(size: 8pt, fill: annotation)[Profile]
-          )
+      // More placeholder
+      #align(center)[
+        #box(stroke: (dash: "loosely-dashed", paint: sketch-blue, thickness: 1pt), radius: 6pt, inset: 8pt)[
+          ... more activities ...
         ]
       ]
-    ],
+      #v(8pt)
 
-    // Annotations
-    align(left)[
-      #set text(size: 8pt, fill: annotation)
-      #v(20pt)
-      *Navigation* \
-      Title + back/search
-      #v(25pt)
-      *Activity Card* \
-      - Thumbnail \
-      - Title + meta \
-      - Progress bar \
-      - CTA button
-      #v(40pt)
-      *Tab Bar* \
-      5 main sections
+      // Tab bar
+      #line(length: 100%, stroke: 1pt + sketch-blue)
+      #v(4pt)
+      #grid(columns: (1fr,) * 5, align: center,
+        [Home], [Records], [*Square*], [Board], [Profile]
+      )
     ]
-  ),
-  caption: [Activity Square Screen - iPad Wireframe]
+
+    #v(8pt)
+    // Annotations
+    #text(size: 8pt)[
+      *Key Components:* \
+      - Navigation bar (title + back/search) \
+      - Activity cards (thumbnail, info, progress, CTA) \
+      - Tab bar (5 main sections)
+    ]
+  ],
+  caption: [Activity Square Screen - Sketch Wireframe]
 )
 
 === Input Validation
