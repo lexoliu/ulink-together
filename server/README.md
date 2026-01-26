@@ -70,6 +70,42 @@ Supported flags:
 If you pass a `d1://` URL, the deploy CLI will translate it to a SQLite URL
 and initialize the schema using SQLite-compatible SQL.
 
+## Push (SSE)
+
+Clients can subscribe to server-sent events at:
+
+```
+GET /api/v1/push
+```
+
+Events are named and JSON encoded:
+
+- `event: message` — emitted when a channel message is posted. Payload:
+  - `id`, `channel`, `sender`, `content`, `datetime`
+- `event: notification` — emitted when a notification is created. Payload:
+  - `id`, `user`, `title`, `content`, `created_at`
+
+### Notifications
+
+List the current user's notifications:
+
+```
+GET /api/v1/notification
+```
+
+Create a notification (requires `send_notification` authority):
+
+```
+POST /api/v1/notification
+Content-Type: application/json
+
+{
+  "user": "<user id>",
+  "title": "Welcome",
+  "content": "..."
+}
+```
+
 ## Tests
 
 ```bash

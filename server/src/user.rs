@@ -34,15 +34,25 @@ pub async fn get(
     session: AuthSession,
 ) -> Result<Json<User>, GetUserError> {
     let auth = session.into_auth().await.map_err(|_| GetUserError::Auth)?;
-    auth.ensure_authority("view_user")
-        .await
-        .map_err(|_| GetUserError::Auth)?;
 
-    let id = params
+    let id_str = params
         .get("id")
-        .map_err(|_| GetUserError::InvalidUserId)?
-        .parse::<Id>()
         .map_err(|_| GetUserError::InvalidUserId)?;
+
+    let id = if id_str == "me" {
+        auth.uid()
+    } else {
+        id_str
+            .parse::<Id>()
+            .map_err(|_| GetUserError::InvalidUserId)?
+    };
+
+    if id != auth.uid() {
+        auth.ensure_authority("view_user")
+            .await
+            .map_err(|_| GetUserError::Auth)?;
+    }
+
     let pool = database.sqlx();
     let row = sqlx::query(
         database
@@ -61,6 +71,7 @@ pub async fn get(
     let group = Id::from_str(&group_id).expect("Database error");
 
     Ok(Json(User {
+        id,
         email: row.get("email"),
         realname: row.get("realname"),
         gender: row.get("gender"),

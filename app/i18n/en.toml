@@ -1,0 +1,84 @@
+# English translations for Together app
+
+# Navigation tabs
+"Square" = "Square"
+"Records" = "Records"
+"Account" = "Account"
+
+# Page titles
+"Activity Square" = "Activity Square"
+"My Records" = "My Records"
+"Activity Details" = "Activity Details"
+
+# Login page
+"Welcome" = "Welcome"
+"Together" = "Together"
+"Email" = "Email"
+"Password" = "Password"
+"Login" = "Login"
+"Register" = "Register"
+"No account? Register" = "No account? Register"
+"Already have an account? Login" = "Already have an account? Login"
+"Logging in..." = "Logging in..."
+"Registering..." = "Registering..."
+
+# Registration form
+"Real Name" = "Real Name"
+"Gender" = "Gender"
+"Male" = "Male"
+"Female" = "Female"
+"Other" = "Other"
+"Class Name" = "Class Name"
+
+# Activity card
+"Location:" = "Location:"
+"Date:" = "Date:"
+"Duration:" = "Duration:"
+"{duration} hours" = "{duration} hours"
+"{current}/{max} volunteers" = "{current}/{max} volunteers"
+"Volunteers:" = "Volunteers:"
+"Join" = "Join"
+"Full" = "Full"
+"Ended" = "Ended"
+"Canceled" = "Canceled"
+
+# Activity details
+"Description" = "Description"
+"Volunteer List" = "Volunteer List"
+"Join Activity" = "Join Activity"
+"Leave Activity" = "Leave Activity"
+"Delete Activity" = "Delete Activity"
+"Activity joined successfully" = "Activity joined successfully"
+"Failed to join activity" = "Failed to join activity"
+
+# Activity states
+"Going" = "Going"
+"Need Volunteer" = "Need Volunteer"
+
+# Records page
+"No records yet" = "No records yet"
+"Todo" = "Todo"
+"Done" = "Done"
+
+# Account page
+"Profile" = "Profile"
+"Settings" = "Settings"
+"Logout" = "Logout"
+"My Activities" = "My Activities"
+"Created Activities" = "Created Activities"
+"Joined Activities" = "Joined Activities"
+"Edit Profile" = "Edit Profile"
+"About" = "About"
+"Version" = "Version"
+
+# Common
+"Loading..." = "Loading..."
+"Error" = "Error"
+"OK" = "OK"
+"Cancel" = "Cancel"
+"Retry" = "Retry"
+"No data" = "No data"
+"Refresh" = "Refresh"
+"Save" = "Save"
+"Delete" = "Delete"
+"Confirm" = "Confirm"

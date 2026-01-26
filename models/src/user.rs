@@ -4,6 +4,7 @@ use crate::Id;
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct User {
+    pub id: Id,
     pub email: String,
     pub realname: String,
     pub gender: String,

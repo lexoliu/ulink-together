@@ -1,0 +1,84 @@
+# Chinese (Simplified) translations for Together app
+
+# Navigation tabs
+"Square" = "广场"
+"Records" = "记录"
+"Account" = "账户"
+
+# Page titles
+"Activity Square" = "活动广场"
+"My Records" = "我的记录"
+"Activity Details" = "活动详情"
+
+# Login page
+"Welcome" = "欢迎"
+"Together" = "Together"
+"Email" = "邮箱"
+"Password" = "密码"
+"Login" = "登录"
+"Register" = "注册"
+"No account? Register" = "没有账号？注册"
+"Already have an account? Login" = "已有账号？登录"
+"Logging in..." = "登录中..."
+"Registering..." = "注册中..."
+
+# Registration form
+"Real Name" = "真实姓名"
+"Gender" = "性别"
+"Male" = "男"
+"Female" = "女"
+"Other" = "其他"
+"Class Name" = "班级"
+
+# Activity card
+"Location:" = "地点："
+"Date:" = "日期："
+"Duration:" = "时长："
+"{duration} hours" = "{duration}小时"
+"{current}/{max} volunteers" = "{current}/{max}名志愿者"
+"Volunteers:" = "志愿者："
+"Join" = "参加"
+"Full" = "已满"
+"Ended" = "已结束"
+"Canceled" = "已取消"
+
+# Activity details
+"Description" = "描述"
+"Volunteer List" = "志愿者名单"
+"Join Activity" = "参加活动"
+"Leave Activity" = "退出活动"
+"Delete Activity" = "删除活动"
+"Activity joined successfully" = "成功加入活动"
+"Failed to join activity" = "加入活动失败"
+
+# Activity states
+"Going" = "进行中"
+"Need Volunteer" = "招募中"
+
+# Records page
+"No records yet" = "暂无记录"
+"Todo" = "待完成"
+"Done" = "已完成"
+
+# Account page
+"Profile" = "个人资料"
+"Settings" = "设置"
+"Logout" = "退出登录"
+"My Activities" = "我的活动"
+"Created Activities" = "我创建的"
+"Joined Activities" = "我参加的"
+"Edit Profile" = "编辑资料"
+"About" = "关于"
+"Version" = "版本"
+
+# Common
+"Loading..." = "加载中..."
+"Error" = "错误"
+"OK" = "确定"
+"Cancel" = "取消"
+"Retry" = "重试"
+"No data" = "暂无数据"
+"Refresh" = "刷新"
+"Save" = "保存"
+"Delete" = "删除"
+"Confirm" = "确认"

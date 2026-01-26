@@ -1,0 +1,6 @@
+waterui_path = "../../waterui"
+
+[package]
+type = "playground"
+name = "Together"
+bundle_identifier = "com.together.app"
