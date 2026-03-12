@@ -8,7 +8,7 @@ The current workflow for managing volunteer activities is highly fragmented and 
 
 To resolve these inefficiencies, a centralized, custom-built volunteer management system is proposed. This integrated platform is designed to directly address the core problems identified.
 
-By consolidating all volunteer activities, the system will provide students with a single point of access for all opportunities, solving the issue of fragmented information (**Success Criterion #2**). Integrated communication channels for each activity will eliminate the repetitive setup of external chat groups and streamline organizer-volunteer interaction (**Success Criterion #4**). Crucially, the system will automate the tracking and recording of volunteer hours. This feature eradicates manual calculation errors and allows for the direct generation of an export file compatible with the school's ISMAS system, a key deliverable measured by **Success Criterion #6**. Additional features like an automated leaderboard will foster student engagement (**Success Criterion #5**).
+By consolidating all volunteer activities, the system will provide students with a single point of access for all opportunities, solving the issue of fragmented information (**Success Criterion #2**). Integrated communication channels for each activity will eliminate the repetitive setup of external chat groups and streamline organizer-volunteer interaction (**Success Criterion #4**). Crucially, the system will automate the tracking and recording of volunteer hours. This feature reduces manual calculation errors and allows the system to generate an export file matching the school's ISMAS import requirements, a key deliverable measured by **Success Criterion #6**. Additional features like an automated leaderboard will foster student engagement (**Success Criterion #5**).
 
 The client-server architecture will use a carefully selected technology stack. The client application will be developed with **SwiftUI** to ensure a native, high-performance experience on the school's mandatory iPads (iPadOS 17.5+), as verified by **Success Criterion #7**. The server backend will use **Rust** for its memory safety and efficiency, ensuring system reliability. All data will be stored in a **PostgreSQL** relational database to maintain data integrity between users, activities, and recorded hours.
 
@@ -37,6 +37,6 @@ The success of the solution will be evaluated against the following measurable c
     
 5. **Leaderboard**: A leaderboard displays volunteers ranked by total recorded hours, updating automatically after each activity is completed.
     
-6. **Hour Tracking and Export**: The system records volunteer hours automatically after an activity is confirmed by the organiser, and it generates an export file in a format directly compatible with ISMAS.
+6. **Hour Tracking and Export**: The system records volunteer hours automatically after an activity is confirmed by the organiser, and it generates an export file matching the school's ISMAS import requirements.
     
 7. **Platform Compatibility**: The client application runs without error on iPadOS 17.5 or later, and all primary features function as intended.
