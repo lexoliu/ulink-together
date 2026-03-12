@@ -43,15 +43,18 @@ Do not casually reinterpret these criteria during implementation. If a criterion
 ## Repository Layout
 
 - `swiftui/`: new SwiftUI app. This is the client implementation target.
+- `app/`: frozen exploratory implementation. Do not use it as a product reference, implementation guide, or contract source.
 - `server/`: Rust backend API, auth, persistence, and push logic.
 - `models/`: shared Rust models and payload naming reference.
 - `design/`: static visual references; useful for inspiration, not the final source of truth.
 - `Criterion A.md`: client context and success criteria.
 - `Criterion B.typ`: design overview, flows, data design, UI direction, and test mapping.
+- `/Users/lexoliu/Coding/old-ulink-together`: historical reference implementation. If previous product behavior needs to be understood, inspect this path instead of `app/`.
 
 ## Current Engineering Reality
 
 - `swiftui/` is still close to a skeleton and should be treated as a fresh client implementation.
+- `app/` is incomplete and frozen. It must not be consulted for feature parity, UI decisions, or API expectations.
 - `server/` and `models/` already define most of the current runtime contract.
 - Authentication is cookie-based, not token-based.
 - Real-time updates use SSE at `/api/v1/push`.
@@ -60,6 +63,8 @@ Do not casually reinterpret these criteria during implementation. If a criterion
 ## Working Rules For Future Agents
 
 - Build the client from `SPECS.md`, not from guesswork.
+- Do not reference `app/` during implementation work. Treat it as dead exploratory code.
+- If historical behavior or prior product flow needs to be understood, use `/Users/lexoliu/Coding/old-ulink-together` as the reference repository instead.
 - Do not mention old products or exploratory client implementations in project-facing docs unless explicitly asked.
 - Do not edit `Criterion A.md` or `Criterion B.typ` unless the user asks for document work.
 - Keep the app iPad-first. Avoid phone-first compromises in navigation or density.
