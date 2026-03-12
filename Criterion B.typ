@@ -86,7 +86,7 @@
       #text(size: 20pt, weight: "bold", fill: navy)[Criterion B: Solution Overview]
       #v(5pt)
       #text(size: 9.2pt, fill: ink-soft)[
-        Planned design guide for a new iPad-first volunteer management application
+        Design overview and record of development for an iPad-first volunteer management application
       ]
       #v(8pt)
       #pill([SwiftUI iPad App])
@@ -98,111 +98,32 @@
   ]
 ]
 
-= Record of Tasks
+= Record of Tasks Form
 
 #set text(size: 9pt)
 #table(
-  columns: (auto, auto, auto, 1.25fr, 2fr, 1.1fr, 1.4fr),
-  align: (center, center, center, left, left, left, left),
+  columns: (auto, 1.9fr, 1.8fr, auto, auto, auto),
+  align: (center, left, left, center, center, center),
   table.header(
-    [*No.*], [*Time*], [*Phase*], [*Task*], [*Process*], [*Deliverable*], [*Reflection / Next Step*]
+    [*Task No.*], [*Planned Action*], [*Planned Outcome*], [*Time Estimated*], [*Target Completion Date*], [*Criterion*]
   ),
 
-  [1], [Week 1], [Plan],
-  [Confirm client context and user roles],
-  [Interview staff and student users to identify how volunteer opportunities are published, joined, supervised, and recorded.],
-  [Requirements notes and role definitions],
-  [The product should stay focused on school volunteering rather than expanding into a general-purpose social app.],
-
-  [2], [Week 1], [Plan],
-  [Turn requirements into measurable success criteria],
-  [Rewrite user needs as criteria that can later be tested with concrete evidence rather than broad impressions.],
-  [Success criteria set],
-  [Each criterion needs an observable outcome, not just a desirable feature.],
-
-  [3], [Week 2], [Plan],
-  [Choose platform and architecture],
-  [Compare implementation approaches and select a native iPad client with a client-server structure.],
-  [Architecture decision note],
-  [Native iPad interaction is more important than maximizing code sharing across unrelated platforms.],
-
-  [4], [Week 2], [Design],
-  [Design information architecture],
-  [Separate volunteer and organiser journeys, then merge them into a single role-aware application structure.],
-  [Navigation map and role matrix],
-  [One app with role-based actions is cleaner than maintaining parallel products.],
-
-  [5], [Week 3], [Design],
-  [Model the data structure],
-  [Define entities, ownership, and relational constraints for users, activities, records, channels, messages, and exports.],
-  [ER diagram and data notes],
-  [The model must prevent duplicate joins and keep leaderboard data derived rather than manually edited.],
-
-  [6], [Week 3], [Design],
-  [Define activity and participation lifecycles],
-  [Specify valid transitions for activity publication, participation confirmation, cancellation, and completion.],
-  [State diagrams and rules],
-  [Lifecycle clarity will reduce ambiguity in both implementation and testing.],
-
-  [7], [Week 4], [Design],
-  [Design service interaction patterns],
-  [List the app actions that require requests, push updates, or structured export generation.],
-  [Request and flow diagrams],
-  [The design section should explain behavior, not drown in endpoint detail.],
-
-  [8], [Week 4], [Design],
-  [Create UI wireframes],
-  [Draft the feed, detail, organiser, leaderboard, and account screens with emphasis on iPad readability and scan speed.],
-  [Low-fidelity screen set],
-  [Students will often browse opportunities between classes, so the feed must support quick comparison.],
-
-  [9], [Week 5-6], [Develop],
-  [Build registration and account features],
-  [Implement registration, login, avatar handling, session continuity, and editable profile data.],
-  [Account module],
-  [Validation should be visible where the error occurs rather than pushed into generic alerts.],
-
-  [10], [Week 7-8], [Develop],
-  [Build activity publication and joining],
-  [Implement creation, editing, cancellation, joining, and safe participant counting.],
-  [Activity and participation module],
-  [Concurrency around joining is a critical risk area and must be solved early.],
-
-  [11], [Week 9], [Develop],
-  [Build activity communication],
-  [Implement activity-linked channels, membership checks, history storage, and real-time message delivery.],
-  [Channel and messaging module],
-  [Messaging should stay focused on activities instead of becoming a detached chat feature.],
-
-  [12], [Week 10], [Develop],
-  [Build leaderboard and hour tracking],
-  [Aggregate confirmed participation time, rank volunteers, and support organiser confirmation actions.],
-  [Leaderboard and hour-tracking module],
-  [Ranking must be derived from confirmed records rather than stored totals on user profiles.],
-
-  [13], [Week 11], [Research],
-  [Investigate ISMAS export requirements],
-  [Review public information about school data imports and plan an export adapter that can match a school-provided ISMAS template.],
-  [Export strategy note],
-  [No public ISMAS import specification was identified, so the export layer needs to remain configurable.],
-
-  [14], [Week 12], [Test],
-  [Prepare criterion-linked tests],
-  [Translate each success criterion into functional, boundary, timing, and usability tests.],
-  [Outline test plan],
-  [Test coverage should mirror Criterion A instead of turning into generic QA.],
-
-  [15], [Week 13], [Test],
-  [Run iPad compatibility and usability checks],
-  [Test portrait and landscape layouts, long-content behavior, and touch interactions on target devices.],
-  [Device and usability notes],
-  [Interface quality matters because this product is intended for real school use, not just demonstration.],
-
-  [16], [Week 14], [Implement],
-  [Pilot and refine],
-  [Conduct a limited trial, collect feedback, and revise the product before final evaluation.],
-  [Pilot checklist and revision log],
-  [The final version should demonstrate that the design works in the client’s real environment.],
+  [1], [Meet the client and clarify the real workflow problems around volunteering, communication, and hour reporting.], [A clear problem definition and a set of client-backed priorities for the product.], [4 hours], [Week 1], [A],
+  [2], [Translate the consultation notes into measurable success criteria that can later be tested.], [A criterion set that can be observed and verified rather than described vaguely.], [3 hours], [Week 1], [A],
+  [3], [Compare development approaches and choose a native iPad solution with a client-server architecture.], [A justified platform and architecture decision aligned with the client environment.], [4 hours], [Week 2], [B],
+  [4], [Map volunteer and organiser journeys to design the information architecture of the app.], [A role-aware navigation structure that supports the main tasks of both user groups.], [5 hours], [Week 2], [B],
+  [5], [Design the relational data structure for users, activities, participation, comments, channels, messages, and exports.], [A data model that supports history, permissions, ranking, and reporting without duplication.], [6 hours], [Week 3], [B],
+  [6], [Define the lifecycle states for activities and participation records.], [Consistent state transitions for publishing, joining, cancelling, confirming, and ranking.], [3 hours], [Week 3], [B],
+  [7], [Design the major request-response and push-update flows used by the app.], [A clear explanation of how core user actions move through the system.], [4 hours], [Week 4], [B],
+  [8], [Produce low-fidelity wireframes for the feed, detail, organiser, leaderboard, and account screens.], [A layout foundation for the SwiftUI interface with strong iPad readability.], [5 hours], [Week 4], [B],
+  [9], [Implement registration, login, avatar handling, and session continuity.], [A usable account system that supports the first success criterion.], [8 hours], [Week 5], [C],
+  [10], [Implement activity publication, editing, cancellation, and protected joining.], [Core activity management with safe participant counting and correct visibility.], [10 hours], [Week 6], [C],
+  [11], [Implement activity-linked communication with history and live updates.], [A channel system that supports sending, receiving, and retaining activity messages.], [8 hours], [Week 7], [C],
+  [12], [Implement confirmed-hour aggregation and leaderboard ranking.], [A ranking view driven by verified participation data rather than manual totals.], [6 hours], [Week 8], [C],
+  [13], [Research school import workflows and design a configurable export adapter for ISMAS-related reporting.], [An export design that can match the school-provided template when it is available.], [4 hours], [Week 9], [B],
+  [14], [Prepare criterion-linked tests covering normal use, edge cases, timing, and layout.], [A test plan that maps directly to the success criteria from Criterion A.], [5 hours], [Week 10], [B],
+  [15], [Test the solution on target iPads in portrait and landscape and gather user feedback.], [Evidence that the interface works well in the client's actual usage context.], [6 hours], [Week 11], [D/E],
+  [16], [Review pilot feedback and refine the product before final submission.], [A more reliable and client-aligned final solution.], [4 hours], [Week 12], [E],
 )
 #set text(size: 10pt)
 
@@ -210,7 +131,7 @@
 
 == Architectural Rationale
 
-The proposed solution uses a *client-server structure*. The iPad client handles presentation, form entry, local view state, and user feedback. The service layer is responsible for validation, permissions, persistence, ranking logic, and real-time updates. This separation keeps the SwiftUI interface responsive while ensuring that shared data remains consistent for every user.
+Following consultation with the client, the solution was developed as a *client-server structure*. The iPad client handles presentation, form entry, local view state, and user feedback. The service layer is responsible for validation, permissions, persistence, ranking logic, and real-time updates. This separation keeps the SwiftUI interface responsive while ensuring that shared data remains consistent for every user.
 
 #grid(
   columns: (1fr, 1fr, 1fr),
@@ -318,7 +239,7 @@ The proposed solution uses a *client-server structure*. The iPad client handles 
 
 == Information Architecture
 
-The product structure is organized around repeated tasks. Volunteers mostly browse, join, message, and review records. Organisers mostly publish, manage, confirm, and communicate. The navigation therefore places the activity feed first, then context screens, then role-specific management.
+The product structure was organized around the repeated tasks identified during consultation. Volunteers mostly browse, join, message, and review records. Organisers mostly publish, manage, confirm, and communicate. The navigation therefore places the activity feed first, then context screens, then role-specific management.
 
 #figure(
   box(fill: white, stroke: 1pt + border, radius: 12pt, inset: 12pt)[
