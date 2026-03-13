@@ -9,6 +9,7 @@ import {
   House,
   ListFilter,
   LogOut,
+  MessageSquareMore,
   Plus,
   Search,
   Sparkles,
@@ -37,6 +38,7 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { AdminApiClient, ApiError } from '@/lib/api'
 import {
   activityStateLabel,
@@ -59,7 +61,7 @@ import type {
 type PanelTab = 'overview' | 'records' | 'channel'
 type ActivityScope = 'all' | 'mine'
 type ActivityFilter = 'all' | 'need_volunteer' | 'going' | 'ended' | 'canceled'
-type AdminView = 'home' | 'activities'
+type AdminView = 'home' | 'activities' | 'chats'
 
 const api = new AdminApiClient()
 
@@ -77,14 +79,14 @@ const emptyDraft: ActivityDraft = {
 
 function App() {
   const queryClient = useQueryClient()
+  const location = useLocation()
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
 
   const [authEpoch, setAuthEpoch] = useState(0)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loginError, setLoginError] = useState<string | null>(null)
-  const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null)
-  const [panelTab, setPanelTab] = useState<PanelTab>('overview')
-  const [currentView, setCurrentView] = useState<AdminView>('home')
   const [search, setSearch] = useState('')
   const [scope, setScope] = useState<ActivityScope>('all')
   const [stateFilter, setStateFilter] = useState<ActivityFilter>('all')
@@ -92,6 +94,11 @@ function App() {
   const [editingActivity, setEditingActivity] = useState<ActivityDetail | null>(null)
   const [exportBatch, setExportBatch] = useState<ExportBatchResponse | null>(null)
   const [recordActionId, setRecordActionId] = useState<string | null>(null)
+
+  const currentView = viewFromPath(location.pathname)
+  const selectedActivityId = searchParams.get('activity')
+  const selectedChatActivityId = searchParams.get('chat')
+  const panelTab = (searchParams.get('tab') as PanelTab | null) ?? 'overview'
 
   const currentUserQuery = useQuery({
     queryKey: ['current-user', authEpoch],
@@ -151,6 +158,17 @@ function App() {
       ? selectedActivityId
       : filteredActivities[0]?.id ?? null
 
+  const chatActivities = useMemo(
+    () => (activitiesQuery.data ?? []).filter((activity) => activity.state !== 'canceled'),
+    [activitiesQuery.data],
+  )
+
+  const resolvedSelectedChatActivityId =
+    selectedChatActivityId &&
+    chatActivities.some((activity) => activity.id === selectedChatActivityId)
+      ? selectedChatActivityId
+      : chatActivities[0]?.id ?? null
+
   const selectedDetailQuery = useQuery({
     queryKey: ['activity-detail', resolvedSelectedActivityId],
     queryFn: () => api.activity(resolvedSelectedActivityId!),
@@ -158,6 +176,14 @@ function App() {
   })
 
   const selectedDetail = selectedDetailQuery.data ?? null
+
+  const selectedChatDetailQuery = useQuery({
+    queryKey: ['chat-activity-detail', resolvedSelectedChatActivityId],
+    queryFn: () => api.activity(resolvedSelectedChatActivityId!),
+    enabled: Boolean(resolvedSelectedChatActivityId),
+  })
+
+  const selectedChatDetail = selectedChatDetailQuery.data ?? null
 
   const recordsQuery = useQuery({
     queryKey: ['activity-records', resolvedSelectedActivityId],
@@ -190,10 +216,25 @@ function App() {
     enabled: Boolean(resolvedSelectedActivityId),
   })
 
+  const chatChannelQuery = useQuery({
+    queryKey: ['chat-channels', resolvedSelectedChatActivityId],
+    queryFn: async () => {
+      const channels = await api.channels(resolvedSelectedChatActivityId!)
+      return channels[0] ?? null
+    },
+    enabled: Boolean(resolvedSelectedChatActivityId),
+  })
+
   const messagesQuery = useQuery({
     queryKey: ['messages', channelQuery.data?.id],
     queryFn: () => api.messages(channelQuery.data!.id),
     enabled: Boolean(channelQuery.data?.id),
+  })
+
+  const chatMessagesQuery = useQuery({
+    queryKey: ['chat-messages', chatChannelQuery.data?.id],
+    queryFn: () => api.messages(chatChannelQuery.data!.id),
+    enabled: Boolean(chatChannelQuery.data?.id),
   })
 
   const channelParticipantIds = useMemo(
@@ -213,6 +254,25 @@ function App() {
       return Object.fromEntries(names)
     },
     enabled: channelParticipantIds.length > 0 && authorities.view_user === true,
+  })
+
+  const chatParticipantIds = useMemo(
+    () =>
+      Array.from(new Set((chatMessagesQuery.data ?? []).map((message) => message.sender))).filter(
+        (userId) => userId !== currentUser?.id,
+      ),
+    [chatMessagesQuery.data, currentUser?.id],
+  )
+
+  const chatMessageNamesQuery = useQuery({
+    queryKey: ['chat-message-names', chatParticipantIds],
+    queryFn: async () => {
+      const names = await Promise.all(
+        chatParticipantIds.map(async (userId) => [userId, await api.userName(userId)] as const),
+      )
+      return Object.fromEntries(names)
+    },
+    enabled: chatParticipantIds.length > 0 && authorities.view_user === true,
   })
 
   const loginMutation = useMutation({
@@ -239,9 +299,8 @@ function App() {
     mutationFn: () => api.logout(),
     onSuccess: async () => {
       queryClient.clear()
-      setSelectedActivityId(null)
-      setCurrentView('home')
       setAuthEpoch((value) => value + 1)
+      navigateHome()
       toast.success('Signed out.')
     },
     onError: showMutationError,
@@ -253,8 +312,7 @@ function App() {
       toast.success('Activity created.')
       setFormOpen(false)
       setEditingActivity(null)
-      setSelectedActivityId(activity.id)
-      setCurrentView('activities')
+      navigateActivities(activity.id)
       await queryClient.invalidateQueries({ queryKey: ['activities'] })
       await queryClient.invalidateQueries({ queryKey: ['activity-detail'] })
     },
@@ -268,7 +326,7 @@ function App() {
       toast.success('Activity updated.')
       setFormOpen(false)
       setEditingActivity(null)
-      setSelectedActivityId(activity.id)
+      navigateActivities(activity.id, panelTab)
       await queryClient.invalidateQueries({ queryKey: ['activities'] })
       await queryClient.invalidateQueries({ queryKey: ['activity-detail', activity.id] })
     },
@@ -339,6 +397,40 @@ function App() {
     ...participantNames,
     ...(messageNamesQuery.data ?? {}),
     ...(currentUser ? { [currentUser.id]: currentUser.realname } : {}),
+  }
+
+  const chatSenderNames = {
+    ...(chatMessageNamesQuery.data ?? {}),
+    ...(currentUser ? { [currentUser.id]: currentUser.realname } : {}),
+  }
+
+  const navigateHome = () => {
+    navigate('/')
+  }
+
+  const navigateActivities = (activityId?: string, tab?: PanelTab) => {
+    const params = new URLSearchParams()
+    if (activityId) {
+      params.set('activity', activityId)
+    }
+    if (tab) {
+      params.set('tab', tab)
+    }
+    navigate({
+      pathname: '/activities',
+      search: params.toString(),
+    })
+  }
+
+  const navigateChats = (activityId?: string) => {
+    const params = new URLSearchParams()
+    if (activityId) {
+      params.set('chat', activityId)
+    }
+    navigate({
+      pathname: '/chats',
+      search: params.toString(),
+    })
   }
 
   const metrics = useMemo(
@@ -415,13 +507,19 @@ function App() {
                 active={currentView === 'home'}
                 icon={<House className="size-4" />}
                 label="Home"
-                onClick={() => setCurrentView('home')}
+                onClick={navigateHome}
               />
               <SidebarItem
                 active={currentView === 'activities'}
                 icon={<FolderKanban className="size-4" />}
                 label="Activities"
-                onClick={() => setCurrentView('activities')}
+                onClick={() => navigateActivities(selectedActivityId ?? undefined, panelTab)}
+              />
+              <SidebarItem
+                active={currentView === 'chats'}
+                icon={<MessageSquareMore className="size-4" />}
+                label="Chats"
+                onClick={() => navigateChats(selectedChatActivityId ?? undefined)}
               />
             </nav>
 
@@ -481,13 +579,19 @@ function App() {
                   active={currentView === 'home'}
                   icon={<House className="size-4" />}
                   label="Home"
-                  onClick={() => setCurrentView('home')}
+                  onClick={navigateHome}
                 />
                 <SidebarItem
                   active={currentView === 'activities'}
                   icon={<FolderKanban className="size-4" />}
                   label="Activities"
-                  onClick={() => setCurrentView('activities')}
+                  onClick={() => navigateActivities(selectedActivityId ?? undefined, panelTab)}
+                />
+                <SidebarItem
+                  active={currentView === 'chats'}
+                  icon={<MessageSquareMore className="size-4" />}
+                  label="Chats"
+                  onClick={() => navigateChats(selectedChatActivityId ?? undefined)}
                 />
               </div>
             </header>
@@ -506,9 +610,31 @@ function App() {
                 }}
                 onGenerateExport={() => exportMutation.mutate()}
                 onOpenActivity={(activityId) => {
-                  setSelectedActivityId(activityId)
-                  setCurrentView('activities')
+                  navigateActivities(activityId)
                 }}
+              />
+            ) : currentView === 'chats' ? (
+              <ChatWorkspace
+                activities={chatActivities}
+                selectedActivityId={resolvedSelectedChatActivityId}
+                selectedActivity={selectedChatDetail}
+                channel={chatChannelQuery.data ?? null}
+                messages={chatMessagesQuery.data ?? []}
+                senderNames={chatSenderNames}
+                currentUserId={currentUser?.id ?? null}
+                isSendingMessage={sendMessageMutation.isPending}
+                onSelectActivity={(activityId) => navigateChats(activityId)}
+                onOpenActivities={() => {
+                  if (resolvedSelectedChatActivityId) {
+                    navigateActivities(resolvedSelectedChatActivityId)
+                  } else {
+                    navigateActivities()
+                  }
+                }}
+                onSendMessage={async (content) => {
+                  await sendMessageMutation.mutateAsync(content)
+                }}
+                pushUrl={api.pushURL()}
               />
             ) : (
               <ActivitiesPage
@@ -535,7 +661,7 @@ function App() {
                 onSearchChange={setSearch}
                 onScopeChange={setScope}
                 onStateFilterChange={setStateFilter}
-                onSelectActivity={setSelectedActivityId}
+                onSelectActivity={(activityId) => navigateActivities(activityId, panelTab)}
                 onCreateActivity={() => {
                   setEditingActivity(null)
                   setFormOpen(true)
@@ -546,13 +672,18 @@ function App() {
                     setFormOpen(true)
                   }
                 }}
+                onOpenChat={() => {
+                  if (selectedDetail) {
+                    navigateChats(selectedDetail.id)
+                  }
+                }}
                 onGenerateExport={() => exportMutation.mutate()}
                 onTransition={(action) => {
                   if (selectedDetail) {
                     activityActionMutation.mutate({ id: selectedDetail.id, action })
                   }
                 }}
-                onPanelTabChange={setPanelTab}
+                onPanelTabChange={(value) => navigateActivities(selectedDetail?.id, value)}
                 onRecordAction={(id, action) => recordActionMutation.mutate({ id, action })}
                 onSendMessage={async (content) => {
                   await sendMessageMutation.mutateAsync(content)
@@ -752,6 +883,7 @@ function ActivitiesPage({
   onSelectActivity,
   onCreateActivity,
   onEditActivity,
+  onOpenChat,
   onGenerateExport,
   onTransition,
   onPanelTabChange,
@@ -785,6 +917,7 @@ function ActivitiesPage({
   onSelectActivity: (value: string) => void
   onCreateActivity: () => void
   onEditActivity: () => void
+  onOpenChat: () => void
   onGenerateExport: () => void
   onTransition: (action: 'need_volunteer' | 'go' | 'end' | 'cancel') => void
   onPanelTabChange: (value: PanelTab) => void
@@ -952,6 +1085,11 @@ function ActivitiesPage({
                         </Button>
                       ) : null}
 
+                      <Button variant="outline" onClick={onOpenChat}>
+                        <MessageSquareMore className="mr-2 size-4" />
+                        Open chat
+                      </Button>
+
                       {canGenerateExport ? (
                         <Button variant="outline" disabled={isExporting} onClick={onGenerateExport}>
                           <Download className="mr-2 size-4" />
@@ -998,7 +1136,7 @@ function ActivitiesPage({
                 <TabsList variant="line" className="rounded-2xl bg-white/82 p-1.5 shadow-sm">
                   <TabsTrigger value="overview">Overview</TabsTrigger>
                   <TabsTrigger value="records">Records</TabsTrigger>
-                  <TabsTrigger value="channel">Channel</TabsTrigger>
+                  <TabsTrigger value="channel">Chat Status</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="overview">
@@ -1047,17 +1185,17 @@ function ActivitiesPage({
                 </TabsContent>
 
                 <TabsContent value="channel">
-                <ChannelPanel
-                  pushUrl={pushUrl}
-                  channel={channel}
-                  activityState={selectedDetail.state}
+                  <ChannelPanel
+                    pushUrl={pushUrl}
+                    channel={channel}
+                    activityState={selectedDetail.state}
                   initialMessages={messages}
                   senderNames={senderNames}
                   currentUserId={currentUserId}
                   isSendingMessage={isSendingMessage}
                   onSendMessage={onSendMessage}
-                />
-              </TabsContent>
+                  />
+                </TabsContent>
               </Tabs>
             </>
           ) : (
@@ -1078,6 +1216,117 @@ function ActivitiesPage({
         </div>
       </div>
     </>
+  )
+}
+
+function ChatWorkspace({
+  activities,
+  selectedActivityId,
+  selectedActivity,
+  channel,
+  messages,
+  senderNames,
+  currentUserId,
+  isSendingMessage,
+  onSelectActivity,
+  onOpenActivities,
+  onSendMessage,
+  pushUrl,
+}: {
+  activities: ActivitySummary[]
+  selectedActivityId: string | null
+  selectedActivity: ActivityDetail | null
+  channel: ChannelResponse | null
+  messages: ChannelMessage[]
+  senderNames: Record<string, string>
+  currentUserId: string | null
+  isSendingMessage: boolean
+  onSelectActivity: (activityId: string) => void
+  onOpenActivities: () => void
+  onSendMessage: (content: string) => Promise<void>
+  pushUrl: string
+}) {
+  return (
+    <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+      <Card className="border-white/70 bg-white/88 shadow-lg shadow-slate-200/40">
+        <CardHeader>
+          <CardTitle>Chats</CardTitle>
+          <CardDescription>
+            Pick an activity and continue the conversation without leaving a persistent message workspace.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="pb-0">
+          <ScrollArea className="h-[calc(100vh-16rem)] pr-3">
+            <div className="grid gap-3 pb-4">
+              {activities.map((activity) => (
+                <button
+                  key={activity.id}
+                  type="button"
+                  onClick={() => onSelectActivity(activity.id)}
+                  className={`rounded-2xl border p-4 text-left transition ${
+                    activity.id === selectedActivityId
+                      ? 'border-sky-400 bg-sky-50 shadow-sm'
+                      : 'border-border/70 bg-background hover:border-slate-300 hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="font-medium text-slate-950">{activity.name}</p>
+                      <p className="mt-1 text-sm text-slate-600">
+                        {formatDateOnly(activity.date)} · {activity.location}
+                      </p>
+                    </div>
+                    <Badge variant="secondary">{activityStateLabel(activity.state)}</Badge>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </ScrollArea>
+        </CardContent>
+      </Card>
+
+      {selectedActivity ? (
+        <div className="grid gap-4">
+          <Card className="border-white/70 bg-white/92 shadow-lg shadow-slate-200/40">
+            <CardHeader className="gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <CardDescription>Chat workspace</CardDescription>
+                <CardTitle className="text-2xl font-semibold tracking-tight text-slate-950">
+                  {selectedActivity.name}
+                </CardTitle>
+              </div>
+              <Button variant="outline" onClick={onOpenActivities}>
+                <FolderKanban className="mr-2 size-4" />
+                Open activity details
+              </Button>
+            </CardHeader>
+          </Card>
+
+          <ChannelPanel
+            pushUrl={pushUrl}
+            channel={channel}
+            activityState={selectedActivity.state}
+            initialMessages={messages}
+            senderNames={senderNames}
+            currentUserId={currentUserId}
+            isSendingMessage={isSendingMessage}
+            onSendMessage={onSendMessage}
+          />
+        </div>
+      ) : (
+        <Card className="border-white/70 bg-white/92 shadow-lg shadow-slate-200/40">
+          <CardContent className="flex min-h-[480px] flex-col items-center justify-center gap-4 text-center">
+            <MessageSquareMore className="size-10 text-slate-400" />
+            <div>
+              <h2 className="text-xl font-semibold text-slate-950">Choose a chat</h2>
+              <p className="mt-2 max-w-md text-sm leading-6 text-slate-600">
+                Select an activity from the left column to open its conversation workspace.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
   )
 }
 
@@ -1220,6 +1469,16 @@ function initials(user: UserProfile | null): string {
   }
   const parts = user.realname.split(' ').filter(Boolean)
   return parts.map((part) => part[0]).slice(0, 2).join('').toUpperCase()
+}
+
+function viewFromPath(pathname: string): AdminView {
+  if (pathname.startsWith('/activities')) {
+    return 'activities'
+  }
+  if (pathname.startsWith('/chats')) {
+    return 'chats'
+  }
+  return 'home'
 }
 
 export default App
