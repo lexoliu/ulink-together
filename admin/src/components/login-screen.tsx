@@ -25,7 +25,7 @@ export function LoginScreen({
   onSubmit,
 }: LoginScreenProps) {
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_right,_rgba(56,189,248,0.16),_transparent_30%),linear-gradient(to_bottom,_#f8fafc,_#eef2ff)] px-6 py-12">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_right,_rgba(148,163,184,0.1),_transparent_30%),linear-gradient(to_bottom,_#f7f5f2,_#f1efe9)] px-6 py-12">
       <div className="mx-auto grid max-w-4xl gap-8 lg:grid-cols-[1fr_0.95fr]">
         <section className="flex flex-col justify-between rounded-[2rem] border border-white/70 bg-white/75 p-8 shadow-2xl shadow-slate-200/70 backdrop-blur">
           <div>

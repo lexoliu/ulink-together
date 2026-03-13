@@ -13,6 +13,10 @@ body,
 
 body {
   margin: 0;
+  background:
+    radial-gradient(circle at top, rgba(148, 163, 184, 0.1), transparent 24%),
+    radial-gradient(circle at bottom left, rgba(120, 137, 128, 0.1), transparent 28%),
+    linear-gradient(180deg, #f7f5f2 0%, #f1efe9 100%);
 }
 
 :root {
@@ -132,8 +136,13 @@ body {
   }
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: 'ss01' 1, 'cv08' 1, 'cv11' 1;
+    text-rendering: optimizeLegibility;
   }
   html {
     @apply font-sans;
+  }
+  ::selection {
+    background: color-mix(in oklch, var(--color-primary) 16%, white);
   }
 }

@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react'
+import { Suspense, lazy, startTransition, useDeferredValue, useMemo, useState } from 'react'
 import {
+  ArrowRight,
   CheckCircle2,
-  ChevronRight,
   Clock3,
   Download,
   FileSpreadsheet,
@@ -10,6 +10,8 @@ import {
   ListFilter,
   LogOut,
   MessageSquareMore,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   Search,
   Sparkles,
@@ -18,11 +20,9 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tansta
 import { toast } from 'sonner'
 
 import './App.css'
-import { ActivityFormDialog } from '@/components/activity-form-dialog'
 import { ActivityRecordsTable } from '@/components/activity-records-table'
-import { ChannelPanel } from '@/components/channel-panel'
-import { ExportBatchDialog } from '@/components/export-batch-dialog'
-import { LoginScreen } from '@/components/login-screen'
+import { ChannelStatusCard } from '@/components/channel-status-card'
+import { CommandPalette } from '@/components/command-palette'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -64,6 +64,31 @@ type ActivityFilter = 'all' | 'need_volunteer' | 'going' | 'ended' | 'canceled'
 type AdminView = 'home' | 'activities' | 'chats'
 
 const api = new AdminApiClient()
+const ActivityFormDialog = lazy(async () =>
+  import('@/components/activity-form-dialog').then((module) => ({
+    default: module.ActivityFormDialog,
+  })),
+)
+const ChatWorkspace = lazy(async () =>
+  import('@/components/chat-workspace').then((module) => ({
+    default: module.ChatWorkspace,
+  })),
+)
+const ExportBatchDialog = lazy(async () =>
+  import('@/components/export-batch-dialog').then((module) => ({
+    default: module.ExportBatchDialog,
+  })),
+)
+const HomeActivityChart = lazy(async () =>
+  import('@/components/home-activity-chart').then((module) => ({
+    default: module.HomeActivityChart,
+  })),
+)
+const LoginScreen = lazy(async () =>
+  import('@/components/login-screen').then((module) => ({
+    default: module.LoginScreen,
+  })),
+)
 
 const emptyDraft: ActivityDraft = {
   name: '',
@@ -88,12 +113,18 @@ function App() {
   const [password, setPassword] = useState('')
   const [loginError, setLoginError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [chatSearch, setChatSearch] = useState('')
   const [scope, setScope] = useState<ActivityScope>('all')
   const [stateFilter, setStateFilter] = useState<ActivityFilter>('all')
   const [formOpen, setFormOpen] = useState(false)
   const [editingActivity, setEditingActivity] = useState<ActivityDetail | null>(null)
   const [exportBatch, setExportBatch] = useState<ExportBatchResponse | null>(null)
   const [recordActionId, setRecordActionId] = useState<string | null>(null)
+  const [commandOpen, setCommandOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+
+  const deferredSearch = useDeferredValue(search)
+  const deferredChatSearch = useDeferredValue(chatSearch)
 
   const currentView = viewFromPath(location.pathname)
   const selectedActivityId = searchParams.get('activity')
@@ -140,17 +171,17 @@ function App() {
         return false
       }
 
-      if (!search.trim()) {
+      if (!deferredSearch.trim()) {
         return true
       }
 
-      const query = search.toLowerCase()
+      const query = deferredSearch.toLowerCase()
       return [activity.name, activity.location, activity.brief_description]
         .join(' ')
         .toLowerCase()
         .includes(query)
     })
-  }, [activitiesQuery.data, currentUser?.id, scope, search, stateFilter])
+  }, [activitiesQuery.data, currentUser?.id, deferredSearch, scope, stateFilter])
 
   const resolvedSelectedActivityId =
     selectedActivityId &&
@@ -158,10 +189,21 @@ function App() {
       ? selectedActivityId
       : filteredActivities[0]?.id ?? null
 
-  const chatActivities = useMemo(
-    () => (activitiesQuery.data ?? []).filter((activity) => activity.state !== 'canceled'),
-    [activitiesQuery.data],
-  )
+  const chatActivities = useMemo(() => {
+    return (activitiesQuery.data ?? [])
+      .filter((activity) => activity.state !== 'canceled')
+      .filter((activity) => {
+        if (!deferredChatSearch.trim()) {
+          return true
+        }
+
+        const query = deferredChatSearch.toLowerCase()
+        return [activity.name, activity.location, activity.brief_description]
+          .join(' ')
+          .toLowerCase()
+          .includes(query)
+      })
+  }, [activitiesQuery.data, deferredChatSearch])
 
   const resolvedSelectedChatActivityId =
     selectedChatActivityId &&
@@ -235,25 +277,6 @@ function App() {
     queryKey: ['chat-messages', chatChannelQuery.data?.id],
     queryFn: () => api.messages(chatChannelQuery.data!.id),
     enabled: Boolean(chatChannelQuery.data?.id),
-  })
-
-  const channelParticipantIds = useMemo(
-    () =>
-      Array.from(new Set((messagesQuery.data ?? []).map((message) => message.sender))).filter(
-        (userId) => userId !== currentUser?.id,
-      ),
-    [currentUser?.id, messagesQuery.data],
-  )
-
-  const messageNamesQuery = useQuery({
-    queryKey: ['message-names', channelParticipantIds],
-    queryFn: async () => {
-      const names = await Promise.all(
-        channelParticipantIds.map(async (userId) => [userId, await api.userName(userId)] as const),
-      )
-      return Object.fromEntries(names)
-    },
-    enabled: channelParticipantIds.length > 0 && authorities.view_user === true,
   })
 
   const chatParticipantIds = useMemo(
@@ -380,32 +403,34 @@ function App() {
   })
 
   const sendMessageMutation = useMutation({
-    mutationFn: async (content: string) => {
-      if (!channelQuery.data) {
-        throw new ApiError('No channel is available yet.', 400)
-      }
-      return api.sendMessage(channelQuery.data.id, content)
+    mutationFn: async ({
+      channelId,
+      content,
+    }: {
+      channelId: string
+      content: string
+    }) => {
+      return api.sendMessage(channelId, content)
     },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['messages', channelQuery.data?.id] })
+    onSuccess: async (_, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['messages', variables.channelId] }),
+        queryClient.invalidateQueries({ queryKey: ['chat-messages', variables.channelId] }),
+      ])
     },
     onError: showMutationError,
   })
 
   const participantNames = participantNamesQuery.data ?? {}
-  const senderNames = {
-    ...participantNames,
-    ...(messageNamesQuery.data ?? {}),
-    ...(currentUser ? { [currentUser.id]: currentUser.realname } : {}),
-  }
-
   const chatSenderNames = {
     ...(chatMessageNamesQuery.data ?? {}),
     ...(currentUser ? { [currentUser.id]: currentUser.realname } : {}),
   }
 
   const navigateHome = () => {
-    navigate('/')
+    startTransition(() => {
+      navigate('/')
+    })
   }
 
   const navigateActivities = (activityId?: string, tab?: PanelTab) => {
@@ -416,9 +441,11 @@ function App() {
     if (tab) {
       params.set('tab', tab)
     }
-    navigate({
-      pathname: '/activities',
-      search: params.toString(),
+    startTransition(() => {
+      navigate({
+        pathname: '/activities',
+        search: params.toString(),
+      })
     })
   }
 
@@ -427,16 +454,13 @@ function App() {
     if (activityId) {
       params.set('chat', activityId)
     }
-    navigate({
-      pathname: '/chats',
-      search: params.toString(),
+    startTransition(() => {
+      navigate({
+        pathname: '/chats',
+        search: params.toString(),
+      })
     })
   }
-
-  const metrics = useMemo(
-    () => deriveMetrics(activitiesQuery.data ?? []),
-    [activitiesQuery.data],
-  )
 
   const recentActivities = useMemo(
     () =>
@@ -460,17 +484,19 @@ function App() {
 
   if (isSignedOut) {
     return (
-      <LoginScreen
-        email={email}
-        password={password}
-        pending={loginMutation.isPending}
-        errorMessage={loginError ?? backgroundError}
-        onEmailChange={setEmail}
-        onPasswordChange={setPassword}
-        onSubmit={async () => {
-          await loginMutation.mutateAsync()
-        }}
-      />
+      <Suspense fallback={<FullscreenFallback />}>
+        <LoginScreen
+          email={email}
+          password={password}
+          pending={loginMutation.isPending}
+          errorMessage={loginError ?? backgroundError}
+          onEmailChange={setEmail}
+          onPasswordChange={setPassword}
+          onSubmit={async () => {
+            await loginMutation.mutateAsync()
+          }}
+        />
+      </Suspense>
     )
   }
 
@@ -482,22 +508,41 @@ function App() {
 
   return (
     <>
-      <div className="min-h-screen bg-[radial-gradient(circle_at_top_right,_rgba(14,165,233,0.16),_transparent_28%),radial-gradient(circle_at_bottom_left,_rgba(20,184,166,0.14),_transparent_32%),linear-gradient(to_bottom,_#f8fafc,_#eef2ff)]">
+      <div className="min-h-screen bg-[radial-gradient(circle_at_top_right,_rgba(148,163,184,0.1),_transparent_28%),radial-gradient(circle_at_bottom_left,_rgba(120,137,128,0.08),_transparent_32%),linear-gradient(to_bottom,_#f7f5f2,_#f1efe9)]">
         <div className="mx-auto flex min-h-screen max-w-[1600px] gap-6 px-6 py-6">
-          <aside className="hidden w-72 shrink-0 flex-col rounded-[2rem] border border-white/70 bg-white/88 p-6 shadow-xl shadow-slate-200/50 backdrop-blur lg:flex">
-            <div className="space-y-4">
-              <div className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] text-white">
-                <Sparkles className="size-3.5" />
-                Admin workspace
-              </div>
-              <div>
-                <h1 className="text-2xl font-semibold tracking-tight text-slate-950">
-                  Volunteer operations
-                </h1>
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  A calmer control room for schedules, attendance, messaging, and reporting.
-                </p>
-              </div>
+          <aside
+            className={`hidden shrink-0 flex-col rounded-[2rem] border border-white/70 bg-white/88 shadow-xl shadow-slate-200/50 backdrop-blur transition-all duration-300 lg:flex ${
+              sidebarCollapsed ? 'w-24 p-4' : 'w-72 p-6'
+            }`}
+          >
+            <div className={`flex items-start justify-between gap-3 ${sidebarCollapsed ? 'mb-2' : 'mb-1'}`}>
+              {sidebarCollapsed ? (
+                <div className="flex size-11 items-center justify-center rounded-2xl bg-slate-950 text-white">
+                  <Sparkles className="size-4" />
+                </div>
+              ) : (
+                <div className="space-y-5">
+                  <div className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] text-white">
+                    <Sparkles className="size-3.5" />
+                    Admin workspace
+                  </div>
+                  <div>
+                    <h1 className="text-2xl font-semibold tracking-tight text-slate-950">
+                      Volunteer operations
+                    </h1>
+                  </div>
+                </div>
+              )}
+
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="shrink-0 rounded-xl text-slate-500"
+                onClick={() => setSidebarCollapsed((value) => !value)}
+              >
+                {sidebarCollapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
+                <span className="sr-only">{sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}</span>
+              </Button>
             </div>
 
             <Separator className="my-6" />
@@ -507,49 +552,66 @@ function App() {
                 active={currentView === 'home'}
                 icon={<House className="size-4" />}
                 label="Home"
+                collapsed={sidebarCollapsed}
                 onClick={navigateHome}
               />
               <SidebarItem
                 active={currentView === 'activities'}
                 icon={<FolderKanban className="size-4" />}
                 label="Activities"
+                collapsed={sidebarCollapsed}
                 onClick={() => navigateActivities(selectedActivityId ?? undefined, panelTab)}
               />
               <SidebarItem
                 active={currentView === 'chats'}
                 icon={<MessageSquareMore className="size-4" />}
                 label="Chats"
+                collapsed={sidebarCollapsed}
                 onClick={() => navigateChats(selectedChatActivityId ?? undefined)}
               />
             </nav>
 
-            <Separator className="my-6" />
+            <Button
+              variant="outline"
+              className={`mt-4 rounded-2xl border-slate-200 bg-slate-50/90 text-left text-slate-700 ${
+                sidebarCollapsed ? 'justify-center px-0' : 'justify-between px-4 py-5'
+              }`}
+              onClick={() => setCommandOpen(true)}
+              title="Quick switch"
+            >
+              <span className="flex items-center gap-2">
+                <Search className="size-4" />
+                {sidebarCollapsed ? null : 'Quick switch'}
+              </span>
+              {sidebarCollapsed ? null : (
+                <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-400">
+                  ⌘K
+                </span>
+              )}
+            </Button>
 
-            <div className="grid gap-3">
-              {metrics.map(([title, value, description]) => (
-                <MetricPill key={title} title={title} value={value} description={description} />
-              ))}
-            </div>
-
-            <div className="mt-auto rounded-2xl border border-slate-200/80 bg-slate-50/90 px-4 py-4 shadow-sm">
-              <div className="flex items-center gap-3">
+            <div className={`mt-auto rounded-2xl border border-slate-200/80 bg-slate-50/90 shadow-sm ${sidebarCollapsed ? 'px-3 py-3' : 'px-4 py-4'}`}>
+              <div className={`flex ${sidebarCollapsed ? 'justify-center' : 'items-center gap-3'}`}>
                 <div className="flex size-10 items-center justify-center rounded-full bg-slate-900 text-sm font-semibold text-white">
                   {initials(currentUser)}
                 </div>
-                <div className="min-w-0">
-                  <p className="truncate font-medium text-slate-950">{currentUser?.realname}</p>
-                  <p className="truncate text-sm text-slate-500">{currentUser?.email}</p>
-                </div>
+                {sidebarCollapsed ? null : (
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-slate-950">{currentUser?.realname}</p>
+                    <p className="truncate text-sm text-slate-500">{currentUser?.email}</p>
+                  </div>
+                )}
               </div>
 
               <Button
                 variant="outline"
-                className="mt-4 w-full justify-center"
+                className={`mt-4 ${sidebarCollapsed ? 'w-full justify-center px-0' : 'w-full justify-center'}`}
                 disabled={logoutMutation.isPending}
                 onClick={() => logoutMutation.mutate()}
+                title="Sign out"
               >
-                <LogOut className="mr-2 size-4" />
-                Sign out
+                <LogOut className={`size-4 ${sidebarCollapsed ? '' : 'mr-2'}`} />
+                {sidebarCollapsed ? null : 'Sign out'}
               </Button>
             </div>
           </aside>
@@ -594,48 +656,67 @@ function App() {
                   onClick={() => navigateChats(selectedChatActivityId ?? undefined)}
                 />
               </div>
+
+              <Button
+                variant="outline"
+                className="mt-4 w-full justify-between rounded-2xl border-slate-200 bg-slate-50/90"
+                onClick={() => setCommandOpen(true)}
+              >
+                <span className="flex items-center gap-2">
+                  <Search className="size-4" />
+                  Quick switch
+                </span>
+                <span className="text-xs text-slate-400">⌘K</span>
+              </Button>
             </header>
 
             {currentView === 'home' ? (
               <HomePage
                 user={currentUser}
-                metrics={metrics}
+                activities={activitiesQuery.data ?? []}
                 recentActivities={recentActivities}
                 canCreateActivity={canCreateActivity}
-                canGenerateExport={canGenerateExport}
-                isExporting={exportMutation.isPending}
                 onCreateActivity={() => {
                   setEditingActivity(null)
                   setFormOpen(true)
                 }}
-                onGenerateExport={() => exportMutation.mutate()}
                 onOpenActivity={(activityId) => {
                   navigateActivities(activityId)
                 }}
               />
             ) : currentView === 'chats' ? (
-              <ChatWorkspace
-                activities={chatActivities}
-                selectedActivityId={resolvedSelectedChatActivityId}
-                selectedActivity={selectedChatDetail}
-                channel={chatChannelQuery.data ?? null}
-                messages={chatMessagesQuery.data ?? []}
-                senderNames={chatSenderNames}
-                currentUserId={currentUser?.id ?? null}
-                isSendingMessage={sendMessageMutation.isPending}
-                onSelectActivity={(activityId) => navigateChats(activityId)}
-                onOpenActivities={() => {
-                  if (resolvedSelectedChatActivityId) {
-                    navigateActivities(resolvedSelectedChatActivityId)
-                  } else {
-                    navigateActivities()
-                  }
-                }}
-                onSendMessage={async (content) => {
-                  await sendMessageMutation.mutateAsync(content)
-                }}
-                pushUrl={api.pushURL()}
-              />
+              <Suspense fallback={<WorkspaceFallback />}>
+                <ChatWorkspace
+                  activities={chatActivities}
+                  selectedActivityId={resolvedSelectedChatActivityId}
+                  selectedActivity={selectedChatDetail}
+                  channel={chatChannelQuery.data ?? null}
+                  messages={chatMessagesQuery.data ?? []}
+                  senderNames={chatSenderNames}
+                  currentUserId={currentUser?.id ?? null}
+                  isSendingMessage={sendMessageMutation.isPending}
+                  search={chatSearch}
+                  onSearchChange={setChatSearch}
+                  onSelectActivity={(activityId) => navigateChats(activityId)}
+                  onOpenActivities={() => {
+                    if (resolvedSelectedChatActivityId) {
+                      navigateActivities(resolvedSelectedChatActivityId)
+                    } else {
+                      navigateActivities()
+                    }
+                  }}
+                  onSendMessage={async (content) => {
+                    if (!chatChannelQuery.data) {
+                      throw new ApiError('No channel is available yet.', 400)
+                    }
+                    await sendMessageMutation.mutateAsync({
+                      channelId: chatChannelQuery.data.id,
+                      content,
+                    })
+                  }}
+                  pushUrl={api.pushURL()}
+                />
+              </Suspense>
             ) : (
               <ActivitiesPage
                 search={search}
@@ -647,8 +728,6 @@ function App() {
                 selectedDetail={selectedDetail}
                 records={recordsQuery.data ?? []}
                 participantNames={participantNames}
-                senderNames={senderNames}
-                currentUserId={currentUser?.id ?? null}
                 panelTab={panelTab}
                 channel={channelQuery.data ?? null}
                 messages={messagesQuery.data ?? []}
@@ -656,7 +735,6 @@ function App() {
                 canCreateActivity={canCreateActivity}
                 canGenerateExport={canGenerateExport}
                 canManageSelectedActivity={canManageSelectedActivity}
-                isSendingMessage={sendMessageMutation.isPending}
                 isExporting={exportMutation.isPending}
                 onSearchChange={setSearch}
                 onScopeChange={setScope}
@@ -685,86 +763,97 @@ function App() {
                 }}
                 onPanelTabChange={(value) => navigateActivities(selectedDetail?.id, value)}
                 onRecordAction={(id, action) => recordActionMutation.mutate({ id, action })}
-                onSendMessage={async (content) => {
-                  await sendMessageMutation.mutateAsync(content)
-                }}
-                pushUrl={api.pushURL()}
               />
             )}
           </main>
         </div>
       </div>
 
-      <ActivityFormDialog
-        open={formOpen}
-        title={editingActivity ? 'Edit activity' : 'Create activity'}
-        description={
-          editingActivity
-            ? 'Refine the activity plan without leaving the dashboard.'
-            : 'Publish a new volunteer opportunity with clean, complete details.'
+      <CommandPalette
+        open={commandOpen}
+        onOpenChange={setCommandOpen}
+        activities={activitiesQuery.data ?? []}
+        onOpenHome={navigateHome}
+        onOpenActivity={(activityId) => navigateActivities(activityId)}
+        onOpenChat={(activityId) => navigateChats(activityId)}
+        onCreateActivity={
+          canCreateActivity
+            ? () => {
+                setEditingActivity(null)
+                setFormOpen(true)
+              }
+            : undefined
         }
-        initialValue={draftFromActivity(editingActivity)}
-        onOpenChange={(open) => {
-          setFormOpen(open)
-          if (!open) {
-            setEditingActivity(null)
-          }
-        }}
-        onSubmit={async (draft) => {
-          if (editingActivity) {
-            await updateActivityMutation.mutateAsync({ id: editingActivity.id, draft })
-          } else {
-            await createActivityMutation.mutateAsync(draft)
-          }
-        }}
       />
 
-      <ExportBatchDialog
-        open={Boolean(exportBatch)}
-        batch={exportBatch}
-        onOpenChange={(open) => {
-          if (!open) {
-            setExportBatch(null)
+      <Suspense fallback={null}>
+        <ActivityFormDialog
+          open={formOpen}
+          title={editingActivity ? 'Edit activity' : 'Create activity'}
+          description={
+            editingActivity
+              ? 'Refine the activity plan without leaving the dashboard.'
+              : 'Publish a new volunteer opportunity with clean, complete details.'
           }
-        }}
-      />
+          initialValue={draftFromActivity(editingActivity)}
+          onOpenChange={(open) => {
+            setFormOpen(open)
+            if (!open) {
+              setEditingActivity(null)
+            }
+          }}
+          onSubmit={async (draft) => {
+            if (editingActivity) {
+              await updateActivityMutation.mutateAsync({ id: editingActivity.id, draft })
+            } else {
+              await createActivityMutation.mutateAsync(draft)
+            }
+          }}
+        />
+
+        <ExportBatchDialog
+          open={Boolean(exportBatch)}
+          batch={exportBatch}
+          onOpenChange={(open) => {
+            if (!open) {
+              setExportBatch(null)
+            }
+          }}
+        />
+      </Suspense>
     </>
   )
 }
 
 function HomePage({
   user,
-  metrics,
+  activities,
   recentActivities,
   canCreateActivity,
-  canGenerateExport,
-  isExporting,
   onCreateActivity,
-  onGenerateExport,
   onOpenActivity,
 }: {
   user: UserProfile | null
-  metrics: readonly (readonly [string, string, string])[]
+  activities: ActivitySummary[]
   recentActivities: ActivitySummary[]
   canCreateActivity: boolean
-  canGenerateExport: boolean
-  isExporting: boolean
   onCreateActivity: () => void
-  onGenerateExport: () => void
   onOpenActivity: (activityId: string) => void
 }) {
+  const totalActivities = activities.length
+  const recruitingCount = activities.filter((activity) => activity.state === 'need_volunteer').length
+  const liveCount = activities.filter((activity) => activity.state === 'going').length
+  const completedCount = activities.filter((activity) => activity.state === 'ended').length
+
   return (
     <div className="grid gap-6">
-      <Card className="border-white/70 bg-white/88 shadow-xl shadow-slate-200/45">
+      <Card className="overflow-hidden border-white/70 bg-white/88 shadow-xl shadow-slate-200/45">
         <CardHeader className="gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <CardDescription>Home</CardDescription>
             <CardTitle className="mt-1 text-3xl font-semibold tracking-tight text-slate-950">
               Welcome back, {user?.realname ?? 'admin'}
             </CardTitle>
-            <CardDescription className="mt-2 max-w-3xl text-sm leading-7">
-              Start from the overview, then jump into activities when you need to update publishing state, confirm records, or watch channel traffic.
-            </CardDescription>
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -774,34 +863,21 @@ function HomePage({
                 New activity
               </Button>
             ) : null}
-            {canGenerateExport ? (
-              <Button variant="outline" disabled={isExporting} onClick={onGenerateExport}>
-                <Download className="mr-2 size-4" />
-                {isExporting ? 'Preparing…' : 'Generate export'}
-              </Button>
-            ) : null}
           </div>
         </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-3">
-          {metrics.map(([title, value, description]) => (
-            <OverviewMetric
-              key={title}
-              label={title}
-              value={value}
-              description={description}
-              icon={<Sparkles className="size-4" />}
-            />
-          ))}
-        </CardContent>
       </Card>
 
-      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <HomeStatCard label="Activities" value={totalActivities.toString()} />
+        <HomeStatCard label="Recruiting" value={recruitingCount.toString()} />
+        <HomeStatCard label="Live" value={liveCount.toString()} />
+        <HomeStatCard label="Completed" value={completedCount.toString()} />
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
         <Card className="border-white/70 bg-white/88 shadow-lg shadow-slate-200/40">
           <CardHeader>
             <CardTitle>Recent activities</CardTitle>
-            <CardDescription>
-              Open a workspace for the event you want to manage now.
-            </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
             {recentActivities.length > 0 ? (
@@ -809,7 +885,7 @@ function HomePage({
                 <button
                   key={activity.id}
                   type="button"
-                  className="flex items-center justify-between rounded-2xl border border-border/70 bg-background px-4 py-4 text-left transition hover:border-slate-300 hover:bg-slate-50"
+                  className="flex items-center justify-between rounded-2xl border border-border/70 bg-background px-4 py-4 text-left outline-none transition hover:border-slate-300 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-slate-300/80 focus-visible:ring-offset-2"
                   onClick={() => onOpenActivity(activity.id)}
                 >
                   <div>
@@ -820,7 +896,7 @@ function HomePage({
                   </div>
                   <div className="flex items-center gap-3">
                     <Badge variant="secondary">{activityStateLabel(activity.state)}</Badge>
-                    <ChevronRight className="size-4 text-slate-400" />
+                    <ArrowRight className="size-4 text-slate-400" />
                   </div>
                 </button>
               ))
@@ -832,25 +908,9 @@ function HomePage({
           </CardContent>
         </Card>
 
-        <Card className="border-white/70 bg-white/88 shadow-lg shadow-slate-200/40">
-          <CardHeader>
-            <CardTitle>Admin notes</CardTitle>
-            <CardDescription>
-              A quick reminder of what this surface is optimized for.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4 text-sm text-slate-600">
-            <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">
-              Keep activity details crisp so volunteers can commit without follow-up clarification.
-            </div>
-            <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">
-              Confirm records promptly after activities end so export batches stay current.
-            </div>
-            <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">
-              Use the channel tab when you need to verify real-time organiser and volunteer coordination.
-            </div>
-          </CardContent>
-        </Card>
+        <Suspense fallback={<WorkspaceFallback />}>
+          <HomeActivityChart activities={activities} />
+        </Suspense>
       </div>
     </div>
   )
@@ -866,8 +926,6 @@ function ActivitiesPage({
   selectedDetail,
   records,
   participantNames,
-  senderNames,
-  currentUserId,
   panelTab,
   channel,
   messages,
@@ -875,7 +933,6 @@ function ActivitiesPage({
   canCreateActivity,
   canGenerateExport,
   canManageSelectedActivity,
-  isSendingMessage,
   isExporting,
   onSearchChange,
   onScopeChange,
@@ -888,8 +945,6 @@ function ActivitiesPage({
   onTransition,
   onPanelTabChange,
   onRecordAction,
-  onSendMessage,
-  pushUrl,
 }: {
   search: string
   scope: ActivityScope
@@ -900,8 +955,6 @@ function ActivitiesPage({
   selectedDetail: ActivityDetail | null
   records: RecordEntry[]
   participantNames: Record<string, string>
-  senderNames: Record<string, string>
-  currentUserId: string | null
   panelTab: PanelTab
   channel: ChannelResponse | null
   messages: ChannelMessage[]
@@ -909,7 +962,6 @@ function ActivitiesPage({
   canCreateActivity: boolean
   canGenerateExport: boolean
   canManageSelectedActivity: boolean
-  isSendingMessage: boolean
   isExporting: boolean
   onSearchChange: (value: string) => void
   onScopeChange: (value: ActivityScope) => void
@@ -922,21 +974,19 @@ function ActivitiesPage({
   onTransition: (action: 'need_volunteer' | 'go' | 'end' | 'cancel') => void
   onPanelTabChange: (value: PanelTab) => void
   onRecordAction: (id: string, action: 'approve_apply' | 'done' | 'disapprove_apply') => void
-  onSendMessage: (content: string) => Promise<void>
-  pushUrl: string
 }) {
   return (
     <>
-      <div className="rounded-[2rem] border border-white/70 bg-white/88 px-6 py-5 shadow-lg shadow-slate-200/40">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+      <div className="rounded-[2.3rem] border border-white/75 bg-white/76 px-7 py-6 shadow-[0_28px_80px_-34px_rgba(15,23,42,0.24)] backdrop-blur-xl">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-sm font-medium text-slate-500">Activities</p>
-            <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
-              Manage publishing, records, and live coordination
+            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Activities</p>
+            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">
+              Manage publishing, records, and readiness
             </h2>
           </div>
           {canCreateActivity ? (
-            <Button onClick={onCreateActivity}>
+            <Button className="rounded-2xl px-4" onClick={onCreateActivity}>
               <Plus className="mr-2 size-4" />
               New activity
             </Button>
@@ -944,18 +994,19 @@ function ActivitiesPage({
         </div>
       </div>
 
-      <div className="grid gap-8 xl:grid-cols-[340px_minmax(0,1fr)]">
-        <Card className="border-white/70 bg-white/88 shadow-lg shadow-slate-200/40">
-          <CardHeader className="gap-4">
+      <div className="rounded-[2.4rem] border border-white/70 bg-white/70 p-2 shadow-[0_34px_100px_-42px_rgba(15,23,42,0.3)] backdrop-blur-xl">
+        <div className="grid gap-2 xl:grid-cols-[340px_minmax(0,1fr)]">
+          <aside className="rounded-[2rem] bg-[linear-gradient(180deg,rgba(240,245,250,0.98),rgba(234,240,246,0.84))] p-5">
             <div>
-              <CardTitle>Activity list</CardTitle>
-              <CardDescription>Pick the event you want to work on.</CardDescription>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Activity rail</p>
+              <h3 className="mt-2 text-lg font-semibold text-slate-950">Pick the event you want to work on.</h3>
             </div>
-            <div className="grid gap-3">
+
+            <div className="mt-5 grid gap-3">
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  className="pl-9"
+                  className="rounded-2xl border-slate-200/80 bg-white/90 pl-9"
                   placeholder="Search activity name or location"
                   value={search}
                   onChange={(event) => onSearchChange(event.target.value)}
@@ -964,7 +1015,7 @@ function ActivitiesPage({
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <Select value={scope} onValueChange={(value) => onScopeChange(value as ActivityScope)}>
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger className="w-full rounded-2xl border-slate-200/80 bg-white/90">
                     <SelectValue placeholder="Scope" />
                   </SelectTrigger>
                   <SelectContent>
@@ -977,7 +1028,7 @@ function ActivitiesPage({
                   value={stateFilter}
                   onValueChange={(value) => onStateFilterChange(value as ActivityFilter)}
                 >
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger className="w-full rounded-2xl border-slate-200/80 bg-white/90">
                     <ListFilter className="size-4" />
                     <SelectValue placeholder="State" />
                   </SelectTrigger>
@@ -991,10 +1042,9 @@ function ActivitiesPage({
                 </Select>
               </div>
             </div>
-          </CardHeader>
 
-          <CardContent className="pb-0">
-            <ScrollArea className="h-[calc(100vh-20rem)] pr-3">
+            <div className="mt-5 rounded-[1.8rem] bg-white/72 p-2 ring-1 ring-white/80">
+              <ScrollArea className="h-[calc(100vh-22rem)] pr-2">
               <div className="grid gap-4 pb-4">
                 {activitiesLoading ? (
                   <>
@@ -1007,16 +1057,16 @@ function ActivitiesPage({
                       key={activity.id}
                       type="button"
                       onClick={() => onSelectActivity(activity.id)}
-                      className={`rounded-2xl border p-5 text-left transition ${
+                      className={`rounded-[1.6rem] border px-4 py-4 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-slate-300/80 focus-visible:ring-offset-2 ${
                         activity.id === selectedActivityId
-                          ? 'border-sky-400 bg-sky-50 shadow-sm'
-                          : 'border-border/70 bg-background hover:border-slate-300 hover:bg-slate-50'
+                          ? 'border-white bg-white shadow-[0_18px_40px_-26px_rgba(15,23,42,0.28)] ring-1 ring-slate-200/90'
+                          : 'border-transparent bg-transparent hover:bg-white/85'
                       }`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <h3 className="text-base font-semibold text-slate-950">{activity.name}</h3>
-                          <p className="mt-1 line-clamp-2 text-sm leading-6 text-slate-600">
+                          <h3 className="text-[15px] font-semibold leading-6 text-slate-950">{activity.name}</h3>
+                          <p className="mt-1 line-clamp-2 text-sm leading-6 text-slate-500">
                             {activity.brief_description}
                           </p>
                         </div>
@@ -1038,19 +1088,20 @@ function ActivitiesPage({
                     </button>
                   ))
                 ) : (
-                  <div className="rounded-2xl border border-dashed border-border bg-muted/20 p-6 text-sm text-muted-foreground">
+                  <div className="rounded-[1.5rem] border border-dashed border-slate-200 bg-white/80 p-6 text-sm text-slate-500">
                     No activities match the current filters.
                   </div>
                 )}
               </div>
-            </ScrollArea>
-          </CardContent>
-        </Card>
+              </ScrollArea>
+            </div>
+          </aside>
 
-        <div className="grid gap-6">
+        <div className="rounded-[2rem] bg-white px-6 py-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
+          <div className="grid gap-6">
           {selectedDetail ? (
             <>
-              <Card className="border-white/70 bg-white/92 shadow-lg shadow-slate-200/40">
+              <Card className="overflow-hidden border-slate-200/70 bg-[linear-gradient(180deg,rgba(255,255,255,1),rgba(248,251,255,0.96))] shadow-none">
                 <CardHeader className="gap-5">
                   <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
                     <div className="space-y-4">
@@ -1066,9 +1117,7 @@ function ActivitiesPage({
                         <CardTitle className="text-4xl font-semibold tracking-tight text-slate-950">
                           {selectedDetail.name}
                         </CardTitle>
-                        <CardDescription className="mt-3 max-w-3xl text-sm leading-7">
-                          {selectedDetail.description}
-                        </CardDescription>
+                        <CardDescription className="mt-3 max-w-3xl text-sm leading-7">{selectedDetail.description}</CardDescription>
                       </div>
 
                       <div className="flex flex-wrap gap-x-8 gap-y-4 text-sm">
@@ -1079,7 +1128,7 @@ function ActivitiesPage({
                     </div>
 
                     <div className="flex flex-wrap gap-2">
-                      {canCreateActivity ? (
+                      {canManageSelectedActivity ? (
                         <Button variant="outline" onClick={onEditActivity}>
                           Edit
                         </Button>
@@ -1133,19 +1182,16 @@ function ActivitiesPage({
               </Card>
 
               <Tabs value={panelTab} onValueChange={(value) => onPanelTabChange(value as PanelTab)} className="gap-5">
-                <TabsList variant="line" className="rounded-2xl bg-white/82 p-1.5 shadow-sm">
+                <TabsList variant="line" className="rounded-2xl bg-slate-50 p-1.5 shadow-none">
                   <TabsTrigger value="overview">Overview</TabsTrigger>
                   <TabsTrigger value="records">Records</TabsTrigger>
-                  <TabsTrigger value="channel">Chat Status</TabsTrigger>
+                  <TabsTrigger value="channel">Coordination</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="overview">
-                  <Card className="border-white/70 bg-white/92 shadow-lg shadow-slate-200/40">
+                  <Card className="border-slate-200/70 bg-slate-50/65 shadow-none">
                     <CardHeader>
                       <CardTitle>Activity snapshot</CardTitle>
-                      <CardDescription>
-                        Keep organisers aligned on recruiting pressure, timing, and readiness.
-                      </CardDescription>
                     </CardHeader>
                     <CardContent className="grid gap-4 md:grid-cols-3">
                       <OverviewMetric
@@ -1185,21 +1231,18 @@ function ActivitiesPage({
                 </TabsContent>
 
                 <TabsContent value="channel">
-                  <ChannelPanel
-                    pushUrl={pushUrl}
+                  <ChannelStatusCard
+                    activityName={selectedDetail.name}
                     channel={channel}
                     activityState={selectedDetail.state}
-                  initialMessages={messages}
-                  senderNames={senderNames}
-                  currentUserId={currentUserId}
-                  isSendingMessage={isSendingMessage}
-                  onSendMessage={onSendMessage}
+                    messages={messages}
+                    onOpenChat={onOpenChat}
                   />
                 </TabsContent>
               </Tabs>
             </>
           ) : (
-            <Card className="border-white/70 bg-white/92 shadow-lg shadow-slate-200/40">
+            <Card className="border-slate-200/70 bg-slate-50/65 shadow-none">
               <CardContent className="flex min-h-[480px] flex-col items-center justify-center gap-4 text-center">
                 <div className="flex size-14 items-center justify-center rounded-2xl bg-slate-950 text-white">
                   <FileSpreadsheet className="size-6" />
@@ -1213,120 +1256,11 @@ function ActivitiesPage({
               </CardContent>
             </Card>
           )}
+          </div>
         </div>
       </div>
+      </div>
     </>
-  )
-}
-
-function ChatWorkspace({
-  activities,
-  selectedActivityId,
-  selectedActivity,
-  channel,
-  messages,
-  senderNames,
-  currentUserId,
-  isSendingMessage,
-  onSelectActivity,
-  onOpenActivities,
-  onSendMessage,
-  pushUrl,
-}: {
-  activities: ActivitySummary[]
-  selectedActivityId: string | null
-  selectedActivity: ActivityDetail | null
-  channel: ChannelResponse | null
-  messages: ChannelMessage[]
-  senderNames: Record<string, string>
-  currentUserId: string | null
-  isSendingMessage: boolean
-  onSelectActivity: (activityId: string) => void
-  onOpenActivities: () => void
-  onSendMessage: (content: string) => Promise<void>
-  pushUrl: string
-}) {
-  return (
-    <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
-      <Card className="border-white/70 bg-white/88 shadow-lg shadow-slate-200/40">
-        <CardHeader>
-          <CardTitle>Chats</CardTitle>
-          <CardDescription>
-            Pick an activity and continue the conversation without leaving a persistent message workspace.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="pb-0">
-          <ScrollArea className="h-[calc(100vh-16rem)] pr-3">
-            <div className="grid gap-3 pb-4">
-              {activities.map((activity) => (
-                <button
-                  key={activity.id}
-                  type="button"
-                  onClick={() => onSelectActivity(activity.id)}
-                  className={`rounded-2xl border p-4 text-left transition ${
-                    activity.id === selectedActivityId
-                      ? 'border-sky-400 bg-sky-50 shadow-sm'
-                      : 'border-border/70 bg-background hover:border-slate-300 hover:bg-slate-50'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="font-medium text-slate-950">{activity.name}</p>
-                      <p className="mt-1 text-sm text-slate-600">
-                        {formatDateOnly(activity.date)} · {activity.location}
-                      </p>
-                    </div>
-                    <Badge variant="secondary">{activityStateLabel(activity.state)}</Badge>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </ScrollArea>
-        </CardContent>
-      </Card>
-
-      {selectedActivity ? (
-        <div className="grid gap-4">
-          <Card className="border-white/70 bg-white/92 shadow-lg shadow-slate-200/40">
-            <CardHeader className="gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <CardDescription>Chat workspace</CardDescription>
-                <CardTitle className="text-2xl font-semibold tracking-tight text-slate-950">
-                  {selectedActivity.name}
-                </CardTitle>
-              </div>
-              <Button variant="outline" onClick={onOpenActivities}>
-                <FolderKanban className="mr-2 size-4" />
-                Open activity details
-              </Button>
-            </CardHeader>
-          </Card>
-
-          <ChannelPanel
-            pushUrl={pushUrl}
-            channel={channel}
-            activityState={selectedActivity.state}
-            initialMessages={messages}
-            senderNames={senderNames}
-            currentUserId={currentUserId}
-            isSendingMessage={isSendingMessage}
-            onSendMessage={onSendMessage}
-          />
-        </div>
-      ) : (
-        <Card className="border-white/70 bg-white/92 shadow-lg shadow-slate-200/40">
-          <CardContent className="flex min-h-[480px] flex-col items-center justify-center gap-4 text-center">
-            <MessageSquareMore className="size-10 text-slate-400" />
-            <div>
-              <h2 className="text-xl font-semibold text-slate-950">Choose a chat</h2>
-              <p className="mt-2 max-w-md text-sm leading-6 text-slate-600">
-                Select an activity from the left column to open its conversation workspace.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-    </div>
   )
 }
 
@@ -1334,44 +1268,29 @@ function SidebarItem({
   active,
   icon,
   label,
+  collapsed = false,
   onClick,
 }: {
   active: boolean
   icon: React.ReactNode
   label: string
+  collapsed?: boolean
   onClick: () => void
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`flex items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-medium transition ${
+      title={label}
+      className={`flex items-center rounded-2xl px-4 py-3 text-left text-sm font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-slate-300/80 ${
         active
           ? 'bg-slate-950 text-white shadow-sm'
           : 'bg-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-950'
-      }`}
+      } ${collapsed ? 'justify-center' : 'gap-3'}`}
     >
       {icon}
-      <span>{label}</span>
+      {collapsed ? null : <span>{label}</span>}
     </button>
-  )
-}
-
-function MetricPill({
-  title,
-  value,
-  description,
-}: {
-  title: string
-  value: string
-  description: string
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 px-4 py-4">
-      <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">{title}</p>
-      <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">{value}</p>
-      <p className="mt-1 text-sm text-slate-600">{description}</p>
-    </div>
   )
 }
 
@@ -1398,11 +1317,46 @@ function OverviewMetric({
   )
 }
 
+function HomeStatCard({
+  label,
+  value,
+}: {
+  label: string
+  value: string
+}) {
+  return (
+    <div className="rounded-[1.7rem] border border-white/70 bg-white/88 px-5 py-5 shadow-lg shadow-slate-200/35">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">{label}</p>
+      <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">{value}</p>
+    </div>
+  )
+}
+
 function InlineMeta({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-[180px]">
       <p className="text-[11px] uppercase tracking-[0.18em] text-slate-400">{label}</p>
       <p className="mt-1 font-medium text-slate-900">{value}</p>
+    </div>
+  )
+}
+
+function FullscreenFallback() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-50">
+      <div className="grid w-full max-w-sm gap-3">
+        <Skeleton className="h-8 w-40" />
+        <Skeleton className="h-32 w-full rounded-2xl" />
+      </div>
+    </div>
+  )
+}
+
+function WorkspaceFallback() {
+  return (
+    <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+      <Skeleton className="h-[70vh] rounded-[2rem]" />
+      <Skeleton className="h-[70vh] rounded-[2rem]" />
     </div>
   )
 }
@@ -1433,20 +1387,6 @@ function toDatetimeLocal(value: string): string {
   const hours = `${date.getHours()}`.padStart(2, '0')
   const minutes = `${date.getMinutes()}`.padStart(2, '0')
   return `${year}-${month}-${day}T${hours}:${minutes}`
-}
-
-function deriveMetrics(
-  activities: ActivitySummary[],
-): readonly (readonly [string, string, string])[] {
-  const recruiting = activities.filter((activity) => activity.state === 'need_volunteer').length
-  const inProgress = activities.filter((activity) => activity.state === 'going').length
-  const completed = activities.filter((activity) => activity.state === 'ended').length
-
-  return [
-    ['Activities', activities.length.toString(), 'Published opportunities in the current dataset.'],
-    ['Recruiting', recruiting.toString(), 'Activities still open for volunteer sign-up.'],
-    ['Completed', completed.toString(), `${inProgress} currently in progress.`],
-  ] as const
 }
 
 async function invalidateSelectedActivity(queryClient: QueryClient, activityId: string | null) {
