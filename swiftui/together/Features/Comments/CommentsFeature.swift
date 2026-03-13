@@ -69,6 +69,13 @@ struct CommentsView: View {
     }
 
     private func load() async {
+        if let demoData = session.demoData {
+            comments = demoData.commentsByActivity[activityID] ?? []
+            errorMessage = nil
+            isLoading = false
+            return
+        }
+
         guard let serverURL = session.serverURL else {
             isLoading = false
             errorMessage = "The server URL is invalid."
@@ -89,6 +96,26 @@ struct CommentsView: View {
     }
 
     private func postComment() async {
+        if session.demoData != nil {
+            let content = composer.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !content.isEmpty else {
+                return
+            }
+            comments.insert(
+                CommentEntry(
+                    id: UUID().uuidString,
+                    author: session.currentUser?.id ?? "demo-user",
+                    authorName: session.currentUser?.realname ?? "You",
+                    content: content,
+                    date: "2026-03-13T12:00:00Z"
+                ),
+                at: 0
+            )
+            composer = ""
+            errorMessage = nil
+            return
+        }
+
         guard let serverURL = session.serverURL else {
             errorMessage = "The server URL is invalid."
             return
@@ -107,4 +134,11 @@ struct CommentsView: View {
             errorMessage = session.readableError(error)
         }
     }
+}
+
+#Preview("Comments") {
+    NavigationStack {
+        CommentsView(activityID: AppDemoData.primaryActivityID)
+    }
+    .environmentObject(SessionStore.previewVolunteer())
 }

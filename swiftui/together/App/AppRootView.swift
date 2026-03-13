@@ -43,3 +43,13 @@ private struct LaunchScreenView: View {
         }
     }
 }
+
+#Preview("Root Signed Out") {
+    AppRootView()
+        .environmentObject(SessionStore.previewSignedOut())
+}
+
+#Preview("Root Organizer") {
+    AppRootView()
+        .environmentObject(SessionStore.previewOrganizer())
+}

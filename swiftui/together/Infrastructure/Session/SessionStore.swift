@@ -3,6 +3,13 @@ import Foundation
 
 @MainActor
 final class SessionStore: ObservableObject {
+    enum RuntimeMode: Equatable, Sendable {
+        case live
+        case demoSignedOut
+        case demoVolunteer
+        case demoOrganizer
+    }
+
     enum Phase: Sendable {
         case launching
         case signedOut
@@ -10,6 +17,8 @@ final class SessionStore: ObservableObject {
     }
 
     let apiClient = APIClient()
+    let pushClient = PushClient()
+    let runtimeMode: RuntimeMode
 
     @Published var phase: Phase = .launching
     @Published var currentUser: UserProfile?
@@ -17,13 +26,39 @@ final class SessionStore: ObservableObject {
     @Published var authorityCache: [String: Bool] = [:]
     @Published var serverURLText: String
     @Published var isAuthenticating = false
+    var demoData: AppDemoData?
 
-    init(defaultServerURL: String = "http://127.0.0.1:8000") {
-        self.serverURLText = UserDefaults.standard.string(forKey: Self.serverURLDefaultsKey) ?? defaultServerURL
+    init(defaultServerURL: String = "http://127.0.0.1:8000", runtimeMode: RuntimeMode? = nil) {
+        let resolvedMode = runtimeMode ?? Self.runtimeModeFromProcessInfo()
+        self.runtimeMode = resolvedMode
+        switch resolvedMode {
+        case .live:
+            self.serverURLText = UserDefaults.standard.string(forKey: Self.serverURLDefaultsKey) ?? defaultServerURL
+            self.demoData = nil
+        case .demoSignedOut:
+            self.serverURLText = "http://demo.local"
+            self.demoData = .signedOut()
+        case .demoVolunteer:
+            self.serverURLText = "http://demo.local"
+            self.demoData = .volunteer()
+        case .demoOrganizer:
+            self.serverURLText = "http://demo.local"
+            self.demoData = .organizer()
+        }
+
+        if let demoData {
+            currentUser = demoData.currentUser
+            authorityCache = demoData.authorities
+            phase = demoData.currentUser == nil ? .signedOut : .signedIn
+        }
     }
 
     var serverURL: URL? {
         try? Self.normalizeServerURL(from: serverURLText)
+    }
+
+    var usesFixtureData: Bool {
+        demoData != nil
     }
 
     var canCreateActivities: Bool {
@@ -51,6 +86,14 @@ final class SessionStore: ObservableObject {
     }
 
     func bootstrap() async {
+        if let demoData {
+            currentUser = demoData.currentUser
+            authorityCache = demoData.authorities
+            phase = demoData.currentUser == nil ? .signedOut : .signedIn
+            lastError = nil
+            return
+        }
+
         guard let serverURL else {
             phase = .signedOut
             lastError = "Enter a valid server URL to connect the app."
@@ -78,6 +121,23 @@ final class SessionStore: ObservableObject {
     }
 
     func signIn(email: String, password: String) async -> Bool {
+        if runtimeMode == .demoSignedOut {
+            let demoData = AppDemoData.volunteer()
+            self.demoData = demoData
+            currentUser = demoData.currentUser
+            authorityCache = demoData.authorities
+            phase = .signedIn
+            lastError = nil
+            return true
+        }
+        if let demoData {
+            currentUser = demoData.currentUser
+            authorityCache = demoData.authorities
+            phase = demoData.currentUser == nil ? .signedOut : .signedIn
+            lastError = nil
+            return demoData.currentUser != nil
+        }
+
         guard let serverURL else {
             lastError = "Enter a valid server URL before signing in."
             return false
@@ -102,6 +162,23 @@ final class SessionStore: ObservableObject {
     }
 
     func registerAndSignIn(request: RegisterRequest) async -> Bool {
+        if runtimeMode == .demoSignedOut {
+            let demoData = AppDemoData.volunteer()
+            self.demoData = demoData
+            currentUser = demoData.currentUser
+            authorityCache = demoData.authorities
+            phase = .signedIn
+            lastError = nil
+            return true
+        }
+        if let demoData {
+            currentUser = demoData.currentUser
+            authorityCache = demoData.authorities
+            phase = demoData.currentUser == nil ? .signedOut : .signedIn
+            lastError = nil
+            return demoData.currentUser != nil
+        }
+
         guard let serverURL else {
             lastError = "Enter a valid server URL before creating an account."
             return false
@@ -127,6 +204,12 @@ final class SessionStore: ObservableObject {
     }
 
     func refreshCurrentUser() async {
+        if let demoData {
+            currentUser = demoData.currentUser
+            lastError = nil
+            return
+        }
+
         guard let serverURL else {
             return
         }
@@ -139,6 +222,11 @@ final class SessionStore: ObservableObject {
     }
 
     func refreshAuthorities() async {
+        if let demoData {
+            authorityCache = demoData.authorities
+            return
+        }
+
         guard let serverURL else {
             authorityCache = [:]
             return
@@ -166,6 +254,25 @@ final class SessionStore: ObservableObject {
     }
 
     func updateCurrentUser(request: UpdateUserRequest) async -> Bool {
+        if demoData != nil {
+            guard let existingUser = currentUser else {
+                lastError = "No current user exists in demo mode."
+                return false
+            }
+            currentUser = UserProfile(
+                id: existingUser.id,
+                email: existingUser.email,
+                realname: request.realname ?? existingUser.realname,
+                gender: request.gender ?? existingUser.gender,
+                description: request.description ?? existingUser.description,
+                classname: request.classname ?? existingUser.classname,
+                avatar: request.avatar ?? existingUser.avatar,
+                group: existingUser.group
+            )
+            lastError = nil
+            return true
+        }
+
         guard let serverURL else {
             lastError = "Enter a valid server URL before updating your profile."
             return false
@@ -182,6 +289,11 @@ final class SessionStore: ObservableObject {
     }
 
     func logout() async {
+        if demoData != nil {
+            resetSession()
+            return
+        }
+
         guard let serverURL else {
             resetSession()
             return
@@ -196,6 +308,10 @@ final class SessionStore: ObservableObject {
     }
 
     func updateServerURL(_ value: String) {
+        guard runtimeMode == .live else {
+            serverURLText = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return
+        }
         serverURLText = value.trimmingCharacters(in: .whitespacesAndNewlines)
         UserDefaults.standard.set(serverURLText, forKey: Self.serverURLDefaultsKey)
     }
@@ -221,6 +337,17 @@ final class SessionStore: ObservableObject {
 
     func hasAuthority(_ authority: String) -> Bool {
         authorityCache[authority] == true
+    }
+
+    func demoDisplayName(for userID: String) -> String? {
+        demoData?.userDisplayNames[userID]
+    }
+
+    func participantName(for userID: String) -> String? {
+        if currentUser?.id == userID {
+            return "You"
+        }
+        return demoData?.userDisplayNames[userID]
     }
 
     static func normalizeServerURL(from value: String) throws -> URL {
@@ -251,5 +378,33 @@ final class SessionStore: ObservableObject {
         authorityCache = [:]
     }
 
+    private static func runtimeModeFromProcessInfo() -> RuntimeMode {
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("-demo-signed-out") {
+            return .demoSignedOut
+        }
+        if arguments.contains("-demo-volunteer") {
+            return .demoVolunteer
+        }
+        if arguments.contains("-demo-organizer") {
+            return .demoOrganizer
+        }
+        return .live
+    }
+
     private static let serverURLDefaultsKey = "server_base_url"
+}
+
+extension SessionStore {
+    static func previewSignedOut() -> SessionStore {
+        SessionStore(runtimeMode: .demoSignedOut)
+    }
+
+    static func previewVolunteer() -> SessionStore {
+        SessionStore(runtimeMode: .demoVolunteer)
+    }
+
+    static func previewOrganizer() -> SessionStore {
+        SessionStore(runtimeMode: .demoOrganizer)
+    }
 }

@@ -53,6 +53,13 @@ struct LeaderboardHomeView: View {
     }
 
     private func load() async {
+        if let demoData = session.demoData {
+            entries = demoData.leaderboard
+            errorMessage = nil
+            isLoading = false
+            return
+        }
+
         guard let serverURL = session.serverURL else {
             isLoading = false
             errorMessage = "The server URL is invalid."
@@ -71,4 +78,11 @@ struct LeaderboardHomeView: View {
             errorMessage = session.readableError(error)
         }
     }
+}
+
+#Preview("Leaderboard") {
+    NavigationStack {
+        LeaderboardHomeView()
+    }
+    .environmentObject(SessionStore.previewVolunteer())
 }

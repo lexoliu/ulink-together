@@ -158,6 +158,14 @@ struct FeedHomeView: View {
     }
 
     private func loadFeed() async {
+        if let demoData = session.demoData {
+            activities = demoData.feedActivities
+            selectedActivityID = selectedActivityID ?? demoData.feedActivities.first?.id
+            errorMessage = nil
+            isLoading = false
+            return
+        }
+
         guard let serverURL = session.serverURL else {
             errorMessage = "The server URL is invalid."
             isLoading = false
@@ -189,6 +197,7 @@ struct ActivityDetailView: View {
 
     @State private var detail: ActivityDetail?
     @State private var records: [RecordEntry] = []
+    @State private var participantNames: [String: String] = [:]
     @State private var exportBatch: ExportBatchResponse?
     @State private var isLoading = true
     @State private var isUpdating = false
@@ -272,9 +281,9 @@ struct ActivityDetailView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             HStack {
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text(record.activityName ?? "Untitled activity")
+                                    Text(participantTitle(for: record))
                                         .font(.headline)
-                                    Text(record.user == session.currentUser?.id ? "You" : "Volunteer")
+                                    Text(record.activityName ?? "Untitled activity")
                                         .font(.subheadline)
                                         .foregroundStyle(.secondary)
                                 }
@@ -323,15 +332,15 @@ struct ActivityDetailView: View {
     private func header(for detail: ActivityDetail) -> some View {
         CardPanel {
             VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 12) {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(detail.name)
                             .font(.system(.largeTitle, design: .rounded).weight(.bold))
+                            .fixedSize(horizontal: false, vertical: true)
                         Text(detail.description)
                             .font(.body)
                             .foregroundStyle(.secondary)
                     }
-                    Spacer()
                     StateChip(title: detail.state.title, tint: AppTheme.stateTint(for: detail.state))
                 }
 
@@ -479,6 +488,15 @@ struct ActivityDetailView: View {
     }
 
     private func load() async {
+        if let demoData = session.demoData {
+            detail = demoData.activityDetails[activityID]
+            records = demoData.recordsByActivity[activityID] ?? []
+            participantNames = demoData.userDisplayNames
+            errorMessage = nil
+            isLoading = false
+            return
+        }
+
         guard let serverURL = session.serverURL else {
             isLoading = false
             errorMessage = "The server URL is invalid."
@@ -495,8 +513,10 @@ struct ActivityDetailView: View {
             detail = loadedDetail
             if canManage(detail: loadedDetail) {
                 records = try await session.apiClient.fetchRecords(baseURL: serverURL, activity: activityID)
+                await hydrateParticipantNames(serverURL: serverURL)
             } else {
                 records = []
+                participantNames = [:]
             }
             errorMessage = nil
         } catch {
@@ -505,6 +525,11 @@ struct ActivityDetailView: View {
     }
 
     private func join() async {
+        if session.demoData != nil {
+            errorMessage = "Joining is disabled in demo mode."
+            return
+        }
+
         guard let serverURL = session.serverURL else {
             errorMessage = "The server URL is invalid."
             return
@@ -524,6 +549,11 @@ struct ActivityDetailView: View {
     }
 
     private func transition(path: String) async {
+        if session.demoData != nil {
+            errorMessage = "State changes are disabled in demo mode."
+            return
+        }
+
         guard let serverURL = session.serverURL else {
             errorMessage = "The server URL is invalid."
             return
@@ -538,6 +568,11 @@ struct ActivityDetailView: View {
     }
 
     private func updateRecord(recordID: String, action: String) async {
+        if session.demoData != nil {
+            errorMessage = "Record changes are disabled in demo mode."
+            return
+        }
+
         guard let serverURL = session.serverURL else {
             errorMessage = "The server URL is invalid."
             return
@@ -552,6 +587,10 @@ struct ActivityDetailView: View {
     }
 
     private func updateActivity(with request: CreateActivityRequest) async throws {
+        if session.demoData != nil {
+            throw APIError.transport("Editing is disabled in demo mode.")
+        }
+
         guard let serverURL = session.serverURL else {
             throw APIError.invalidBaseURL
         }
@@ -561,6 +600,11 @@ struct ActivityDetailView: View {
     }
 
     private func exportHours() async {
+        if let batch = session.demoData?.exportBatch {
+            exportBatch = batch
+            return
+        }
+
         guard let serverURL = session.serverURL else {
             errorMessage = "The server URL is invalid."
             return
@@ -576,6 +620,37 @@ struct ActivityDetailView: View {
     private func meta(_ title: String, systemImage: String) -> some View {
         Label(title, systemImage: systemImage)
             .foregroundStyle(.secondary)
+    }
+
+    private func participantTitle(for record: RecordEntry) -> String {
+        if let cached = participantNames[record.user] {
+            return cached
+        }
+        if let resolved = session.participantName(for: record.user) {
+            return resolved
+        }
+        return "Volunteer • \(DisplayText.shortIdentifier(record.user))"
+    }
+
+    private func hydrateParticipantNames(serverURL: URL) async {
+        guard session.canViewUserDetails else {
+            participantNames = [:]
+            return
+        }
+
+        var nextNames: [String: String] = [:]
+        for userID in Set(records.map(\.user)) {
+            if let demoName = session.participantName(for: userID) {
+                nextNames[userID] = demoName
+                continue
+            }
+            do {
+                nextNames[userID] = try await session.apiClient.loadDisplayNameIfPossible(baseURL: serverURL, userID: userID)
+            } catch {
+                nextNames[userID] = "Volunteer • \(DisplayText.shortIdentifier(userID))"
+            }
+        }
+        participantNames = nextNames
     }
 
     private func labelRow(title: String, subtitle: String, systemImage: String) -> some View {
@@ -596,6 +671,18 @@ struct ActivityDetailView: View {
                 .foregroundStyle(.tertiary)
         }
     }
+}
+
+#Preview("Feed") {
+    FeedHomeView()
+        .environmentObject(SessionStore.previewVolunteer())
+}
+
+#Preview("Activity Detail") {
+    NavigationStack {
+        ActivityDetailView(activityID: AppDemoData.primaryActivityID)
+    }
+    .environmentObject(SessionStore.previewOrganizer())
 }
 
 struct ExportPreviewView: View {

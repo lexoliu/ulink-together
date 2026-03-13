@@ -11,6 +11,7 @@ struct ActivityChannelView: View {
     @State private var composer = ""
     @State private var isLoading = true
     @State private var errorMessage: String?
+    @State private var pushTask: Task<Void, Never>?
 
     var body: some View {
         PageWidthReader {
@@ -108,11 +109,18 @@ struct ActivityChannelView: View {
         .task {
             await load()
         }
+        .onDisappear {
+            pushTask?.cancel()
+            pushTask = nil
+        }
     }
 
     private func senderLabel(for senderID: String) -> String {
         if session.isCurrentUser(id: senderID) {
             return "You"
+        }
+        if let demoName = session.demoDisplayName(for: senderID) {
+            return demoName
         }
         if let senderName = senderNames[senderID] {
             return senderName
@@ -121,6 +129,20 @@ struct ActivityChannelView: View {
     }
 
     private func load() async {
+        if let demoData = session.demoData {
+            channel = demoData.channelsByActivity[activity.id]
+            if let channel {
+                messages = demoData.messagesByChannel[channel.id] ?? []
+                senderNames = demoData.userDisplayNames
+            } else {
+                messages = []
+                senderNames = [:]
+            }
+            errorMessage = nil
+            isLoading = false
+            return
+        }
+
         guard let serverURL = session.serverURL else {
             errorMessage = "The server URL is invalid."
             isLoading = false
@@ -138,8 +160,12 @@ struct ActivityChannelView: View {
             if let channel {
                 messages = try await session.apiClient.fetchMessages(baseURL: serverURL, channelID: channel.id)
                 await hydrateNamesIfNeeded(serverURL: serverURL)
+                subscribeToPush(baseURL: serverURL, channelID: channel.id)
             } else {
                 messages = []
+                senderNames = [:]
+                pushTask?.cancel()
+                pushTask = nil
             }
             errorMessage = nil
         } catch {
@@ -148,6 +174,16 @@ struct ActivityChannelView: View {
     }
 
     private func createChannel() async {
+        if let demoData = session.demoData {
+            channel = demoData.channelsByActivity[activity.id]
+            if let channel {
+                messages = demoData.messagesByChannel[channel.id] ?? []
+                senderNames = demoData.userDisplayNames
+            }
+            errorMessage = nil
+            return
+        }
+
         guard let serverURL = session.serverURL else {
             errorMessage = "The server URL is invalid."
             return
@@ -166,6 +202,25 @@ struct ActivityChannelView: View {
     }
 
     private func sendMessage() async {
+        if session.demoData != nil, let channel {
+            let content = composer.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !content.isEmpty else {
+                return
+            }
+            messages.append(
+                ChannelMessage(
+                    id: UUID().uuidString,
+                    channel: channel.id,
+                    sender: session.currentUser?.id ?? "demo-user",
+                    content: content,
+                    datetime: "2026-03-13T12:15:00Z"
+                )
+            )
+            composer = ""
+            errorMessage = nil
+            return
+        }
+
         guard let serverURL = session.serverURL, let channel else {
             errorMessage = "The channel is unavailable."
             return
@@ -185,6 +240,36 @@ struct ActivityChannelView: View {
         }
     }
 
+    private func subscribeToPush(baseURL: URL, channelID: String) {
+        pushTask?.cancel()
+        pushTask = Task {
+            do {
+                let stream = await session.pushClient.stream(baseURL: baseURL)
+                for try await event in stream {
+                    guard event.name == "message" else {
+                        continue
+                    }
+                    guard let data = event.data.data(using: .utf8) else {
+                        continue
+                    }
+                    let pushed = try JSONDecoder().decode(ChannelMessage.self, from: data)
+                    guard pushed.channel == channelID else {
+                        continue
+                    }
+                    if messages.contains(where: { $0.id == pushed.id }) {
+                        continue
+                    }
+                    messages.append(pushed)
+                    await hydrateNamesIfNeeded(serverURL: baseURL)
+                }
+            } catch {
+                if !Task.isCancelled {
+                    errorMessage = session.readableError(error)
+                }
+            }
+        }
+    }
+
     private func hydrateNamesIfNeeded(serverURL: URL) async {
         guard session.canViewUserDetails else {
             return
@@ -198,4 +283,13 @@ struct ActivityChannelView: View {
             }
         }
     }
+}
+
+#Preview("Channel") {
+    NavigationStack {
+        ActivityChannelView(
+            activity: AppDemoData.organizer().activityDetails[AppDemoData.primaryActivityID]!
+        )
+    }
+    .environmentObject(SessionStore.previewOrganizer())
 }

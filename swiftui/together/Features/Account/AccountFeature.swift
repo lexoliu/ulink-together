@@ -4,15 +4,12 @@ struct AccountHomeView: View {
     @EnvironmentObject private var session: SessionStore
 
     @State private var showingProfileEditor = false
-    @State private var workingServerURL = ""
 
     var body: some View {
         PageWidthReader {
             if let currentUser = session.currentUser {
                 profileCard(for: currentUser)
                 profileDetails(for: currentUser)
-                connectionCard
-                authorityCard
                 actionCard
             } else {
                 EmptyStateCard(
@@ -28,11 +25,6 @@ struct AccountHomeView: View {
         }
         .navigationTitle("Account")
         .navigationBarTitleDisplayMode(.large)
-        .task {
-            if workingServerURL.isEmpty {
-                workingServerURL = session.serverURLText
-            }
-        }
         .sheet(isPresented: $showingProfileEditor) {
             if let currentUser = session.currentUser {
                 NavigationStack {
@@ -44,30 +36,59 @@ struct AccountHomeView: View {
 
     private func profileCard(for user: UserProfile) -> some View {
         CardPanel {
-            HStack(spacing: 16) {
-                AvatarBadge(
-                    title: user.realname,
-                    imageURL: session.serverURL.flatMap { session.apiClient.avatarURL(baseURL: $0, path: user.avatar) },
-                    size: 72
-                )
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 16) {
+                    AvatarBadge(
+                        title: user.realname,
+                        imageURL: session.serverURL.flatMap { session.apiClient.avatarURL(baseURL: $0, path: user.avatar) },
+                        size: 72
+                    )
 
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(user.realname)
-                        .font(.title2.weight(.bold))
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(user.realname)
+                            .font(.title2.weight(.bold))
+                        Text(user.email)
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+                        Text(user.classname)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Button("Edit") {
+                        showingProfileEditor = true
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(spacing: 14) {
+                        AvatarBadge(
+                            title: user.realname,
+                            imageURL: session.serverURL.flatMap { session.apiClient.avatarURL(baseURL: $0, path: user.avatar) },
+                            size: 72
+                        )
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(user.realname)
+                                .font(.title2.weight(.bold))
+                            Text(user.classname)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
                     Text(user.email)
                         .font(.body)
                         .foregroundStyle(.secondary)
-                    Text(user.classname)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
 
-                Spacer()
-
-                Button("Edit") {
-                    showingProfileEditor = true
+                    Button("Edit Profile") {
+                        showingProfileEditor = true
+                    }
+                    .buttonStyle(.borderedProminent)
                 }
-                .buttonStyle(.borderedProminent)
             }
         }
     }
@@ -89,62 +110,12 @@ struct AccountHomeView: View {
         }
     }
 
-    private var connectionCard: some View {
-        CardPanel {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Server")
-                    .font(.headline)
-                TextField("Server URL", text: $workingServerURL)
-                    .textFieldStyle(.roundedBorder)
-                    .textInputAutocapitalization(.never)
-                    .keyboardType(.URL)
-
-                HStack {
-                    Button("Save") {
-                        session.updateServerURL(workingServerURL)
-                    }
-
-                    Button("Reconnect") {
-                        session.updateServerURL(workingServerURL)
-                        Task {
-                            await session.reconnect()
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
-            }
-        }
-    }
-
-    private var authorityCard: some View {
-        CardPanel {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Authorities")
-                    .font(.headline)
-
-                if session.authorityCache.isEmpty {
-                    Text("No privileged authorities were granted to this account.")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(session.authorityCache.keys.sorted(), id: \.self) { authority in
-                        HStack {
-                            Text(authority.replacingOccurrences(of: "_", with: " ").capitalized)
-                            Spacer()
-                            Image(systemName: session.hasAuthority(authority) ? "checkmark.circle.fill" : "minus.circle")
-                                .foregroundStyle(session.hasAuthority(authority) ? .green : .secondary)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     private var actionCard: some View {
         CardPanel {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Session")
+                Text("Account")
                     .font(.headline)
-                Button("Refresh Profile") {
+                Button("Refresh Details") {
                     Task {
                         await session.refreshCurrentUser()
                     }
@@ -235,4 +206,11 @@ struct ProfileEditorView: View {
             errorMessage = session.lastError
         }
     }
+}
+
+#Preview("Account") {
+    NavigationStack {
+        AccountHomeView()
+    }
+    .environmentObject(SessionStore.previewOrganizer())
 }

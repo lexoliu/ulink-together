@@ -1,3 +1,4 @@
+import Alamofire
 import Foundation
 
 enum APIError: LocalizedError, Sendable {
@@ -32,17 +33,29 @@ enum APIError: LocalizedError, Sendable {
     }
 }
 
-enum HTTPMethod: String, Sendable {
+enum AppHTTPMethod: String, Sendable {
     case delete = "DELETE"
     case get = "GET"
     case post = "POST"
     case put = "PUT"
+
+    var alamofireMethod: Alamofire.HTTPMethod {
+        switch self {
+        case .delete:
+            .delete
+        case .get:
+            .get
+        case .post:
+            .post
+        case .put:
+            .put
+        }
+    }
 }
 
 struct APIClient: Sendable {
-    private let session: URLSession
     private let decoder: JSONDecoder
-    private let encoder: JSONEncoder
+    private let session: Session
 
     init() {
         let configuration = URLSessionConfiguration.default
@@ -52,9 +65,8 @@ struct APIClient: Sendable {
         configuration.timeoutIntervalForRequest = 30
         configuration.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
 
-        self.session = URLSession(configuration: configuration)
         self.decoder = JSONDecoder()
-        self.encoder = JSONEncoder()
+        self.session = Session(configuration: configuration)
     }
 
     func login(baseURL: URL, email: String, password: String) async throws {
@@ -245,7 +257,7 @@ struct APIClient: Sendable {
     private func request<Response: Decodable>(
         baseURL: URL,
         path: String,
-        method: HTTPMethod = .get,
+        method: AppHTTPMethod = .get,
         queryItems: [URLQueryItem] = []
     ) async throws -> Response {
         try await request(
@@ -260,21 +272,30 @@ struct APIClient: Sendable {
     private func request<Response: Decodable, Body: Encodable>(
         baseURL: URL,
         path: String,
-        method: HTTPMethod = .get,
+        method: AppHTTPMethod = .get,
         queryItems: [URLQueryItem] = [],
         body: Body?
     ) async throws -> Response {
-        var request = try makeRequest(baseURL: baseURL, path: path, method: method, queryItems: queryItems)
+        let url = try makeURL(baseURL: baseURL, path: path, queryItems: queryItems)
+        var headers: HTTPHeaders = [.accept("application/json")]
+        let request: DataRequest
         if let body {
-            request.httpBody = try encoder.encode(body)
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request = session.request(
+                url,
+                method: method.alamofireMethod,
+                parameters: body,
+                encoder: JSONParameterEncoder.default,
+                headers: headers
+            )
+        } else {
+            request = session.request(url, method: method.alamofireMethod, headers: headers)
         }
-
         do {
-            let (data, response) = try await session.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse else {
+            let response = await request.serializingData().response
+            guard let httpResponse = response.response else {
                 throw APIError.invalidResponse
             }
+            let data = response.data ?? Data()
             guard (200 ..< 300).contains(httpResponse.statusCode) else {
                 let message = decodeErrorMessage(from: data) ?? HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)
                 throw APIError.http(statusCode: httpResponse.statusCode, message: message)
@@ -287,17 +308,18 @@ struct APIClient: Sendable {
             }
         } catch let error as APIError {
             throw error
+        } catch let error as AFError {
+            throw APIError.transport(error.localizedDescription)
         } catch {
             throw APIError.transport(error.localizedDescription)
         }
     }
 
-    private func makeRequest(
+    private func makeURL(
         baseURL: URL,
         path: String,
-        method: HTTPMethod,
         queryItems: [URLQueryItem]
-    ) throws -> URLRequest {
+    ) throws -> URL {
         guard var components = URLComponents(
             url: ["api", "v1"]
                 .appending(
@@ -316,11 +338,7 @@ struct APIClient: Sendable {
         guard let url = components.url else {
             throw APIError.invalidBaseURL
         }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = method.rawValue
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        return request
+        return url
     }
 
     private func decodeErrorMessage(from data: Data) -> String? {

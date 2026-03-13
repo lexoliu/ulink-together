@@ -68,6 +68,13 @@ struct OrganiserHomeView: View {
     }
 
     private func load() async {
+        if let demoData = session.demoData {
+            activities = demoData.feedActivities.filter { $0.promoter == session.currentUser?.id }
+            errorMessage = nil
+            isLoading = false
+            return
+        }
+
         guard let serverURL = session.serverURL, let currentUser = session.currentUser else {
             errorMessage = "You must sign in before managing activities."
             isLoading = false
@@ -92,6 +99,9 @@ struct OrganiserHomeView: View {
     }
 
     private func createActivity(with request: CreateActivityRequest) async throws {
+        if session.demoData != nil {
+            throw APIError.transport("Creating activities is disabled in demo mode.")
+        }
         guard let serverURL = session.serverURL else {
             throw APIError.invalidBaseURL
         }
@@ -99,6 +109,13 @@ struct OrganiserHomeView: View {
         await load()
         showingCreateSheet = false
     }
+}
+
+#Preview("Manage") {
+    NavigationStack {
+        OrganiserHomeView()
+    }
+    .environmentObject(SessionStore.previewOrganizer())
 }
 
 struct ActivityEditorView: View {

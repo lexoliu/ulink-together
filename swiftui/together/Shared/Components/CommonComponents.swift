@@ -65,10 +65,12 @@ struct StateChip: View {
     var body: some View {
         Label(title, systemImage: "circle.fill")
             .font(.subheadline.weight(.semibold))
+            .lineLimit(1)
             .foregroundStyle(tint)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(tint.opacity(0.12), in: Capsule())
+            .fixedSize(horizontal: true, vertical: false)
     }
 }
 
@@ -237,19 +239,33 @@ struct ActivityCard: View {
     var body: some View {
         CardPanel {
             VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 6) {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(activity.name)
+                                .font(.title3.weight(.semibold))
+                                .foregroundStyle(.primary)
+                                .multilineTextAlignment(.leading)
+                            Text(activity.briefDescription)
+                                .font(.body)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                        Spacer(minLength: 16)
+                        StateChip(title: activity.state.title, tint: AppTheme.stateTint(for: activity.state))
+                    }
+
+                    VStack(alignment: .leading, spacing: 10) {
                         Text(activity.name)
                             .font(.title3.weight(.semibold))
                             .foregroundStyle(.primary)
                             .multilineTextAlignment(.leading)
+                        StateChip(title: activity.state.title, tint: AppTheme.stateTint(for: activity.state))
                         Text(activity.briefDescription)
                             .font(.body)
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
                     }
-                    Spacer(minLength: 16)
-                    StateChip(title: activity.state.title, tint: AppTheme.stateTint(for: activity.state))
                 }
 
                 Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 8) {

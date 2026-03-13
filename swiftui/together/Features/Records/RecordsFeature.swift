@@ -129,6 +129,13 @@ struct RecordsHomeView: View {
     }
 
     private func load() async {
+        if let demoData = session.demoData {
+            records = demoData.userRecords
+            errorMessage = nil
+            isLoading = false
+            return
+        }
+
         guard let serverURL = session.serverURL, let currentUser = session.currentUser else {
             errorMessage = "You must sign in before loading records."
             isLoading = false
@@ -147,4 +154,11 @@ struct RecordsHomeView: View {
             errorMessage = session.readableError(error)
         }
     }
+}
+
+#Preview("Records") {
+    NavigationStack {
+        RecordsHomeView()
+    }
+    .environmentObject(SessionStore.previewVolunteer())
 }

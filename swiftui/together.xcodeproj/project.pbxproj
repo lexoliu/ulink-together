@@ -6,6 +6,11 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		0281E161CA5D16C6E46BC3F7 /* EventSource in Frameworks */ = {isa = PBXBuildFile; productRef = 7F50513E9F168C33EF814C9B /* EventSource */; };
+		28B498579BB1BF10BBDA94A4 /* Alamofire in Frameworks */ = {isa = PBXBuildFile; productRef = 9D4188BDC9790979A9F580C4 /* Alamofire */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		75ECA99B2F6323BA00B3647D /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -32,16 +37,22 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		75ECA98D2F6323B800B3647D /* together */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = together;
 			sourceTree = "<group>";
 		};
 		75ECA99D2F6323BA00B3647D /* togetherTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = togetherTests;
 			sourceTree = "<group>";
 		};
 		75ECA9A72F6323BA00B3647D /* togetherUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = togetherUITests;
 			sourceTree = "<group>";
 		};
@@ -52,6 +63,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				28B498579BB1BF10BBDA94A4 /* Alamofire in Frameworks */,
+				0281E161CA5D16C6E46BC3F7 /* EventSource in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -112,6 +125,8 @@
 			);
 			name = together;
 			packageProductDependencies = (
+				9D4188BDC9790979A9F580C4 /* Alamofire */,
+				7F50513E9F168C33EF814C9B /* EventSource */,
 			);
 			productName = together;
 			productReference = 75ECA98B2F6323B800B3647D /* together.app */;
@@ -134,8 +149,6 @@
 				75ECA99D2F6323BA00B3647D /* togetherTests */,
 			);
 			name = togetherTests;
-			packageProductDependencies = (
-			);
 			productName = togetherTests;
 			productReference = 75ECA99A2F6323BA00B3647D /* togetherTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -157,8 +170,6 @@
 				75ECA9A72F6323BA00B3647D /* togetherUITests */,
 			);
 			name = togetherUITests;
-			packageProductDependencies = (
-			);
 			productName = togetherUITests;
 			productReference = 75ECA9A42F6323BA00B3647D /* togetherUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
@@ -195,6 +206,10 @@
 			);
 			mainGroup = 75ECA9822F6323B800B3647D;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				FF31CFAD0AF8AFCD9DCBBD6B /* XCRemoteSwiftPackageReference "Alamofire" */,
+				F1DEE36FA7FDBAC4A67745B8 /* XCRemoteSwiftPackageReference "EventSource" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 75ECA98C2F6323B800B3647D /* Products */;
 			projectDirPath = "";
@@ -615,6 +630,38 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		F1DEE36FA7FDBAC4A67745B8 /* XCRemoteSwiftPackageReference "EventSource" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/Recouse/EventSource.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.1.7;
+			};
+		};
+		FF31CFAD0AF8AFCD9DCBBD6B /* XCRemoteSwiftPackageReference "Alamofire" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/Alamofire/Alamofire.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.11.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		7F50513E9F168C33EF814C9B /* EventSource */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F1DEE36FA7FDBAC4A67745B8 /* XCRemoteSwiftPackageReference "EventSource" */;
+			productName = EventSource;
+		};
+		9D4188BDC9790979A9F580C4 /* Alamofire */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FF31CFAD0AF8AFCD9DCBBD6B /* XCRemoteSwiftPackageReference "Alamofire" */;
+			productName = Alamofire;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 75ECA9832F6323B800B3647D /* Project object */;
 }

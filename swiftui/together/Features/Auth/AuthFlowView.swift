@@ -32,7 +32,6 @@ struct AuthFlowView: View {
     @State private var registerPassword = ""
     @State private var registerConfirmPassword = ""
     @State private var registerAvatar = ""
-    @State private var workingServerURL = ""
     @State private var localError: String?
 
     private let genders = [
@@ -63,51 +62,10 @@ struct AuthFlowView: View {
                 case .register:
                     registerCard
                 }
-
-                CardPanel {
-                    VStack(alignment: .leading, spacing: 14) {
-                        Text("Server")
-                            .font(.headline)
-                        TextField("https://school.example.com", text: $workingServerURL)
-                            .textInputAutocapitalization(.never)
-                            .keyboardType(.URL)
-                            .textFieldStyle(.roundedBorder)
-
-                        Text("Use the server root URL. The app adds `/api/v1` automatically.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-
-                        HStack {
-                            Button("Save") {
-                                localError = nil
-                                session.updateServerURL(workingServerURL)
-                            }
-
-                            Button("Reconnect") {
-                                localError = nil
-                                session.updateServerURL(workingServerURL)
-                                Task {
-                                    await session.reconnect()
-                                }
-                            }
-                            .buttonStyle(.borderedProminent)
-                        }
-                    }
-                }
-
-                ContractNoteCard(
-                    title: "Avatar Contract",
-                    message: "The backend accepts an avatar path string today. This client keeps the field explicit instead of pretending there is a native media upload contract."
-                )
             }
             .navigationTitle("Welcome")
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(.visible, for: .navigationBar)
-            .task {
-                if workingServerURL.isEmpty {
-                    workingServerURL = session.serverURLText
-                }
-            }
         }
     }
 
@@ -120,10 +78,20 @@ struct AuthFlowView: View {
                     .font(.title3)
                     .foregroundStyle(.secondary)
 
-                HStack(spacing: 10) {
-                    StateChip(title: "Native iPhone + iPad", tint: .blue)
-                    StateChip(title: "Cookie Session", tint: .green)
-                    StateChip(title: "Real API", tint: .orange)
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 10) {
+                        StateChip(title: "iPhone + iPad", tint: .blue)
+                        StateChip(title: "Fast Sign-In", tint: .green)
+                        StateChip(title: "Export Ready", tint: .orange)
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 10) {
+                            StateChip(title: "iPhone + iPad", tint: .blue)
+                            StateChip(title: "Fast Sign-In", tint: .green)
+                        }
+                        StateChip(title: "Export Ready", tint: .orange)
+                    }
                 }
             }
         }
@@ -199,7 +167,7 @@ struct AuthFlowView: View {
                 SecureField("Confirm password", text: $registerConfirmPassword)
                     .textFieldStyle(.roundedBorder)
 
-                TextField("Avatar path (optional)", text: $registerAvatar)
+                TextField("Profile photo link (optional)", text: $registerAvatar)
                     .textFieldStyle(.roundedBorder)
 
                 Button {
@@ -254,4 +222,9 @@ struct AuthFlowView: View {
         }
         return nil
     }
+}
+
+#Preview("Auth") {
+    AuthFlowView()
+        .environmentObject(SessionStore.previewSignedOut())
 }
