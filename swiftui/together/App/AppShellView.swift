@@ -1,45 +1,60 @@
 import SwiftUI
 
+private enum AppDestination: Hashable {
+    case feed
+    case records
+    case manage
+    case leaderboard
+    case account
+}
+
 struct AppShellView: View {
     @EnvironmentObject private var session: SessionStore
+    @State private var selection: AppDestination = .feed
 
     var body: some View {
-        TabView {
-            FeedHomeView()
-                .tabItem {
-                    Label("Feed", systemImage: "square.grid.2x2.fill")
-                }
-
-            NavigationStack {
-                RecordsHomeView()
+        Group {
+            if #available(iOS 18, *) {
+                configuredTabs
+                    .tabViewStyle(.sidebarAdaptable)
+            } else {
+                configuredTabs
             }
-            .tabItem {
-                Label("Records", systemImage: "clock.badge.checkmark.fill")
+        }
+        .tint(AppTheme.accentTint)
+    }
+
+    private var configuredTabs: some View {
+        TabView(selection: $selection) {
+            Tab("Explore", systemImage: "square.grid.2x2.fill", value: .feed) {
+                FeedHomeView()
+            }
+
+            Tab("Records", systemImage: "clock.badge.checkmark.fill", value: .records) {
+                NavigationStack {
+                    RecordsHomeView()
+                }
             }
 
             if session.showsManageTab {
+                Tab("Manage", systemImage: "slider.horizontal.3", value: .manage) {
+                    NavigationStack {
+                        OrganiserHomeView()
+                    }
+                }
+            }
+
+            Tab("Leaderboard", systemImage: "trophy.fill", value: .leaderboard) {
                 NavigationStack {
-                    OrganiserHomeView()
-                }
-                .tabItem {
-                    Label("Manage", systemImage: "slider.horizontal.3")
+                    LeaderboardHomeView()
                 }
             }
 
-            NavigationStack {
-                LeaderboardHomeView()
-            }
-            .tabItem {
-                Label("Leaderboard", systemImage: "trophy.fill")
-            }
-
-            NavigationStack {
-                AccountHomeView()
-            }
-            .tabItem {
-                Label("Account", systemImage: "person.crop.circle.fill")
+            Tab("Account", systemImage: "person.crop.circle.fill", value: .account) {
+                NavigationStack {
+                    AccountHomeView()
+                }
             }
         }
-        .tint(.blue)
     }
 }

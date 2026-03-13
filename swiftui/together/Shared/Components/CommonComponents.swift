@@ -7,17 +7,17 @@ struct AppBackgroundView: View {
             .ignoresSafeArea()
             .overlay(alignment: .topTrailing) {
                 Circle()
-                    .fill(.blue.opacity(0.08))
-                    .frame(width: 280, height: 280)
-                    .blur(radius: 8)
-                    .offset(x: 70, y: -40)
+                    .fill(AppTheme.accentTint.opacity(0.08))
+                    .frame(width: 320, height: 320)
+                    .blur(radius: 16)
+                    .offset(x: 90, y: -60)
             }
             .overlay(alignment: .bottomLeading) {
                 Circle()
-                    .fill(.teal.opacity(0.08))
-                    .frame(width: 320, height: 320)
-                    .blur(radius: 12)
-                    .offset(x: -100, y: 80)
+                    .fill(Color(red: 0.62, green: 0.67, blue: 0.58).opacity(0.10))
+                    .frame(width: 360, height: 360)
+                    .blur(radius: 18)
+                    .offset(x: -120, y: 110)
             }
     }
 }
@@ -27,17 +27,9 @@ struct CardPanel<Content: View>: View {
 
     var body: some View {
         content
-            .padding(20)
+            .padding(22)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: AppTheme.cardRadius, style: .continuous)
-                    .fill(.thinMaterial)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: AppTheme.cardRadius, style: .continuous)
-                    .strokeBorder(.white.opacity(0.35), lineWidth: 1)
-            }
-            .shadow(color: .black.opacity(0.04), radius: 18, y: 12)
+            .modifier(AppCardSurface())
     }
 }
 
@@ -51,7 +43,7 @@ struct PageWidthReader<Content: View>: View {
             }
             .frame(maxWidth: AppTheme.contentWidth)
             .padding(.horizontal, 20)
-            .padding(.vertical, 16)
+            .padding(.vertical, 18)
         }
         .scrollIndicators(.hidden)
         .background(AppBackgroundView())
@@ -69,7 +61,7 @@ struct StateChip: View {
             .foregroundStyle(tint)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(tint.opacity(0.12), in: Capsule())
+            .background(tint.opacity(0.10), in: Capsule())
             .fixedSize(horizontal: true, vertical: false)
     }
 }
@@ -171,7 +163,7 @@ struct EmptyStateCard: View {
             VStack(alignment: .leading, spacing: 10) {
                 Image(systemName: systemImage)
                     .font(.title2.weight(.semibold))
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(AppTheme.accentTint)
                 Text(title)
                     .font(.title3.weight(.semibold))
                 Text(message)
@@ -190,6 +182,7 @@ struct LoadingCard: View {
             HStack(spacing: 14) {
                 ProgressView()
                     .controlSize(.large)
+                    .tint(AppTheme.accentTint)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
                         .font(.headline)
@@ -198,6 +191,35 @@ struct LoadingCard: View {
                         .foregroundStyle(.secondary)
                 }
             }
+        }
+    }
+}
+
+private struct AppCardSurface: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content
+                .background(
+                    RoundedRectangle(cornerRadius: AppTheme.cardRadius, style: .continuous)
+                        .fill(.clear)
+                        .glassEffect(.regular, in: .rect(cornerRadius: AppTheme.cardRadius))
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: AppTheme.cardRadius, style: .continuous)
+                        .strokeBorder(.white.opacity(0.45), lineWidth: 1)
+                }
+                .shadow(color: .black.opacity(0.05), radius: 20, y: 12)
+        } else {
+            content
+                .background(
+                    RoundedRectangle(cornerRadius: AppTheme.cardRadius, style: .continuous)
+                        .fill(.thinMaterial)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: AppTheme.cardRadius, style: .continuous)
+                        .strokeBorder(.white.opacity(0.45), lineWidth: 1)
+                }
+                .shadow(color: .black.opacity(0.05), radius: 20, y: 12)
         }
     }
 }

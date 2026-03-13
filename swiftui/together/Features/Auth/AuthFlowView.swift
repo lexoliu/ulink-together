@@ -4,11 +4,27 @@ private enum AuthMode: String, CaseIterable, Identifiable {
     case login
     case register
 
-    var id: String {
-        rawValue
-    }
+    var id: String { rawValue }
 
     var title: String {
+        switch self {
+        case .login:
+            "Sign In"
+        case .register:
+            "Create Account"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .login:
+            "Use your school account to continue."
+        case .register:
+            "Create a volunteer profile in a few steps."
+        }
+    }
+
+    var actionTitle: String {
         switch self {
         case .login:
             "Sign In"
@@ -33,6 +49,18 @@ struct AuthFlowView: View {
     @State private var registerConfirmPassword = ""
     @State private var registerAvatar = ""
     @State private var localError: String?
+    @FocusState private var focusedField: Field?
+
+    private enum Field: Hashable {
+        case loginEmail
+        case loginPassword
+        case registerEmail
+        case registerRealname
+        case registerClassname
+        case registerPassword
+        case registerConfirmPassword
+        case registerAvatar
+    }
 
     private let genders = [
         "Female",
@@ -43,8 +71,65 @@ struct AuthFlowView: View {
     var body: some View {
         NavigationStack {
             PageWidthReader {
-                hero
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 18) {
+                        introPanel
+                            .frame(maxWidth: 360, alignment: .leading)
+                        formPanel
+                    }
 
+                    VStack(spacing: 18) {
+                        introPanel
+                        formPanel
+                    }
+                }
+            }
+            .navigationTitle("Welcome")
+            .navigationBarTitleDisplayMode(.large)
+            .toolbarBackground(.visible, for: .navigationBar)
+        }
+        .scrollDismissesKeyboard(.interactively)
+    }
+
+    private var introPanel: some View {
+        CardPanel {
+            VStack(alignment: .leading, spacing: 20) {
+                Label("Volunteer Hours", systemImage: "person.3.sequence.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(AppTheme.accentTint)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Volunteer work, organised like a system app.")
+                        .font(.system(.largeTitle, design: .rounded).weight(.bold))
+                    Text("Join activities, follow organiser updates, and keep your school service record in one place.")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                }
+
+                VStack(spacing: 12) {
+                    AuthFeatureRow(
+                        systemImage: "sparkles",
+                        title: "Clean activity browsing",
+                        detail: "See what is open now, what is already underway, and what you joined."
+                    )
+                    AuthFeatureRow(
+                        systemImage: "message.badge.waveform",
+                        title: "Per-activity rooms",
+                        detail: "Stay inside the discussion thread for each event without switching tools."
+                    )
+                    AuthFeatureRow(
+                        systemImage: "checklist.checked",
+                        title: "Records that stay ready",
+                        detail: "Completed hours and organiser confirmations stay easy to review."
+                    )
+                }
+            }
+        }
+    }
+
+    private var formPanel: some View {
+        CardPanel {
+            VStack(alignment: .leading, spacing: 18) {
                 Picker("Authentication", selection: $mode) {
                     ForEach(AuthMode.allCases) { authMode in
                         Text(authMode.title).tag(authMode)
@@ -52,154 +137,130 @@ struct AuthFlowView: View {
                 }
                 .pickerStyle(.segmented)
 
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(mode.title)
+                        .font(.title2.weight(.semibold))
+                    Text(mode.subtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+
                 if let message = localError ?? session.lastError {
                     InlineErrorBanner(message: message)
                 }
 
                 switch mode {
                 case .login:
-                    loginCard
+                    loginForm
                 case .register:
-                    registerCard
-                }
-            }
-            .navigationTitle("Welcome")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbarBackground(.visible, for: .navigationBar)
-        }
-    }
-
-    private var hero: some View {
-        CardPanel {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Volunteer coordination that feels built in.")
-                    .font(.system(.largeTitle, design: .rounded).weight(.bold))
-                Text("Browse activities, join with one tap, follow organiser updates, and keep school hours ready for export.")
-                    .font(.title3)
-                    .foregroundStyle(.secondary)
-
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 10) {
-                        StateChip(title: "iPhone + iPad", tint: .blue)
-                        StateChip(title: "Fast Sign-In", tint: .green)
-                        StateChip(title: "Export Ready", tint: .orange)
-                    }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack(spacing: 10) {
-                            StateChip(title: "iPhone + iPad", tint: .blue)
-                            StateChip(title: "Fast Sign-In", tint: .green)
-                        }
-                        StateChip(title: "Export Ready", tint: .orange)
-                    }
+                    registerForm
                 }
             }
         }
     }
 
-    private var loginCard: some View {
-        CardPanel {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Sign in with your school account")
-                    .font(.title3.weight(.semibold))
+    private var loginForm: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            TextField("School email", text: $loginEmail)
+                .textInputAutocapitalization(.never)
+                .textContentType(.username)
+                .keyboardType(.emailAddress)
+                .textFieldStyle(.roundedBorder)
+                .focused($focusedField, equals: .loginEmail)
 
-                TextField("School email", text: $loginEmail)
-                    .textInputAutocapitalization(.never)
-                    .textContentType(.username)
-                    .keyboardType(.emailAddress)
-                    .textFieldStyle(.roundedBorder)
+            SecureField("Password", text: $loginPassword)
+                .textContentType(.password)
+                .textFieldStyle(.roundedBorder)
+                .focused($focusedField, equals: .loginPassword)
 
-                SecureField("Password", text: $loginPassword)
-                    .textContentType(.password)
-                    .textFieldStyle(.roundedBorder)
-
-                Button {
-                    localError = validateLogin()
-                    guard localError == nil else {
-                        return
-                    }
-                    Task {
-                        _ = await session.signIn(email: loginEmail, password: loginPassword)
-                    }
-                } label: {
-                    if session.isAuthenticating {
-                        ProgressView()
-                            .frame(maxWidth: .infinity)
-                    } else {
-                        Text("Sign In")
-                            .frame(maxWidth: .infinity)
-                    }
+            Button {
+                localError = validateLogin()
+                guard localError == nil else {
+                    return
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .disabled(session.isAuthenticating)
+                Task {
+                    _ = await session.signIn(email: loginEmail, password: loginPassword)
+                }
+            } label: {
+                submitLabel(title: AuthMode.login.actionTitle)
             }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .tint(AppTheme.accentTint)
+            .disabled(session.isAuthenticating)
         }
     }
 
-    private var registerCard: some View {
-        CardPanel {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Create a volunteer account")
-                    .font(.title3.weight(.semibold))
+    private var registerForm: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            TextField("School email", text: $registerEmail)
+                .textInputAutocapitalization(.never)
+                .keyboardType(.emailAddress)
+                .textFieldStyle(.roundedBorder)
+                .focused($focusedField, equals: .registerEmail)
 
-                TextField("School email", text: $registerEmail)
-                    .textInputAutocapitalization(.never)
-                    .keyboardType(.emailAddress)
-                    .textFieldStyle(.roundedBorder)
+            TextField("Real name", text: $registerRealname)
+                .textFieldStyle(.roundedBorder)
+                .focused($focusedField, equals: .registerRealname)
 
-                TextField("Real name", text: $registerRealname)
-                    .textFieldStyle(.roundedBorder)
-
-                Picker("Gender", selection: $registerGender) {
-                    ForEach(genders, id: \.self) { gender in
-                        Text(gender).tag(gender)
-                    }
+            Picker("Gender", selection: $registerGender) {
+                ForEach(genders, id: \.self) { gender in
+                    Text(gender).tag(gender)
                 }
-                .pickerStyle(.segmented)
-
-                TextField("Class name", text: $registerClassname)
-                    .textFieldStyle(.roundedBorder)
-
-                SecureField("Password", text: $registerPassword)
-                    .textFieldStyle(.roundedBorder)
-
-                SecureField("Confirm password", text: $registerConfirmPassword)
-                    .textFieldStyle(.roundedBorder)
-
-                TextField("Profile photo link (optional)", text: $registerAvatar)
-                    .textFieldStyle(.roundedBorder)
-
-                Button {
-                    localError = validateRegistration()
-                    guard localError == nil else {
-                        return
-                    }
-
-                    Task {
-                        let request = RegisterRequest(
-                            email: registerEmail,
-                            realname: registerRealname,
-                            password: registerPassword,
-                            gender: registerGender,
-                            classname: registerClassname,
-                            avatar: registerAvatar.trimmedNilIfEmpty
-                        )
-                        _ = await session.registerAndSignIn(request: request)
-                    }
-                } label: {
-                    if session.isAuthenticating {
-                        ProgressView()
-                            .frame(maxWidth: .infinity)
-                    } else {
-                        Text("Create Account")
-                            .frame(maxWidth: .infinity)
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .disabled(session.isAuthenticating)
             }
+            .pickerStyle(.segmented)
+
+            TextField("Class name", text: $registerClassname)
+                .textFieldStyle(.roundedBorder)
+                .focused($focusedField, equals: .registerClassname)
+
+            SecureField("Password", text: $registerPassword)
+                .textFieldStyle(.roundedBorder)
+                .focused($focusedField, equals: .registerPassword)
+
+            SecureField("Confirm password", text: $registerConfirmPassword)
+                .textFieldStyle(.roundedBorder)
+                .focused($focusedField, equals: .registerConfirmPassword)
+
+            TextField("Profile photo link (optional)", text: $registerAvatar)
+                .textFieldStyle(.roundedBorder)
+                .focused($focusedField, equals: .registerAvatar)
+
+            Button {
+                localError = validateRegistration()
+                guard localError == nil else {
+                    return
+                }
+
+                Task {
+                    let request = RegisterRequest(
+                        email: registerEmail,
+                        realname: registerRealname,
+                        password: registerPassword,
+                        gender: registerGender,
+                        classname: registerClassname,
+                        avatar: registerAvatar.trimmedNilIfEmpty
+                    )
+                    _ = await session.registerAndSignIn(request: request)
+                }
+            } label: {
+                submitLabel(title: AuthMode.register.actionTitle)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .tint(AppTheme.accentTint)
+            .disabled(session.isAuthenticating)
+        }
+    }
+
+    @ViewBuilder
+    private func submitLabel(title: String) -> some View {
+        if session.isAuthenticating {
+            ProgressView()
+                .frame(maxWidth: .infinity)
+        } else {
+            Text(title)
+                .frame(maxWidth: .infinity)
         }
     }
 
@@ -221,6 +282,30 @@ struct AuthFlowView: View {
             return "The password confirmation does not match."
         }
         return nil
+    }
+}
+
+private struct AuthFeatureRow: View {
+    let systemImage: String
+    let title: String
+    let detail: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(AppTheme.accentTint)
+                .frame(width: 28, height: 28)
+                .background(AppTheme.accentTint.opacity(0.10), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.headline)
+                Text(detail)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 }
 
