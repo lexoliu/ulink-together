@@ -1,5 +1,6 @@
 use std::{borrow::Cow, path::Path, str::FromStr};
 
+use crate::schema::{apply_schema_any, seed_builtin_groups_any};
 use sqlx::{
     any::{install_default_drivers, AnyPoolOptions},
     sqlite::SqliteConnectOptions,
@@ -101,67 +102,12 @@ pub(crate) async fn build_test_database() -> AppDatabase {
         .await
         .expect("connect test database");
     let database = AppDatabase::new(pool, DatabaseKind::Sqlite);
-
-    sqlx::query(
-        r#"
-        CREATE TABLE groups (
-            id TEXT PRIMARY KEY,
-            code TEXT NOT NULL UNIQUE,
-            allow_all_authorities INTEGER NOT NULL DEFAULT 0
-        )
-        "#,
-    )
-    .execute(database.sqlx())
-    .await
-    .expect("create groups table");
-
-    sqlx::query(
-        r#"
-        CREATE TABLE users (
-            id TEXT PRIMARY KEY,
-            email TEXT NOT NULL UNIQUE,
-            realname TEXT NOT NULL,
-            gender TEXT NOT NULL,
-            description TEXT NOT NULL,
-            classname TEXT NOT NULL,
-            password_hash TEXT NOT NULL,
-            salt TEXT NOT NULL,
-            group_id TEXT NOT NULL
-        )
-        "#,
-    )
-    .execute(database.sqlx())
-    .await
-    .expect("create users table");
-
-    sqlx::query(
-        r#"
-        CREATE TABLE sessions (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            generated_at TEXT NOT NULL,
-            ip TEXT NOT NULL
-        )
-        "#,
-    )
-    .execute(database.sqlx())
-    .await
-    .expect("create sessions table");
-
-    sqlx::query(
-        r#"
-        CREATE TABLE records (
-            id TEXT PRIMARY KEY,
-            activity_id TEXT NOT NULL,
-            user_id TEXT NOT NULL,
-            state TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        )
-        "#,
-    )
-    .execute(database.sqlx())
-    .await
-    .expect("create records table");
+    apply_schema_any(database.sqlx())
+        .await
+        .expect("create test schema");
+    seed_builtin_groups_any(database.sqlx())
+        .await
+        .expect("seed built-in groups");
 
     database
 }

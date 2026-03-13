@@ -1,4 +1,4 @@
-use skyzen::utils::{json::JsonEncodingError, Json};
+use skyzen::{StatusCode, utils::{json::JsonEncodingError, Json}};
 use utoipa::ToSchema;
 
 // Re-export Id from models crate
@@ -12,12 +12,25 @@ pub fn sha256(v: impl AsRef<[u8]>) -> String {
 #[derive(Debug, serde::Serialize, ToSchema)]
 pub struct ApiMessage {
     message: std::borrow::Cow<'static, str>,
+    #[serde(skip)]
+    status: Option<StatusCode>,
 }
 
 impl ApiMessage {
     pub fn new(message: impl Into<std::borrow::Cow<'static, str>>) -> Self {
         Self {
             message: message.into(),
+            status: None,
+        }
+    }
+
+    pub fn with_status(
+        message: impl Into<std::borrow::Cow<'static, str>>,
+        status: StatusCode,
+    ) -> Self {
+        Self {
+            message: message.into(),
+            status: Some(status),
         }
     }
 }
@@ -29,6 +42,9 @@ impl skyzen::responder::Responder for ApiMessage {
         request: &skyzen::Request,
         response: &mut skyzen::Response,
     ) -> Result<(), Self::Error> {
+        if let Some(status) = self.status {
+            *response.status_mut() = status;
+        }
         Json(self).respond_to(request, response)
     }
 

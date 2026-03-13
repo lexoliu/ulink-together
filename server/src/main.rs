@@ -4,16 +4,23 @@ mod channel;
 mod comment;
 mod database;
 mod login;
+mod leaderboard;
 mod message;
 mod notification;
 mod push;
 mod record;
 mod resource;
+mod export;
+mod schema;
 mod user;
 mod utils;
 
+#[cfg(test)]
+mod api_tests;
+
 use crate::auth::AuthError;
 use database::AppDatabase;
+use push::PushHub;
 use skyzen::{
     middleware::ErrorHandlingMiddleware, routing::Router, utils::State, CreateRouteNode, Route,
 };
@@ -21,7 +28,7 @@ use std::env;
 
 pub fn api() -> Route {
     Route::new((
-        "/user".route("/{id}".at(user::get).delete(user::delete)),
+        "/user".route("/{id}".at(user::get).put(user::update).delete(user::delete)),
         "/channel"
             .at(channel::find)
             .post(channel::create)
@@ -29,7 +36,7 @@ pub fn api() -> Route {
         "/activity"
             .at(activity::list)
             .post(activity::create)
-            .route(("/{id}".at(activity::get).delete(activity::delete).route((
+            .route(("/{id}".at(activity::get).put(activity::update).delete(activity::delete).route((
                 "/apply".post(activity::join),
                 "/comment".at(comment::list).post(comment::post),
                 "/need_volunteer".post(activity::turn_need_volunteer),
@@ -37,7 +44,7 @@ pub fn api() -> Route {
                 "/end".post(activity::turn_ended),
                 "/cancel".post(activity::turn_canceled),
             )),)),
-        "/record".at(record::find).route(("/{id}".route((
+        "/record".at(record::find).post(record::find).route(("/{id}".route((
             "/done".post(record::mark_done),
             "/approve_apply".post(record::approve_apply),
             "/disapprove_apply".post(record::disapprove_apply),
@@ -45,6 +52,8 @@ pub fn api() -> Route {
         "/message"
             .at(message::find)
             .route(("/{id}".at(message::get).delete(message::delete),)),
+        "/leaderboard".at(leaderboard::list),
+        "/export".post(export::generate),
         "/resource"
             .post(resource::create)
             .route(("/{filename}".at(resource::access),)),
@@ -54,9 +63,21 @@ pub fn api() -> Route {
         "/push".at(push::handler),
         "/auth/check/{authority}".at(check_authority),
         "/login".post(login::handler),
+        "/logout".post(login::logout),
         "/user".post(user::register),
     ))
     .enable_api_doc()
+}
+
+pub(crate) fn build_router(database: AppDatabase, push_hub: PushHub) -> Router {
+    let route = Route::new("/api/v1".route(api()));
+    route
+        .middleware(State(database))
+        .middleware(State(push_hub))
+        .middleware(ErrorHandlingMiddleware::new(|error| async move {
+            crate::utils::ApiMessage::with_status(error.to_string(), error.status())
+        }))
+        .build()
 }
 
 #[skyzen::main]
@@ -70,16 +91,7 @@ async fn main() -> Router {
         database::database_kind_from_url(&sqlx_database_url),
     );
     let push_hub = push::PushHub::new();
-
-    let route = Route::new("/api/v1".route(api()));
-
-    route
-        .middleware(State(database))
-        .middleware(State(push_hub))
-        .middleware(ErrorHandlingMiddleware::new(|error| async move {
-            skyzen::utils::Json(skyzen::utils::json!({"message": error.to_string()}))
-        }))
-        .build()
+    build_router(database, push_hub)
 }
 
 fn parse_database_url() -> Option<String> {

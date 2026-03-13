@@ -6,13 +6,21 @@ use async_std::{
     io::{self, BufReader},
 };
 
-use serde::Deserialize;
-use skyzen::{extract::Query, routing::Params, utils::State, Body};
+use serde::{Deserialize, Serialize};
+use skyzen::{extract::Query, routing::Params, utils::Json, utils::State, Body};
 use time::OffsetDateTime;
+use utoipa::ToSchema;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateResourceQuery {
     name: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ResourceCreated {
+    id: Id,
+    filename: String,
+    path: String,
 }
 
 #[skyzen::error]
@@ -24,12 +32,13 @@ pub enum CreateResourceError {
     InvalidName,
 }
 
+#[skyzen::openapi]
 pub async fn create(
     session: AuthSession,
     database: State<AppDatabase>,
     body: Body,
     query: Query<CreateResourceQuery>,
-) -> Result<String, CreateResourceError> {
+) -> Result<Json<ResourceCreated>, CreateResourceError> {
     let auth = session
         .into_auth()
         .await
@@ -42,6 +51,7 @@ pub async fn create(
         .unwrap_or_else(|| (sanitized_name.to_owned(), "unknown".to_string()));
     let id = Id::new();
     let id_hex = id.to_string();
+    let filename = format!("{id_hex}.{}", extension);
 
     async_std::fs::create_dir_all("./resource")
         .await
@@ -62,14 +72,19 @@ pub async fn create(
     .await
     .expect("Database error");
 
-    let mut file = File::create(format!("./resource/{id_hex}.{}", extension))
+    let mut file = File::create(format!("./resource/{filename}"))
         .await
         .expect("Create resource file failed");
     io::copy(&mut body.into_reader(), &mut file)
         .await
         .expect("Write resource file failed");
     file.sync_all().await.expect("Flush resource file failed");
-    Ok(id_hex)
+
+    Ok(Json(ResourceCreated {
+        id,
+        filename: filename.clone(),
+        path: format!("/api/v1/resource/{filename}"),
+    }))
 }
 
 #[skyzen::error]

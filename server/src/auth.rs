@@ -14,6 +14,7 @@ use sqlx::Row;
 pub struct Auth {
     uid: Id,
     group: Id,
+    session_id: Id,
     database: AppDatabase,
 }
 
@@ -44,6 +45,10 @@ pub async fn get_group_id(database: &AppDatabase, name: &str) -> Option<Id> {
 impl Auth {
     pub fn uid(&self) -> Id {
         self.uid.clone()
+    }
+
+    pub fn session_id(&self) -> Id {
+        self.session_id
     }
 
     pub async fn match_authority(&self, authority: &str) -> Result<bool, AuthError> {
@@ -132,6 +137,7 @@ async fn auth(database: &AppDatabase, headermap: &HeaderMap) -> Result<Auth, Aut
     Ok(Auth {
         uid,
         group,
+        session_id,
         database: database.clone(),
     })
 }

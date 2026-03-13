@@ -1,8 +1,11 @@
 use std::env;
 use std::io::{self, Write};
 
+#[path = "../schema.rs"]
+mod schema;
+
 use rand::{distributions::Uniform, prelude::Distribution};
-use sqlx::{postgres::PgPoolOptions, sqlite::SqlitePoolOptions, PgPool, Row, SqlitePool};
+use sqlx::{postgres::PgPoolOptions, sqlite::SqlitePoolOptions, PgPool, SqlitePool};
 use uuid::Uuid;
 
 #[derive(Debug)]
@@ -183,163 +186,19 @@ fn database_kind(database_url: &str) -> DatabaseKind {
 }
 
 async fn create_tables_sqlite(pool: &SqlitePool) -> Result<(), sqlx::Error> {
-    for statement in schema_statements() {
-        sqlx::query(statement).execute(pool).await?;
-    }
-    Ok(())
+    schema::apply_schema_sqlite(pool).await
 }
 
 async fn create_tables_postgres(pool: &PgPool) -> Result<(), sqlx::Error> {
-    for statement in schema_statements() {
-        sqlx::query(statement).execute(pool).await?;
-    }
-    Ok(())
-}
-
-fn schema_statements() -> &'static [&'static str] {
-    &[
-        r#"
-        CREATE TABLE IF NOT EXISTS groups (
-            id TEXT PRIMARY KEY,
-            code TEXT NOT NULL,
-            allow_all_authorities INTEGER NOT NULL DEFAULT 0
-        )
-        "#,
-        "CREATE UNIQUE INDEX IF NOT EXISTS groups_code_unique ON groups(code)",
-        r#"
-        CREATE TABLE IF NOT EXISTS group_authorities (
-            group_id TEXT NOT NULL,
-            authority TEXT NOT NULL,
-            PRIMARY KEY (group_id, authority)
-        )
-        "#,
-        r#"
-        CREATE TABLE IF NOT EXISTS users (
-            id TEXT PRIMARY KEY,
-            email TEXT NOT NULL,
-            realname TEXT NOT NULL,
-            gender TEXT NOT NULL,
-            description TEXT NOT NULL,
-            classname TEXT NOT NULL,
-            password_hash TEXT NOT NULL,
-            salt TEXT NOT NULL,
-            group_id TEXT NOT NULL
-        )
-        "#,
-        "CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique ON users(email)",
-        r#"
-        CREATE TABLE IF NOT EXISTS sessions (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            generated_at TEXT NOT NULL,
-            ip TEXT NOT NULL
-        )
-        "#,
-        "CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id)",
-        r#"
-        CREATE TABLE IF NOT EXISTS activities (
-            id TEXT PRIMARY KEY,
-            promoter_id TEXT NOT NULL,
-            name TEXT NOT NULL,
-            location TEXT NOT NULL,
-            state TEXT NOT NULL,
-            volunteer_num INTEGER NOT NULL DEFAULT 0,
-            max_volunteer_num INTEGER,
-            date TEXT,
-            brief_description TEXT NOT NULL,
-            description TEXT NOT NULL,
-            duration_minutes INTEGER NOT NULL
-        )
-        "#,
-        r#"
-        CREATE TABLE IF NOT EXISTS activity_comments (
-            id TEXT PRIMARY KEY,
-            activity_id TEXT NOT NULL,
-            author_id TEXT NOT NULL,
-            content TEXT NOT NULL,
-            created_at TEXT NOT NULL
-        )
-        "#,
-        "CREATE INDEX IF NOT EXISTS activity_comments_activity_idx ON activity_comments(activity_id)",
-        r#"
-        CREATE TABLE IF NOT EXISTS channels (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            owner_id TEXT NOT NULL,
-            activity_id TEXT,
-            created_at TEXT NOT NULL
-        )
-        "#,
-        r#"
-        CREATE TABLE IF NOT EXISTS channel_members (
-            channel_id TEXT NOT NULL,
-            user_id TEXT NOT NULL,
-            PRIMARY KEY (channel_id, user_id)
-        )
-        "#,
-        r#"
-        CREATE TABLE IF NOT EXISTS messages (
-            id TEXT PRIMARY KEY,
-            channel_id TEXT NOT NULL,
-            sender_id TEXT NOT NULL,
-            content TEXT NOT NULL,
-            sent_at TEXT NOT NULL
-        )
-        "#,
-        "CREATE INDEX IF NOT EXISTS messages_channel_idx ON messages(channel_id)",
-        "CREATE INDEX IF NOT EXISTS messages_sender_idx ON messages(sender_id)",
-        r#"
-        CREATE TABLE IF NOT EXISTS notifications (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            title TEXT NOT NULL,
-            content TEXT NOT NULL,
-            created_at TEXT NOT NULL
-        )
-        "#,
-        "CREATE INDEX IF NOT EXISTS notifications_user_idx ON notifications(user_id)",
-        r#"
-        CREATE TABLE IF NOT EXISTS records (
-            id TEXT PRIMARY KEY,
-            activity_id TEXT NOT NULL,
-            user_id TEXT NOT NULL,
-            state TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        )
-        "#,
-        "CREATE INDEX IF NOT EXISTS records_activity_idx ON records(activity_id)",
-        "CREATE INDEX IF NOT EXISTS records_user_idx ON records(user_id)",
-        r#"
-        CREATE TABLE IF NOT EXISTS resources (
-            id TEXT PRIMARY KEY,
-            creator_id TEXT NOT NULL,
-            name TEXT NOT NULL,
-            extension TEXT NOT NULL,
-            created_at TEXT NOT NULL
-        )
-        "#,
-        r#"
-        CREATE TABLE IF NOT EXISTS check_mails (
-            id TEXT PRIMARY KEY,
-            email TEXT NOT NULL,
-            code TEXT NOT NULL,
-            created_at TEXT NOT NULL
-        )
-        "#,
-        "CREATE INDEX IF NOT EXISTS check_mails_email_idx ON check_mails(email)",
-    ]
+    schema::apply_schema_postgres(pool).await
 }
 
 async fn seed_groups_sqlite(pool: &SqlitePool) -> Result<(), sqlx::Error> {
-    seed_group_sqlite(pool, "admin", true).await?;
-    seed_group_sqlite(pool, "student", false).await?;
-    Ok(())
+    schema::seed_builtin_groups_sqlite(pool).await
 }
 
 async fn seed_groups_postgres(pool: &PgPool) -> Result<(), sqlx::Error> {
-    seed_group_postgres(pool, "admin", true).await?;
-    seed_group_postgres(pool, "student", false).await?;
-    Ok(())
+    schema::seed_builtin_groups_postgres(pool).await
 }
 
 async fn seed_group_sqlite(
@@ -347,23 +206,7 @@ async fn seed_group_sqlite(
     code: &str,
     allow_all: bool,
 ) -> Result<String, sqlx::Error> {
-    let existing = sqlx::query("SELECT id FROM groups WHERE code = ?1")
-        .bind(code)
-        .fetch_optional(pool)
-        .await?;
-    if let Some(row) = existing {
-        let id: String = row.try_get("id")?;
-        return Ok(id);
-    }
-
-    let id = Uuid::new_v4().to_string();
-    sqlx::query("INSERT OR IGNORE INTO groups (id, code, allow_all_authorities) VALUES (?1, ?2, ?3)")
-        .bind(&id)
-        .bind(code)
-        .bind(if allow_all { 1 } else { 0 })
-        .execute(pool)
-        .await?;
-    Ok(id)
+    schema::ensure_group_sqlite(pool, code, allow_all).await
 }
 
 async fn seed_group_postgres(
@@ -371,25 +214,7 @@ async fn seed_group_postgres(
     code: &str,
     allow_all: bool,
 ) -> Result<String, sqlx::Error> {
-    let existing = sqlx::query("SELECT id FROM groups WHERE code = $1")
-        .bind(code)
-        .fetch_optional(pool)
-        .await?;
-    if let Some(row) = existing {
-        let id: String = row.try_get("id")?;
-        return Ok(id);
-    }
-
-    let id = Uuid::new_v4().to_string();
-    sqlx::query(
-        "INSERT INTO groups (id, code, allow_all_authorities) VALUES ($1, $2, $3) ON CONFLICT (code) DO NOTHING",
-    )
-    .bind(&id)
-    .bind(code)
-    .bind(if allow_all { 1 } else { 0 })
-    .execute(pool)
-    .await?;
-    Ok(id)
+    schema::ensure_group_postgres(pool, code, allow_all).await
 }
 
 async fn seed_admin_sqlite(pool: &SqlitePool, config: &Config) -> Result<(), sqlx::Error> {

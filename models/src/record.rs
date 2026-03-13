@@ -37,6 +37,12 @@ pub struct RecordEntry {
     pub user: Id,
     pub activity: Id,
     pub state: RecordState,
+    pub activity_name: Option<String>,
+    pub activity_date: Option<String>,
+    pub activity_duration: Option<u16>,
+    pub confirmed_minutes: u16,
+    pub updated_at: String,
+    pub confirmed_at: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Clone)]

@@ -1,28 +1,34 @@
 use std::str::FromStr;
 
 use crate::{
-    auth::{AuthError, AuthSession},
+    auth::{Auth, AuthError, AuthSession},
+    channel,
     database::AppDatabase,
     push::{MessagePush, PushHub},
     utils::{parse_oid, ApiMessage, Id},
 };
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use skyzen::{
     extract::Query,
     routing::Params,
-    utils::{ByteStr, Json, State},
+    utils::{Json, State},
 };
 use sqlx::Row;
 use time::OffsetDateTime;
 use utoipa::ToSchema;
 
-#[derive(Debug, serde::Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub(crate) struct FindQuery {
     start_date: Option<String>,
     end_date: Option<String>,
     channel: String,
     sender: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
+pub struct PostMessageForm {
+    content: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -63,13 +69,16 @@ pub async fn find(
     query: Query<FindQuery>,
     session: AuthSession,
 ) -> Result<Json<Vec<Message>>, FindMessagesError> {
-    session.into_auth().await.map_err(|err| match err {
+    let auth = session.into_auth().await.map_err(|err| match err {
         AuthError::SessionExpired => FindMessagesError::SessionExpired,
         _ => FindMessagesError::Forbidden,
     })?;
     let Query(query_params) = query;
     let channel_id =
         parse_oid(&query_params.channel).map_err(|_| FindMessagesError::InvalidChannelId)?;
+    ensure_channel_visible(&database, &auth, &channel_id)
+        .await
+        .map_err(|_| FindMessagesError::Forbidden)?;
 
     let start = query_params.start_date.as_deref();
     let end = query_params.end_date.as_deref();
@@ -161,7 +170,7 @@ pub async fn get(
     params: Params,
     session: AuthSession,
 ) -> Result<Json<Message>, GetMessageError> {
-    session.into_auth().await.map_err(|err| match err {
+    let auth = session.into_auth().await.map_err(|err| match err {
         AuthError::SessionExpired => GetMessageError::SessionExpired,
         _ => GetMessageError::Forbidden,
     })?;
@@ -185,12 +194,16 @@ pub async fn get(
     let channel_hex: String = row
         .try_get("channel_id")
         .map_err(|_| GetMessageError::CorruptedData)?;
+    let channel_id = Id::from_str(&channel_hex).map_err(|_| GetMessageError::CorruptedData)?;
+    ensure_channel_visible(&database, &auth, &channel_id)
+        .await
+        .map_err(|_| GetMessageError::Forbidden)?;
     let sender_hex: String = row
         .try_get("sender_id")
         .map_err(|_| GetMessageError::CorruptedData)?;
     Ok(Json(Message {
         id,
-        channel: Id::from_str(&channel_hex).map_err(|_| GetMessageError::CorruptedData)?,
+        channel: channel_id,
         sender: Id::from_str(&sender_hex).map_err(|_| GetMessageError::CorruptedData)?,
         content: row
             .try_get("content")
@@ -201,18 +214,36 @@ pub async fn get(
     }))
 }
 
-async fn ensure_channel_member(database: &AppDatabase, channel: &Id, user: &Id) -> bool {
-    sqlx::query(
+async fn ensure_channel_visible(
+    database: &AppDatabase,
+    auth: &Auth,
+    channel_id: &Id,
+) -> Result<(), AuthError> {
+    if auth.match_authority("view_channel_anyway").await? {
+        return Ok(());
+    }
+    if channel::ensure_channel_member(database, channel_id, &auth.uid()).await {
+        return Ok(());
+    }
+
+    let row = sqlx::query(
         database
-            .sql("SELECT 1 FROM channel_members WHERE channel_id = ?1 AND user_id = ?2 LIMIT 1")
+            .sql("SELECT owner_id FROM channels WHERE id = ?1")
             .as_ref(),
     )
-        .bind(channel.to_string())
-        .bind(user.to_string())
-        .fetch_optional(database.sqlx())
-        .await
-        .expect("Database error")
-        .is_some()
+    .bind(channel_id.to_string())
+    .fetch_optional(database.sqlx())
+    .await
+    .expect("Database error");
+    let Some(row) = row else {
+        return Err(AuthError::Forbidden);
+    };
+    let owner_hex: String = row.try_get("owner_id").expect("Database error");
+    if owner_hex == auth.uid().to_string() {
+        Ok(())
+    } else {
+        Err(AuthError::Forbidden)
+    }
 }
 
 #[skyzen::error]
@@ -227,13 +258,14 @@ pub enum PostMessageError {
     InvalidChannelId,
 }
 
+#[skyzen::openapi]
 pub async fn post(
     database: State<AppDatabase>,
-    content: ByteStr,
+    form: Json<PostMessageForm>,
     hub: State<PushHub>,
     params: Params,
     session: AuthSession,
-) -> Result<ApiMessage, PostMessageError> {
+) -> Result<Json<Message>, PostMessageError> {
     let auth = session.into_auth().await.map_err(|err| match err {
         AuthError::SessionExpired => PostMessageError::SessionExpired,
         _ => PostMessageError::Forbidden,
@@ -241,7 +273,7 @@ pub async fn post(
     let channel_id =
         parse_oid(params.get("id").map_err(|_| PostMessageError::InvalidChannelId)?)
             .map_err(|_| PostMessageError::InvalidChannelId)?;
-    let can_post = ensure_channel_member(&database, &channel_id, &auth.uid()).await
+    let can_post = channel::ensure_channel_member(&database, &channel_id, &auth.uid()).await
         || auth
             .match_authority("send_message_anyway")
             .await
@@ -250,6 +282,7 @@ pub async fn post(
         return Err(PostMessageError::Forbidden);
     }
 
+    let Json(PostMessageForm { content }) = form;
     let id = Id::new();
     let now = OffsetDateTime::now_utc().to_string();
     sqlx::query(
@@ -262,7 +295,7 @@ pub async fn post(
     .bind(id.to_string())
     .bind(channel_id.to_string())
     .bind(auth.uid().to_string())
-    .bind(content.as_str())
+    .bind(&content)
     .bind(&now)
     .execute(database.sqlx())
     .await
@@ -272,12 +305,18 @@ pub async fn post(
         id,
         channel: channel_id,
         sender: auth.uid(),
-        content: content.as_str().to_owned(),
+        content: content.clone(),
         datetime: now.clone(),
     };
     push_message_to_channel(&database, &hub, &channel_id, &push_payload).await;
 
-    Ok(ApiMessage::new("Post message successfully"))
+    Ok(Json(Message {
+        id,
+        channel: channel_id,
+        sender: auth.uid(),
+        content,
+        datetime: now,
+    }))
 }
 
 #[skyzen::error]
@@ -317,11 +356,11 @@ pub async fn delete(
             .sql("SELECT sender_id FROM messages WHERE id = ?1")
             .as_ref(),
     )
-        .bind(id.to_string())
-        .fetch_optional(database.sqlx())
-        .await
-        .expect("Database error")
-        .ok_or(DeleteMessageError::NotFound)?;
+    .bind(id.to_string())
+    .fetch_optional(database.sqlx())
+    .await
+    .expect("Database error")
+    .ok_or(DeleteMessageError::NotFound)?;
     let sender_hex: String = row.try_get("sender_id").expect("Database error");
 
     if sender_hex != auth.uid().to_string()

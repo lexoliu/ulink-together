@@ -1,4 +1,5 @@
 use crate::{
+    auth::AuthSession,
     database::AppDatabase,
     utils::{sha256, ApiMessage, Id},
 };
@@ -18,6 +19,7 @@ pub(crate) struct Form<'a> {
     password: String,
 }
 
+#[skyzen::openapi]
 pub async fn handler(
     database: State<AppDatabase>,
     ip: ClientIp,
@@ -58,6 +60,40 @@ pub async fn handler(
     }
 
     Ok(((ApiMessage::new("Login successfully")), cookies))
+}
+
+#[skyzen::error]
+pub enum LogoutError {
+    #[error("Session expired", status = FORBIDDEN)]
+    SessionExpired,
+}
+
+#[skyzen::openapi]
+pub async fn logout(
+    database: State<AppDatabase>,
+    session: AuthSession,
+    mut cookies: CookieJar,
+) -> Result<(ApiMessage, CookieJar), LogoutError> {
+    let auth = session
+        .into_auth()
+        .await
+        .map_err(|_| LogoutError::SessionExpired)?;
+
+    sqlx::query(database.sql("DELETE FROM sessions WHERE id = ?1").as_ref())
+        .bind(auth.session_id().to_string())
+        .execute(database.sqlx())
+        .await
+        .expect("Database error");
+
+    cookies.remove(Cookie::build(("uid", "")).path("/").build());
+    cookies.remove(
+        Cookie::build(("session", ""))
+            .http_only(true)
+            .path("/")
+            .build(),
+    );
+
+    Ok((ApiMessage::new("Logout successfully"), cookies))
 }
 
 async fn generate_session(database: &AppDatabase, uid_hex: &str, ip: IpAddr) -> String {

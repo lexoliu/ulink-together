@@ -24,7 +24,7 @@ where
     sqlx::query(
         database
             .sql(
-                "INSERT INTO records (id, activity_id, user_id, state, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+                "INSERT INTO records (id, activity_id, user_id, state, confirmed_minutes, confirmed_at, confirmed_by, updated_at) VALUES (?1, ?2, ?3, ?4, 0, NULL, NULL, ?5)",
             )
             .as_ref(),
     )
@@ -38,10 +38,7 @@ where
     Ok(())
 }
 
-pub async fn get_volunteers(
-    database: &AppDatabase,
-    activity_id: Id,
-) -> Result<Vec<Id>, sqlx::Error> {
+pub async fn get_volunteers(database: &AppDatabase, activity_id: Id) -> Result<Vec<Id>, sqlx::Error> {
     let rows = sqlx::query(
         database
             .sql(
@@ -65,6 +62,86 @@ pub async fn get_volunteers(
     Ok(volunteers)
 }
 
+pub async fn get_user_record_state(
+    database: &AppDatabase,
+    activity_id: Id,
+    user_id: Id,
+) -> Result<Option<RecordState>, sqlx::Error> {
+    let row = sqlx::query(
+        database
+            .sql("SELECT state FROM records WHERE activity_id = ?1 AND user_id = ?2 LIMIT 1")
+            .as_ref(),
+    )
+    .bind(activity_id.to_string())
+    .bind(user_id.to_string())
+    .fetch_optional(database.sqlx())
+    .await?;
+
+    Ok(row.and_then(|row| {
+        let state: String = row.try_get("state").ok()?;
+        RecordState::from_db(&state)
+    }))
+}
+
+pub async fn sync_activity_channel_member(
+    database: &AppDatabase,
+    activity_id: Id,
+    user_id: Id,
+    include: bool,
+) -> Result<(), sqlx::Error> {
+    let rows = sqlx::query(
+        database
+            .sql("SELECT id FROM channels WHERE activity_id = ?1")
+            .as_ref(),
+    )
+    .bind(activity_id.to_string())
+    .fetch_all(database.sqlx())
+    .await?;
+
+    for row in rows {
+        let channel_id: String = row.try_get("id")?;
+        if include {
+            let exists = sqlx::query(
+                database
+                    .sql(
+                        "SELECT 1 FROM channel_members WHERE channel_id = ?1 AND user_id = ?2 LIMIT 1",
+                    )
+                    .as_ref(),
+            )
+            .bind(&channel_id)
+            .bind(user_id.to_string())
+            .fetch_optional(database.sqlx())
+            .await?
+            .is_some();
+            if !exists {
+                sqlx::query(
+                    database
+                        .sql(
+                            "INSERT INTO channel_members (channel_id, user_id) VALUES (?1, ?2)",
+                        )
+                        .as_ref(),
+                )
+                .bind(&channel_id)
+                .bind(user_id.to_string())
+                .execute(database.sqlx())
+                .await?;
+            }
+        } else {
+            sqlx::query(
+                database
+                    .sql("DELETE FROM channel_members WHERE channel_id = ?1 AND user_id = ?2")
+                    .as_ref(),
+            )
+            .bind(&channel_id)
+            .bind(user_id.to_string())
+            .execute(database.sqlx())
+            .await?;
+        }
+    }
+
+    Ok(())
+}
+
 #[skyzen::error]
 pub enum FindRecordsError {
     #[error("Session expired", status = FORBIDDEN)]
@@ -81,9 +158,7 @@ pub enum FindRecordsError {
 }
 
 fn parse_db_oid(value: &str) -> Result<Id, FindRecordsError> {
-    value
-        .parse()
-        .map_err(|_| FindRecordsError::CorruptedId)
+    value.parse().map_err(|_| FindRecordsError::CorruptedId)
 }
 
 /// Find records by various criteria
@@ -93,34 +168,63 @@ pub async fn find(
     form: Form<FindRecordForm>,
     session: AuthSession,
 ) -> Result<skyzen::utils::Json<Vec<RecordEntry>>, FindRecordsError> {
-    session.into_auth().await.map_err(|err| match err {
+    let auth = session.into_auth().await.map_err(|err| match err {
         AuthError::SessionExpired => FindRecordsError::SessionExpired,
         _ => FindRecordsError::Forbidden,
     })?;
     let Form(form) = form;
 
-    let user_filter = form.user.map(|user| user.to_string());
-    let activity_filter = form.activity.map(|activity| activity.to_string());
+    let can_view_any = auth
+        .match_authority("view_record_anyway")
+        .await
+        .map_err(|_| FindRecordsError::Forbidden)?
+        || auth
+            .match_authority("manage_record_anyway")
+            .await
+            .map_err(|_| FindRecordsError::Forbidden)?;
 
-    let mut sql_text =
-        String::from("SELECT id, user_id, activity_id, state FROM records WHERE 1=1");
+    let effective_activity = form.activity;
+    let effective_user = if let Some(user) = form.user {
+        if user != auth.uid()
+            && !can_view_any
+            && !is_activity_manager_opt(&database, &auth, effective_activity)
+                .await
+                .map_err(|_| FindRecordsError::Forbidden)?
+        {
+            return Err(FindRecordsError::Forbidden);
+        }
+        Some(user)
+    } else if effective_activity.is_some()
+        && is_activity_manager_opt(&database, &auth, effective_activity)
+            .await
+            .map_err(|_| FindRecordsError::Forbidden)?
+    {
+        None
+    } else {
+        Some(auth.uid())
+    };
+
+    let mut sql_text = String::from(
+        "SELECT records.id, records.user_id, records.activity_id, records.state, records.confirmed_minutes, records.updated_at, records.confirmed_at, activities.name AS activity_name, activities.date AS activity_date, activities.duration_minutes AS activity_duration FROM records JOIN activities ON activities.id = records.activity_id WHERE 1=1",
+    );
     let mut bind_idx = 0;
-    if user_filter.is_some() {
+    if effective_user.is_some() {
         bind_idx += 1;
-        sql_text.push_str(&format!(" AND user_id = ?{bind_idx}"));
+        sql_text.push_str(&format!(" AND records.user_id = ?{bind_idx}"));
     }
-    if activity_filter.is_some() {
+    if effective_activity.is_some() {
         bind_idx += 1;
-        sql_text.push_str(&format!(" AND activity_id = ?{bind_idx}"));
+        sql_text.push_str(&format!(" AND records.activity_id = ?{bind_idx}"));
     }
+    sql_text.push_str(" ORDER BY records.updated_at DESC");
 
     let sql = database.sql(&sql_text);
     let mut query = sqlx::query(sql.as_ref());
-    if let Some(user) = user_filter {
-        query = query.bind(user);
+    if let Some(user) = effective_user {
+        query = query.bind(user.to_string());
     }
-    if let Some(activity) = activity_filter {
-        query = query.bind(activity);
+    if let Some(activity) = effective_activity {
+        query = query.bind(activity.to_string());
     }
 
     let records = query.fetch_all(database.sqlx()).await.expect("Database error");
@@ -128,12 +232,7 @@ pub async fn find(
     let mut result = Vec::with_capacity(records.len());
     for row in records {
         let state_str: String = row.try_get("state").expect("Database error");
-        let state = match state_str.as_str() {
-            "todo" => RecordState::Todo,
-            "done" => RecordState::Done,
-            "canneled" | "canceled" | "cancelled" => RecordState::Canceled,
-            _ => return Err(FindRecordsError::CorruptedState),
-        };
+        let state = RecordState::from_db(&state_str).ok_or(FindRecordsError::CorruptedState)?;
         result.push(RecordEntry {
             record_id: parse_db_oid(&row.try_get::<String, _>("id").expect("Database error"))?,
             user: parse_db_oid(&row.try_get::<String, _>("user_id").expect("Database error"))?,
@@ -142,6 +241,17 @@ pub async fn find(
                     .expect("Database error"),
             )?,
             state,
+            activity_name: row.try_get("activity_name").ok(),
+            activity_date: row.try_get("activity_date").ok(),
+            activity_duration: row
+                .try_get::<i64, _>("activity_duration")
+                .ok()
+                .map(|duration| duration as u16),
+            confirmed_minutes: row
+                .try_get::<i64, _>("confirmed_minutes")
+                .expect("Database error") as u16,
+            updated_at: row.try_get("updated_at").expect("Database error"),
+            confirmed_at: row.try_get("confirmed_at").ok(),
         });
     }
 
@@ -169,26 +279,27 @@ async fn update_record_state(
     let record_hex = record_id.to_string();
     let row = sqlx::query(
         database
-            .sql("SELECT activity_id FROM records WHERE id = ?1")
+            .sql("SELECT activity_id, user_id FROM records WHERE id = ?1")
             .as_ref(),
     )
-        .bind(&record_hex)
-        .fetch_optional(database.sqlx())
-        .await
-        .expect("Database error")
-        .ok_or(UpdateRecordError::RecordNotFound)?;
+    .bind(&record_hex)
+    .fetch_optional(database.sqlx())
+    .await
+    .expect("Database error")
+    .ok_or(UpdateRecordError::RecordNotFound)?;
     let activity_hex: String = row.try_get("activity_id").expect("Database error");
+    let user_hex: String = row.try_get("user_id").expect("Database error");
 
     let activity = sqlx::query(
         database
-            .sql("SELECT promoter_id FROM activities WHERE id = ?1")
+            .sql("SELECT promoter_id, duration_minutes FROM activities WHERE id = ?1")
             .as_ref(),
     )
-        .bind(&activity_hex)
-        .fetch_optional(database.sqlx())
-        .await
-        .expect("Database error")
-        .ok_or(UpdateRecordError::ActivityNotFound)?;
+    .bind(&activity_hex)
+    .fetch_optional(database.sqlx())
+    .await
+    .expect("Database error")
+    .ok_or(UpdateRecordError::ActivityNotFound)?;
     let promoter_hex: String = activity.try_get("promoter_id").expect("Database error");
 
     if promoter_hex != auth.uid().to_string()
@@ -200,15 +311,46 @@ async fn update_record_state(
         return Err(UpdateRecordError::Forbidden);
     }
 
+    let now = OffsetDateTime::now_utc().to_string();
+    let confirmed_minutes = if state == RecordState::Done {
+        activity
+            .try_get::<i64, _>("duration_minutes")
+            .expect("Database error")
+    } else {
+        0
+    };
+    let confirmed_at = if state == RecordState::Done {
+        Some(now.clone())
+    } else {
+        None
+    };
+    let confirmed_by = if state == RecordState::Done {
+        Some(auth.uid().to_string())
+    } else {
+        None
+    };
+
     sqlx::query(
         database
-            .sql("UPDATE records SET state = ?1, updated_at = ?2 WHERE id = ?3")
+            .sql(
+                "UPDATE records SET state = ?1, confirmed_minutes = ?2, confirmed_at = ?3, confirmed_by = ?4, updated_at = ?5 WHERE id = ?6",
+            )
             .as_ref(),
     )
-        .bind(state.as_str())
-        .bind(OffsetDateTime::now_utc().to_string())
-        .bind(record_hex)
-        .execute(database.sqlx())
+    .bind(state.as_str())
+    .bind(confirmed_minutes)
+    .bind(confirmed_at.as_deref())
+    .bind(confirmed_by.as_deref())
+    .bind(&now)
+    .bind(record_hex)
+    .execute(database.sqlx())
+    .await
+    .expect("Database error");
+
+    let activity_id: Id = activity_hex.parse().expect("Database error");
+    let user_id: Id = user_hex.parse().expect("Database error");
+    let include = state != RecordState::Canceled;
+    sync_activity_channel_member(database, activity_id, user_id, include)
         .await
         .expect("Database error");
 
@@ -278,7 +420,7 @@ pub enum ApproveApplyError {
     ActivityNotFound,
 }
 
-/// Disapprove apply
+/// Approve a volunteer application
 #[skyzen::openapi]
 pub async fn approve_apply(
     database: State<AppDatabase>,
@@ -350,6 +492,28 @@ pub async fn disapprove_apply(
     Ok(ApiMessage::new("Disapprove apply successfully"))
 }
 
+async fn is_activity_manager_opt(
+    database: &AppDatabase,
+    auth: &Auth,
+    activity_id: Option<Id>,
+) -> Result<bool, sqlx::Error> {
+    let Some(activity_id) = activity_id else {
+        return Ok(false);
+    };
+    let row = sqlx::query(
+        database
+            .sql("SELECT promoter_id FROM activities WHERE id = ?1")
+            .as_ref(),
+    )
+    .bind(activity_id.to_string())
+    .fetch_optional(database.sqlx())
+    .await?;
+    Ok(match row {
+        Some(row) => row.get::<String, _>("promoter_id") == auth.uid().to_string(),
+        None => false,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -370,7 +534,7 @@ mod tests {
         let row = sqlx::query(
             database
                 .sql(
-                    "SELECT state, user_id, activity_id FROM records WHERE user_id = ?1 AND activity_id = ?2",
+                    "SELECT state, user_id, activity_id, confirmed_minutes FROM records WHERE user_id = ?1 AND activity_id = ?2",
                 )
                 .as_ref(),
         )
@@ -383,6 +547,7 @@ mod tests {
         assert_eq!(row.get::<String, _>("state"), "todo");
         assert_eq!(row.get::<String, _>("user_id"), user_id.to_string());
         assert_eq!(row.get::<String, _>("activity_id"), activity_id.to_string());
+        assert_eq!(row.get::<i64, _>("confirmed_minutes"), 0);
     }
 
     #[tokio::test]
@@ -406,7 +571,7 @@ mod tests {
             sqlx::query(
                 database
                     .sql(
-                        "INSERT INTO records (id, activity_id, user_id, state, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+                        "INSERT INTO records (id, activity_id, user_id, state, confirmed_minutes, confirmed_at, confirmed_by, updated_at) VALUES (?1, ?2, ?3, ?4, 0, NULL, NULL, ?5)",
                     )
                     .as_ref(),
             )

@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
-use crate::Id;
+
+use crate::{record::RecordState, Id};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -48,6 +49,8 @@ pub struct ActivitySummary {
     pub brief_description: String,
     pub duration: u16,
     pub state: ActivityState,
+    pub viewer_joined: bool,
+    pub viewer_record_state: Option<RecordState>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -65,6 +68,8 @@ pub struct ActivityDetail {
     pub volunteers: Vec<Id>,
     pub duration: u16,
     pub state: ActivityState,
+    pub viewer_joined: bool,
+    pub viewer_record_state: Option<RecordState>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

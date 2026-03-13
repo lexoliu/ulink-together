@@ -1,18 +1,39 @@
 use std::str::FromStr;
 
-use models::{RegisterForm, User};
+use models::User;
 use rand::{distributions::Uniform, prelude::Distribution};
+use serde::{Deserialize, Serialize};
 use skyzen::{
     routing::Params,
     utils::{Json, State},
 };
 use sqlx::Row;
+use utoipa::ToSchema;
 
 use crate::{
     auth::{get_group_id, AuthSession},
     database::AppDatabase,
     utils::{sha256, ApiMessage, Id},
 };
+
+#[derive(Debug, Deserialize, Serialize, Clone, ToSchema)]
+pub struct RegisterPayload {
+    pub email: String,
+    pub realname: String,
+    pub password: String,
+    pub gender: String,
+    pub classname: String,
+    pub avatar: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Default, ToSchema)]
+pub struct UpdateUserForm {
+    pub realname: Option<String>,
+    pub gender: Option<String>,
+    pub description: Option<String>,
+    pub classname: Option<String>,
+    pub avatar: Option<String>,
+}
 
 #[skyzen::error]
 pub enum GetUserError {
@@ -34,18 +55,7 @@ pub async fn get(
     session: AuthSession,
 ) -> Result<Json<User>, GetUserError> {
     let auth = session.into_auth().await.map_err(|_| GetUserError::Auth)?;
-
-    let id_str = params
-        .get("id")
-        .map_err(|_| GetUserError::InvalidUserId)?;
-
-    let id = if id_str == "me" {
-        auth.uid()
-    } else {
-        id_str
-            .parse::<Id>()
-            .map_err(|_| GetUserError::InvalidUserId)?
-    };
+    let id = resolve_requested_user(&params, auth.uid()).map_err(|_| GetUserError::InvalidUserId)?;
 
     if id != auth.uid() {
         auth.ensure_authority("view_user")
@@ -53,31 +63,79 @@ pub async fn get(
             .map_err(|_| GetUserError::Auth)?;
     }
 
-    let pool = database.sqlx();
-    let row = sqlx::query(
+    load_user(&database, id)
+        .await
+        .map(Json)
+        .ok_or(GetUserError::NotFound)
+}
+
+#[skyzen::error]
+pub enum UpdateUserError {
+    #[error("Session expired", status = FORBIDDEN)]
+    SessionExpired,
+
+    #[error("Invalid user ID", status = BAD_REQUEST)]
+    InvalidUserId,
+
+    #[error("User not exists", status = NOT_FOUND)]
+    NotFound,
+
+    #[error("Forbidden", status = FORBIDDEN)]
+    Forbidden,
+}
+
+#[skyzen::openapi]
+pub async fn update(
+    database: State<AppDatabase>,
+    params: Params,
+    session: AuthSession,
+    form: Json<UpdateUserForm>,
+) -> Result<Json<User>, UpdateUserError> {
+    let auth = session.into_auth().await.map_err(|_| UpdateUserError::SessionExpired)?;
+    let id = resolve_requested_user(&params, auth.uid()).map_err(|_| UpdateUserError::InvalidUserId)?;
+    if id != auth.uid() {
+        auth.ensure_authority("update_user_anyway")
+            .await
+            .map_err(|_| UpdateUserError::Forbidden)?;
+    }
+
+    let current = load_user_row(&database, id)
+        .await
+        .ok_or(UpdateUserError::NotFound)?;
+    let Json(form) = form;
+
+    let realname = form.realname.unwrap_or(current.realname);
+    let gender = form.gender.unwrap_or(current.gender);
+    let description = form.description.unwrap_or(current.description);
+    let classname = form.classname.unwrap_or(current.classname);
+    let avatar = form.avatar.or(current.avatar);
+
+    sqlx::query(
         database
             .sql(
-                "SELECT email, realname, gender, description, classname, group_id FROM users WHERE id = ?1",
+                "UPDATE users SET realname = ?1, gender = ?2, description = ?3, classname = ?4, avatar_path = ?5 WHERE id = ?6",
             )
             .as_ref(),
     )
-    .bind(&id.to_string())
-    .fetch_optional(pool)
+    .bind(&realname)
+    .bind(&gender)
+    .bind(&description)
+    .bind(&classname)
+    .bind(avatar.clone())
+    .bind(id.to_string())
+    .execute(database.sqlx())
     .await
     .expect("Database error");
 
-    let row = row.ok_or(GetUserError::NotFound)?;
-    let group_id: String = row.get("group_id");
-    let group = Id::from_str(&group_id).expect("Database error");
-
     Ok(Json(User {
         id,
-        email: row.get("email"),
-        realname: row.get("realname"),
-        gender: row.get("gender"),
-        description: row.get("description"),
-        classname: row.get("classname"),
-        group,
+        email: current.email,
+        realname,
+        gender,
+        description,
+        classname,
+        avatar,
+        group: current.group,
     }))
 }
 
@@ -145,7 +203,7 @@ pub enum GetNameError {
 #[skyzen::openapi]
 pub async fn register(
     database: State<AppDatabase>,
-    form: Json<RegisterForm>,
+    form: Json<RegisterPayload>,
 ) -> Result<ApiMessage, RegisterError> {
     let Json(form) = form;
     let salt = rand_string(16);
@@ -166,10 +224,11 @@ pub async fn register(
             gender,
             description,
             classname,
+            avatar_path,
             password_hash,
             salt,
             group_id
-        ) VALUES (?1, ?2, ?3, ?4, '', ?5, ?6, ?7, ?8)
+        ) VALUES (?1, ?2, ?3, ?4, '', ?5, ?6, ?7, ?8, ?9)
         "#,
             )
             .as_ref(),
@@ -179,6 +238,7 @@ pub async fn register(
     .bind(&form.realname)
     .bind(&form.gender)
     .bind(&form.classname)
+    .bind(form.avatar.clone())
     .bind(password)
     .bind(&salt)
     .bind(group_id.to_string())
@@ -189,8 +249,7 @@ pub async fn register(
         Ok(_) => Ok(ApiMessage::new("Register successfully")),
         Err(sqlx::Error::Database(error)) => {
             if let Some(code) = error.code() {
-                // SQLITE_CONSTRAINT
-                if code == "2067" || code == "1555" {
+                if code == "2067" || code == "1555" || code == "23505" {
                     return Err(RegisterError::AlreadyExists);
                 }
             }
@@ -207,6 +266,66 @@ pub enum RegisterError {
 
     #[error("User already exists", status = FORBIDDEN)]
     AlreadyExists,
+}
+
+#[derive(Debug, Clone)]
+struct UserRow {
+    id: Id,
+    email: String,
+    realname: String,
+    gender: String,
+    description: String,
+    classname: String,
+    avatar: Option<String>,
+    group: Id,
+}
+
+async fn load_user(database: &AppDatabase, id: Id) -> Option<User> {
+    load_user_row(database, id).await.map(|row| User {
+        id: row.id,
+        email: row.email,
+        realname: row.realname,
+        gender: row.gender,
+        description: row.description,
+        classname: row.classname,
+        avatar: row.avatar,
+        group: row.group,
+    })
+}
+
+async fn load_user_row(database: &AppDatabase, id: Id) -> Option<UserRow> {
+    let row = sqlx::query(
+        database
+            .sql(
+                "SELECT email, realname, gender, description, classname, avatar_path, group_id FROM users WHERE id = ?1",
+            )
+            .as_ref(),
+    )
+    .bind(id.to_string())
+    .fetch_optional(database.sqlx())
+    .await
+    .expect("Database error")?;
+
+    let group_id: String = row.get("group_id");
+    Some(UserRow {
+        id,
+        email: row.get("email"),
+        realname: row.get("realname"),
+        gender: row.get("gender"),
+        description: row.get("description"),
+        classname: row.get("classname"),
+        avatar: row.get("avatar_path"),
+        group: Id::from_str(&group_id).expect("Database error"),
+    })
+}
+
+fn resolve_requested_user(params: &Params, fallback: Id) -> Result<Id, ()> {
+    let id_str = params.get("id").map_err(|_| ())?;
+    if id_str == "me" {
+        Ok(fallback)
+    } else {
+        id_str.parse::<Id>().map_err(|_| ())
+    }
 }
 
 static STRING_MAP: &[u8] = b"1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -232,28 +351,25 @@ mod tests {
 
     async fn setup_db() -> (AppDatabase, Id) {
         let database = build_test_database().await;
-        let group_id = Id::new();
-        sqlx::query(
-            database
-                .sql("INSERT INTO groups (id, code, allow_all_authorities) VALUES (?1, 'student', 0)")
-                .as_ref(),
-        )
-            .bind(group_id.to_string())
-            .execute(database.sqlx())
+        let row = sqlx::query(database.sql("SELECT id FROM groups WHERE code = ?1").as_ref())
+            .bind("student")
+            .fetch_one(database.sqlx())
             .await
-            .expect("insert group");
-        (database, group_id)
+            .expect("fetch student group");
+        let group_id: String = row.get("id");
+        (database, group_id.parse().expect("group id"))
     }
 
     #[tokio::test]
     async fn register_inserts_user_with_hashed_password() {
         let (database, group_id) = setup_db().await;
-        let form = RegisterForm {
+        let form = RegisterPayload {
             email: "test@example.com".to_string(),
             realname: "Test User".to_string(),
             password: "secret".to_string(),
             gender: "other".to_string(),
             classname: "Class A".to_string(),
+            avatar: Some("avatar.png".to_string()),
         };
 
         let result = register(State(database.clone()), Json(form)).await;
@@ -261,43 +377,56 @@ mod tests {
 
         let row = sqlx::query(
             database
-                .sql("SELECT email, password_hash, salt, group_id FROM users WHERE email = ?1")
+                .sql(
+                    "SELECT email, password_hash, salt, group_id, avatar_path FROM users WHERE email = ?1",
+                )
                 .as_ref(),
         )
         .bind("test@example.com")
         .fetch_one(database.sqlx())
         .await
         .expect("fetch user");
+
         let salt: String = row.get("salt");
         let password_hash: String = row.get("password_hash");
-
         assert_eq!(row.get::<String, _>("email"), "test@example.com");
         assert_eq!(password_hash, sha256("secret".to_string() + &salt));
         assert_eq!(row.get::<String, _>("group_id"), group_id.to_string());
+        assert_eq!(
+            row.get::<Option<String>, _>("avatar_path"),
+            Some("avatar.png".to_string())
+        );
     }
 
     #[tokio::test]
     async fn register_returns_already_exists_on_duplicate_email() {
         let (database, _group_id) = setup_db().await;
-        let form = RegisterForm {
-            email: "duplicate@example.com".to_string(),
-            realname: "Dup User".to_string(),
-            password: "secret".to_string(),
-            gender: "other".to_string(),
-            classname: "Class B".to_string(),
-        };
-
-        let first = register(State(database.clone()), Json(RegisterForm {
-            email: form.email.clone(),
-            realname: form.realname.clone(),
-            password: form.password.clone(),
-            gender: form.gender.clone(),
-            classname: form.classname.clone(),
-        }))
+        let first = register(
+            State(database.clone()),
+            Json(RegisterPayload {
+                email: "dupe@example.com".to_string(),
+                realname: "First".to_string(),
+                password: "secret".to_string(),
+                gender: "other".to_string(),
+                classname: "A".to_string(),
+                avatar: None,
+            }),
+        )
         .await;
         assert!(first.is_ok());
 
-        let second = register(State(database), Json(form)).await;
+        let second = register(
+            State(database),
+            Json(RegisterPayload {
+                email: "dupe@example.com".to_string(),
+                realname: "Second".to_string(),
+                password: "secret".to_string(),
+                gender: "other".to_string(),
+                classname: "B".to_string(),
+                avatar: None,
+            }),
+        )
+        .await;
         assert!(matches!(second, Err(RegisterError::AlreadyExists)));
     }
 }

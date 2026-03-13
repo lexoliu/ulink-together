@@ -1,6 +1,7 @@
 use crate::{
     auth::{AuthError, AuthSession},
     database::AppDatabase,
+    record,
     utils::{parse_oid, ApiMessage, Id},
 };
 
@@ -8,14 +9,14 @@ use serde::{Deserialize, Serialize};
 use skyzen::{
     extract::Query,
     routing::Params,
-    utils::{Form, Json, State},
+    utils::{Json, State},
 };
 use sqlx::Row;
 use time::OffsetDateTime;
 use utoipa::ToSchema;
 
-#[derive(Debug, Deserialize, ToSchema)]
-pub(crate) struct CreateChannelForm {
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
+pub struct CreateChannelForm {
     name: String,
     activity: Option<Id>,
 }
@@ -84,16 +85,16 @@ fn parse_db_oid(value: &str) -> Result<Id, FindChannelsError> {
         .map_err(|_| FindChannelsError::CorruptedData)
 }
 
-async fn members_of(database: &AppDatabase, channel_hex: &str) -> Result<Vec<Id>, FindChannelsError> {
+pub async fn members_of(database: &AppDatabase, channel_hex: &str) -> Result<Vec<Id>, FindChannelsError> {
     let rows = sqlx::query(
         database
             .sql("SELECT user_id FROM channel_members WHERE channel_id = ?1")
             .as_ref(),
     )
-        .bind(channel_hex)
-        .fetch_all(database.sqlx())
-        .await
-        .expect("Database error");
+    .bind(channel_hex)
+    .fetch_all(database.sqlx())
+    .await
+    .expect("Database error");
     let mut members = Vec::with_capacity(rows.len());
     for row in rows {
         members.push(parse_db_oid(&row.try_get::<String, _>("user_id").expect("Database error"))?);
@@ -101,12 +102,26 @@ async fn members_of(database: &AppDatabase, channel_hex: &str) -> Result<Vec<Id>
     Ok(members)
 }
 
+pub async fn ensure_channel_member(database: &AppDatabase, channel: &Id, user: &Id) -> bool {
+    sqlx::query(
+        database
+            .sql("SELECT 1 FROM channel_members WHERE channel_id = ?1 AND user_id = ?2 LIMIT 1")
+            .as_ref(),
+    )
+    .bind(channel.to_string())
+    .bind(user.to_string())
+    .fetch_optional(database.sqlx())
+    .await
+    .expect("Database error")
+    .is_some()
+}
+
 /// Create a new channel
 #[skyzen::openapi]
 pub async fn create(
     database: State<AppDatabase>,
     session: AuthSession,
-    query: Query<CreateChannelForm>,
+    form: Json<CreateChannelForm>,
 ) -> Result<Json<ChannelCreated>, CreateChannelError> {
     let auth = session.into_auth().await.map_err(|err| match err {
         AuthError::SessionExpired => CreateChannelError::SessionExpired,
@@ -115,7 +130,7 @@ pub async fn create(
     auth.ensure_authority("create_channel")
         .await
         .map_err(|_| CreateChannelError::Forbidden)?;
-    let Query(CreateChannelForm { name, activity }) = query;
+    let Json(CreateChannelForm { name, activity }) = form;
     let activity_hex = activity.map(|id| id.to_string());
     let id = Id::new();
     let now = OffsetDateTime::now_utc().to_string();
@@ -136,16 +151,20 @@ pub async fn create(
     .await
     .expect("Database error");
 
-    sqlx::query(
-        database
-            .sql("INSERT INTO channel_members (channel_id, user_id) VALUES (?1, ?2)")
-            .as_ref(),
-    )
-        .bind(id.to_string())
-        .bind(auth.uid().to_string())
-        .execute(database.sqlx())
+    ensure_channel_membership(&database, id, auth.uid())
         .await
         .expect("Database error");
+
+    if let Some(activity_id) = activity {
+        let volunteers = record::get_volunteers(&database, activity_id)
+            .await
+            .expect("Database error");
+        for volunteer in volunteers {
+            ensure_channel_membership(&database, id, volunteer)
+                .await
+                .expect("Database error");
+        }
+    }
 
     Ok(Json(ChannelCreated {
         message: "Create channel successfully",
@@ -175,11 +194,11 @@ pub async fn delete(
             .sql("SELECT owner_id FROM channels WHERE id = ?1")
             .as_ref(),
     )
-        .bind(id.to_string())
-        .fetch_optional(database.sqlx())
-        .await
-        .expect("Database error")
-        .ok_or(DeleteChannelError::NotFound)?;
+    .bind(id.to_string())
+    .fetch_optional(database.sqlx())
+    .await
+    .expect("Database error")
+    .ok_or(DeleteChannelError::NotFound)?;
     let owner_hex: String = row.try_get("owner_id").expect("Database error");
 
     if owner_hex != auth.uid().to_string()
@@ -204,14 +223,14 @@ pub async fn delete(
 #[skyzen::openapi]
 pub async fn find(
     database: State<AppDatabase>,
-    form: Form<FindForm>,
+    form: Query<FindForm>,
     session: AuthSession,
 ) -> Result<Json<Vec<ChannelResponse>>, FindChannelsError> {
-    session.into_auth().await.map_err(|err| match err {
+    let auth = session.into_auth().await.map_err(|err| match err {
         AuthError::SessionExpired => FindChannelsError::SessionExpired,
         _ => FindChannelsError::Forbidden,
     })?;
-    let Form(form) = form;
+    let Query(form) = form;
 
     let owner = form.owner.map(|id| id.to_string());
     let activity = form.activity.map(|id| id.to_string());
@@ -234,6 +253,19 @@ pub async fn find(
             " AND id IN (SELECT channel_id FROM channel_members WHERE user_id = ?{bind_idx})"
         ));
     }
+    if !auth
+        .match_authority("view_channel_anyway")
+        .await
+        .map_err(|_| FindChannelsError::Forbidden)?
+    {
+        bind_idx += 1;
+        let owner_bind = bind_idx;
+        bind_idx += 1;
+        let member_bind = bind_idx;
+        sql_text.push_str(&format!(
+            " AND (owner_id = ?{owner_bind} OR id IN (SELECT channel_id FROM channel_members WHERE user_id = ?{member_bind}))"
+        ));
+    }
 
     let sql = database.sql(&sql_text);
     let mut query = sqlx::query(sql.as_ref());
@@ -245,6 +277,13 @@ pub async fn find(
     }
     if let Some(member) = member {
         query = query.bind(member);
+    }
+    if !auth
+        .match_authority("view_channel_anyway")
+        .await
+        .map_err(|_| FindChannelsError::Forbidden)?
+    {
+        query = query.bind(auth.uid().to_string()).bind(auth.uid().to_string());
     }
 
     let rows = query
@@ -269,4 +308,35 @@ pub async fn find(
     }
 
     Ok(Json(result))
+}
+
+async fn ensure_channel_membership(
+    database: &AppDatabase,
+    channel_id: Id,
+    user_id: Id,
+) -> Result<(), sqlx::Error> {
+    let exists = sqlx::query(
+        database
+            .sql("SELECT 1 FROM channel_members WHERE channel_id = ?1 AND user_id = ?2 LIMIT 1")
+            .as_ref(),
+    )
+    .bind(channel_id.to_string())
+    .bind(user_id.to_string())
+    .fetch_optional(database.sqlx())
+    .await?
+    .is_some();
+
+    if !exists {
+        sqlx::query(
+            database
+                .sql("INSERT INTO channel_members (channel_id, user_id) VALUES (?1, ?2)")
+                .as_ref(),
+        )
+        .bind(channel_id.to_string())
+        .bind(user_id.to_string())
+        .execute(database.sqlx())
+        .await?;
+    }
+
+    Ok(())
 }

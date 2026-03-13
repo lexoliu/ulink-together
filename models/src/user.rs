@@ -10,6 +10,7 @@ pub struct User {
     pub gender: String,
     pub description: String,
     pub classname: String,
+    pub avatar: Option<String>,
     pub group: Id,
 }
 

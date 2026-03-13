@@ -8,7 +8,7 @@ models = { path = "../models", features = ["openapi"] }
 tokio = { version = "1.32.0", features = ["macros", "rt-multi-thread"] }
 skyzen.workspace = true
 async-std = "1.12.0"
-sqlx = { version = "0.7", features = ["runtime-async-std-rustls", "macros", "sqlite", "postgres", "uuid", "chrono", "migrate"] }
+sqlx = { version = "0.8", features = ["runtime-async-std-rustls", "macros", "sqlite", "postgres", "uuid", "chrono", "migrate"] }
 serde = { version = "1.0.188" ,features = ["derive"]}
 serde_json = "1.0"
 bytes = "1.5.0"
@@ -26,3 +26,6 @@ tracing = "0.1.41"
 
 [features]
 openapi = []
+
+[dev-dependencies]
+skyzen-test = { path = "../../skyzen/test" }

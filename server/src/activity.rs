@@ -1,5 +1,7 @@
+use std::collections::HashMap;
+
 use crate::{
-    auth::{AuthError, AuthSession},
+    auth::{Auth, AuthError, AuthSession},
     database::AppDatabase,
     record, user,
     utils::{parse_oid, ApiMessage, Id},
@@ -33,7 +35,7 @@ pub async fn list(
     query: Query<ListActivityQuery>,
     session: AuthSession,
 ) -> Result<Json<Vec<ActivitySummary>>, ListActivitiesError> {
-    session.into_auth().await.map_err(|err| match err {
+    let auth = session.into_auth().await.map_err(|err| match err {
         AuthError::SessionExpired => ListActivitiesError::SessionExpired,
         _ => ListActivitiesError::Forbidden,
     })?;
@@ -52,6 +54,7 @@ pub async fn list(
         bind_idx += 1;
         sql_text.push_str(&format!(" AND promoter_id = ?{bind_idx}"));
     }
+    sql_text.push_str(" ORDER BY COALESCE(date, '') ASC, name ASC");
 
     let sql = database.sql(&sql_text);
     let mut query = sqlx::query(sql.as_ref());
@@ -63,9 +66,16 @@ pub async fn list(
     }
 
     let rows = query.fetch_all(database.sqlx()).await.expect("Database error");
+    let viewer_states = load_viewer_record_states(&database, auth.uid())
+        .await
+        .expect("Database error");
 
     let mut result = Vec::with_capacity(rows.len());
     for row in rows {
+        let id: Id = row
+            .get::<String, _>("id")
+            .parse()
+            .map_err(|_| ListActivitiesError::InvalidState)?;
         let promoter = row
             .get::<String, _>("promoter_id")
             .parse()
@@ -75,11 +85,9 @@ pub async fn list(
             .map_err(|_| ListActivitiesError::PromoterNotFound)?;
         let state = ActivityState::from_db(row.get::<String, _>("state").as_str())
             .ok_or(ListActivitiesError::InvalidState)?;
+        let viewer_record_state = viewer_states.get(&id).copied();
         result.push(ActivitySummary {
-            id: row
-                .get::<String, _>("id")
-                .parse()
-                .map_err(|_| ListActivitiesError::InvalidState)?,
+            id,
             name: row.get("name"),
             location: row.get("location"),
             volunteer_num: row.get::<i64, _>("volunteer_num") as u16,
@@ -92,6 +100,8 @@ pub async fn list(
             brief_description: row.get("brief_description"),
             duration: row.get::<i64, _>("duration_minutes") as u16,
             state,
+            viewer_joined: viewer_record_state.is_some(),
+            viewer_record_state,
         });
     }
 
@@ -126,7 +136,7 @@ pub async fn get(
     params: Params,
     session: AuthSession,
 ) -> Result<Json<ActivityDetail>, GetActivityError> {
-    session.into_auth().await.map_err(|err| match err {
+    let auth = session.into_auth().await.map_err(|err| match err {
         AuthError::SessionExpired => GetActivityError::SessionExpired,
         _ => GetActivityError::Forbidden,
     })?;
@@ -167,6 +177,9 @@ pub async fn get(
     let volunteers = record::get_volunteers(&database, id)
         .await
         .expect("Database error");
+    let viewer_record_state = record::get_user_record_state(&database, id, auth.uid())
+        .await
+        .expect("Database error");
 
     Ok(Json(ActivityDetail {
         id,
@@ -188,6 +201,8 @@ pub async fn get(
             .try_get::<i64, _>("duration_minutes")
             .expect("Database error") as u16,
         state,
+        viewer_joined: viewer_record_state.is_some(),
+        viewer_record_state,
     }))
 }
 
@@ -204,6 +219,9 @@ pub enum JoinActivityError {
 
     #[error("Activity not exists", status = NOT_FOUND)]
     NotFound,
+
+    #[error("Activity is not open for joining", status = FORBIDDEN)]
+    NotRecruiting,
 
     #[error("The activity needn't more people", status = FORBIDDEN)]
     Full,
@@ -230,12 +248,12 @@ pub async fn join(
     )
     .map_err(|_| JoinActivityError::InvalidActivityId)?;
 
-    let mut conn = database
+    let mut db_conn = database
         .sqlx()
         .acquire()
         .await
         .expect("Database error");
-    let conn = conn.as_mut();
+    let conn = db_conn.as_mut();
     let begin_stmt = match database.kind() {
         crate::database::DatabaseKind::Sqlite => "BEGIN IMMEDIATE",
         crate::database::DatabaseKind::Postgres => "BEGIN",
@@ -247,13 +265,13 @@ pub async fn join(
 
     let row = sqlx::query(
         database
-            .sql("SELECT volunteer_num, max_volunteer_num FROM activities WHERE id = ?1")
+            .sql("SELECT volunteer_num, max_volunteer_num, state FROM activities WHERE id = ?1")
             .as_ref(),
     )
-        .bind(activity_id.to_string())
-        .fetch_optional(&mut *conn)
-        .await
-        .expect("Database error");
+    .bind(activity_id.to_string())
+    .fetch_optional(&mut *conn)
+    .await
+    .expect("Database error");
     let row = match row {
         Some(row) => row,
         None => {
@@ -261,6 +279,12 @@ pub async fn join(
             return Err(JoinActivityError::NotFound);
         }
     };
+
+    let current_state = row.try_get::<String, _>("state").expect("Database error");
+    if ActivityState::from_db(&current_state) != Some(ActivityState::NeedVolunteer) {
+        let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
+        return Err(JoinActivityError::NotRecruiting);
+    }
 
     let volunteer_num = row
         .try_get::<i64, _>("volunteer_num")
@@ -275,17 +299,16 @@ pub async fn join(
         }
     }
 
-    let existing =
-        sqlx::query(
-            database
-                .sql("SELECT 1 FROM records WHERE activity_id = ?1 AND user_id = ?2 LIMIT 1")
-                .as_ref(),
-        )
-            .bind(activity_id.to_string())
-            .bind(auth.uid().to_string())
-            .fetch_optional(&mut *conn)
-            .await
-            .expect("Database error");
+    let existing = sqlx::query(
+        database
+            .sql("SELECT 1 FROM records WHERE activity_id = ?1 AND user_id = ?2 LIMIT 1")
+            .as_ref(),
+    )
+    .bind(activity_id.to_string())
+    .bind(auth.uid().to_string())
+    .fetch_optional(&mut *conn)
+    .await
+    .expect("Database error");
     if existing.is_some() {
         let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
         return Err(JoinActivityError::AlreadyJoined);
@@ -299,12 +322,16 @@ pub async fn join(
             .sql("UPDATE activities SET volunteer_num = volunteer_num + 1 WHERE id = ?1")
             .as_ref(),
     )
-        .bind(activity_id.to_string())
+    .bind(activity_id.to_string())
+    .execute(&mut *conn)
+    .await
+    .expect("Database error");
+    sqlx::query("COMMIT")
         .execute(&mut *conn)
         .await
         .expect("Database error");
-    sqlx::query("COMMIT")
-        .execute(&mut *conn)
+    drop(db_conn);
+    record::sync_activity_channel_member(&database, activity_id, auth.uid(), true)
         .await
         .expect("Database error");
 
@@ -348,11 +375,11 @@ pub async fn delete(
             .sql("SELECT promoter_id FROM activities WHERE id = ?1")
             .as_ref(),
     )
-        .bind(id.to_string())
-        .fetch_optional(database.sqlx())
-        .await
-        .expect("Database error")
-        .ok_or(DeleteActivityError::NotFound)?;
+    .bind(id.to_string())
+    .fetch_optional(database.sqlx())
+    .await
+    .expect("Database error")
+    .ok_or(DeleteActivityError::NotFound)?;
     let promoter_hex: String = activity.try_get("promoter_id").expect("Database error");
 
     if promoter_hex != auth.uid().to_string()
@@ -369,10 +396,10 @@ pub async fn delete(
             .sql("DELETE FROM activities WHERE id = ?1")
             .as_ref(),
     )
-        .bind(id.to_string())
-        .execute(database.sqlx())
-        .await
-        .expect("Database error");
+    .bind(id.to_string())
+    .execute(database.sqlx())
+    .await
+    .expect("Database error");
 
     Ok(ApiMessage::new("Delete activity successfully"))
 }
@@ -463,7 +490,149 @@ pub async fn create(
         volunteers: Vec::new(),
         duration,
         state: ActivityState::NeedVolunteer,
+        viewer_joined: false,
+        viewer_record_state: None,
     }))
+}
+
+#[skyzen::error]
+pub enum UpdateActivityError {
+    #[error("Session expired", status = FORBIDDEN)]
+    SessionExpired,
+
+    #[error("Forbidden", status = FORBIDDEN)]
+    Forbidden,
+
+    #[error("Invalid activity id", status = BAD_REQUEST)]
+    InvalidActivityId,
+
+    #[error("Activity not exists", status = NOT_FOUND)]
+    NotFound,
+}
+
+#[skyzen::openapi]
+pub async fn update(
+    database: State<AppDatabase>,
+    params: Params,
+    session: AuthSession,
+    form: Json<CreateActivityForm>,
+) -> Result<Json<ActivityDetail>, UpdateActivityError> {
+    let auth = session.into_auth().await.map_err(|err| match err {
+        AuthError::SessionExpired => UpdateActivityError::SessionExpired,
+        _ => UpdateActivityError::Forbidden,
+    })?;
+    let activity_id = parse_oid(
+        params
+            .get("id")
+            .map_err(|_| UpdateActivityError::InvalidActivityId)?,
+    )
+    .map_err(|_| UpdateActivityError::InvalidActivityId)?;
+    ensure_manage_activity(&database, &auth, activity_id)
+        .await
+        .map_err(|err| match err {
+            ManageActivityError::NotFound => UpdateActivityError::NotFound,
+            ManageActivityError::Forbidden => UpdateActivityError::Forbidden,
+        })?;
+
+    let Json(form) = form;
+    sqlx::query(
+        database
+            .sql(
+                "UPDATE activities SET name = ?1, date = ?2, max_volunteer_num = ?3, description = ?4, location = ?5, brief_description = ?6, duration_minutes = ?7 WHERE id = ?8",
+            )
+            .as_ref(),
+    )
+    .bind(&form.name)
+    .bind(form.date.as_deref())
+    .bind(form.max_volunteer_num.map(i64::from))
+    .bind(&form.description)
+    .bind(&form.location)
+    .bind(&form.brief_description)
+    .bind(i64::from(form.duration))
+    .bind(activity_id.to_string())
+    .execute(database.sqlx())
+    .await
+    .expect("Database error");
+
+    let row = sqlx::query(
+        database
+            .sql(
+                "SELECT id, promoter_id, name, location, state, volunteer_num, max_volunteer_num, date, description, duration_minutes FROM activities WHERE id = ?1",
+            )
+            .as_ref(),
+    )
+    .bind(activity_id.to_string())
+    .fetch_one(database.sqlx())
+    .await
+    .expect("Database error");
+    let promoter_hex: String = row.try_get("promoter_id").expect("Database error");
+    let promoter: Id = promoter_hex.parse().expect("Database error");
+    let promoter_name = user::get_name(&database, promoter)
+        .await
+        .expect("Database error");
+    let state = ActivityState::from_db(&row.try_get::<String, _>("state").expect("Database error"))
+        .expect("Database error");
+    let viewer_record_state = record::get_user_record_state(&database, activity_id, auth.uid())
+        .await
+        .expect("Database error");
+
+    Ok(Json(ActivityDetail {
+        id: activity_id,
+        name: row.try_get("name").expect("Database error"),
+        location: row.try_get("location").expect("Database error"),
+        volunteer_num: row.try_get::<i64, _>("volunteer_num").expect("Database error") as u16,
+        max_volunteer_num: row
+            .try_get::<Option<i64>, _>("max_volunteer_num")
+            .expect("Database error")
+            .map(|v| v as u16),
+        promoter,
+        promoter_name,
+        date: row.try_get("date").expect("Database error"),
+        description: row.try_get("description").expect("Database error"),
+        volunteers: record::get_volunteers(&database, activity_id)
+            .await
+            .expect("Database error"),
+        duration: row
+            .try_get::<i64, _>("duration_minutes")
+            .expect("Database error") as u16,
+        state,
+        viewer_joined: viewer_record_state.is_some(),
+        viewer_record_state,
+    }))
+}
+
+#[derive(Debug)]
+enum ManageActivityError {
+    NotFound,
+    Forbidden,
+}
+
+async fn ensure_manage_activity(
+    database: &AppDatabase,
+    auth: &Auth,
+    activity_id: Id,
+) -> Result<(), ManageActivityError> {
+    let row = sqlx::query(
+        database
+            .sql("SELECT promoter_id FROM activities WHERE id = ?1")
+            .as_ref(),
+    )
+    .bind(activity_id.to_string())
+    .fetch_optional(database.sqlx())
+    .await
+    .expect("Database error")
+    .ok_or(ManageActivityError::NotFound)?;
+    let promoter_hex: String = row.try_get("promoter_id").expect("Database error");
+    if promoter_hex == auth.uid().to_string()
+        || auth
+            .match_authority("manage_activity_anyway")
+            .await
+            .map_err(|_| ManageActivityError::Forbidden)?
+    {
+        Ok(())
+    } else {
+        Err(ManageActivityError::Forbidden)
+    }
 }
 
 #[skyzen::error]
@@ -476,15 +645,21 @@ pub enum ChangeActivityStateError {
 
     #[error("Invalid activity id", status = BAD_REQUEST)]
     InvalidActivityId,
+
+    #[error("Activity not exists", status = NOT_FOUND)]
+    NotFound,
+
+    #[error("Invalid state transition", status = FORBIDDEN)]
+    InvalidTransition,
 }
 
 async fn change_state(
     database: State<AppDatabase>,
     params: Params,
     session: AuthSession,
-    state: ActivityState,
+    target_state: ActivityState,
 ) -> Result<ApiMessage, ChangeActivityStateError> {
-    session.into_auth().await.map_err(|err| match err {
+    let auth = session.into_auth().await.map_err(|err| match err {
         AuthError::SessionExpired => ChangeActivityStateError::SessionExpired,
         _ => ChangeActivityStateError::Forbidden,
     })?;
@@ -494,20 +669,73 @@ async fn change_state(
             .map_err(|_| ChangeActivityStateError::InvalidActivityId)?,
     )
     .map_err(|_| ChangeActivityStateError::InvalidActivityId)?;
+
+    ensure_manage_activity(&database, &auth, id)
+        .await
+        .map_err(|err| match err {
+            ManageActivityError::NotFound => ChangeActivityStateError::NotFound,
+            ManageActivityError::Forbidden => ChangeActivityStateError::Forbidden,
+        })?;
+
+    let row = sqlx::query(
+        database
+            .sql("SELECT state FROM activities WHERE id = ?1")
+            .as_ref(),
+    )
+    .bind(id.to_string())
+    .fetch_one(database.sqlx())
+    .await
+    .expect("Database error");
+    let current_state = ActivityState::from_db(
+        &row.try_get::<String, _>("state")
+            .expect("Database error"),
+    )
+    .ok_or(ChangeActivityStateError::InvalidTransition)?;
+
+    if !can_transition(current_state, target_state) {
+        return Err(ChangeActivityStateError::InvalidTransition);
+    }
+
     sqlx::query(
         database
             .sql("UPDATE activities SET state = ?1 WHERE id = ?2")
             .as_ref(),
     )
-        .bind(state.as_str())
+    .bind(target_state.as_str())
+    .bind(id.to_string())
+    .execute(database.sqlx())
+    .await
+    .expect("Database error");
+
+    if target_state == ActivityState::Canceled {
+        sqlx::query(
+            database
+                .sql(
+                    "UPDATE records SET state = 'canceled', confirmed_minutes = 0, confirmed_at = NULL, confirmed_by = NULL, updated_at = ?1 WHERE activity_id = ?2 AND state != 'done'",
+                )
+                .as_ref(),
+        )
+        .bind(time::OffsetDateTime::now_utc().to_string())
         .bind(id.to_string())
         .execute(database.sqlx())
         .await
         .expect("Database error");
+    }
+
     Ok(ApiMessage::new(format!(
         "Activity is {} now",
-        state.as_str()
+        target_state.as_str()
     )))
+}
+
+fn can_transition(current: ActivityState, target: ActivityState) -> bool {
+    match current {
+        ActivityState::NeedVolunteer => {
+            matches!(target, ActivityState::Going | ActivityState::Canceled)
+        }
+        ActivityState::Going => matches!(target, ActivityState::Ended | ActivityState::Canceled),
+        ActivityState::Ended | ActivityState::Canceled => false,
+    }
 }
 
 #[skyzen::error]
@@ -520,6 +748,12 @@ pub enum TurnNeedVolunteerError {
 
     #[error("Invalid activity id", status = BAD_REQUEST)]
     InvalidActivityId,
+
+    #[error("Activity not exists", status = NOT_FOUND)]
+    NotFound,
+
+    #[error("Invalid state transition", status = FORBIDDEN)]
+    InvalidTransition,
 }
 
 #[skyzen::openapi]
@@ -533,9 +767,9 @@ pub async fn turn_need_volunteer(
         .map_err(|err| match err {
             ChangeActivityStateError::SessionExpired => TurnNeedVolunteerError::SessionExpired,
             ChangeActivityStateError::Forbidden => TurnNeedVolunteerError::Forbidden,
-            ChangeActivityStateError::InvalidActivityId => {
-                TurnNeedVolunteerError::InvalidActivityId
-            }
+            ChangeActivityStateError::InvalidActivityId => TurnNeedVolunteerError::InvalidActivityId,
+            ChangeActivityStateError::NotFound => TurnNeedVolunteerError::NotFound,
+            ChangeActivityStateError::InvalidTransition => TurnNeedVolunteerError::InvalidTransition,
         })
 }
 
@@ -549,6 +783,12 @@ pub enum TurnGoingError {
 
     #[error("Invalid activity id", status = BAD_REQUEST)]
     InvalidActivityId,
+
+    #[error("Activity not exists", status = NOT_FOUND)]
+    NotFound,
+
+    #[error("Invalid state transition", status = FORBIDDEN)]
+    InvalidTransition,
 }
 
 #[skyzen::openapi]
@@ -563,6 +803,8 @@ pub async fn turn_going(
             ChangeActivityStateError::SessionExpired => TurnGoingError::SessionExpired,
             ChangeActivityStateError::Forbidden => TurnGoingError::Forbidden,
             ChangeActivityStateError::InvalidActivityId => TurnGoingError::InvalidActivityId,
+            ChangeActivityStateError::NotFound => TurnGoingError::NotFound,
+            ChangeActivityStateError::InvalidTransition => TurnGoingError::InvalidTransition,
         })
 }
 
@@ -576,6 +818,12 @@ pub enum TurnEndedError {
 
     #[error("Invalid activity id", status = BAD_REQUEST)]
     InvalidActivityId,
+
+    #[error("Activity not exists", status = NOT_FOUND)]
+    NotFound,
+
+    #[error("Invalid state transition", status = FORBIDDEN)]
+    InvalidTransition,
 }
 
 /// Change activity state to `Ended`
@@ -591,6 +839,8 @@ pub async fn turn_ended(
             ChangeActivityStateError::SessionExpired => TurnEndedError::SessionExpired,
             ChangeActivityStateError::Forbidden => TurnEndedError::Forbidden,
             ChangeActivityStateError::InvalidActivityId => TurnEndedError::InvalidActivityId,
+            ChangeActivityStateError::NotFound => TurnEndedError::NotFound,
+            ChangeActivityStateError::InvalidTransition => TurnEndedError::InvalidTransition,
         })
 }
 
@@ -604,6 +854,12 @@ pub enum TurnCanceledError {
 
     #[error("Invalid activity id", status = BAD_REQUEST)]
     InvalidActivityId,
+
+    #[error("Activity not exists", status = NOT_FOUND)]
+    NotFound,
+
+    #[error("Invalid state transition", status = FORBIDDEN)]
+    InvalidTransition,
 }
 
 /// Change activity state to `Canceled`
@@ -619,5 +875,35 @@ pub async fn turn_canceled(
             ChangeActivityStateError::SessionExpired => TurnCanceledError::SessionExpired,
             ChangeActivityStateError::Forbidden => TurnCanceledError::Forbidden,
             ChangeActivityStateError::InvalidActivityId => TurnCanceledError::InvalidActivityId,
+            ChangeActivityStateError::NotFound => TurnCanceledError::NotFound,
+            ChangeActivityStateError::InvalidTransition => TurnCanceledError::InvalidTransition,
         })
+}
+
+async fn load_viewer_record_states(
+    database: &AppDatabase,
+    viewer: Id,
+) -> Result<HashMap<Id, models::RecordState>, sqlx::Error> {
+    let rows = sqlx::query(
+        database
+            .sql("SELECT activity_id, state FROM records WHERE user_id = ?1")
+            .as_ref(),
+    )
+    .bind(viewer.to_string())
+    .fetch_all(database.sqlx())
+    .await?;
+
+    let mut map = HashMap::with_capacity(rows.len());
+    for row in rows {
+        let activity_id: Id = row
+            .try_get::<String, _>("activity_id")
+            .expect("Database error")
+            .parse()
+            .expect("Database error");
+        let state = row.try_get::<String, _>("state").expect("Database error");
+        if let Some(parsed) = models::RecordState::from_db(&state) {
+            map.insert(activity_id, parsed);
+        }
+    }
+    Ok(map)
 }

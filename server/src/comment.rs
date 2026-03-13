@@ -4,10 +4,10 @@ use crate::{
     user,
     utils::{parse_oid, Id},
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use skyzen::{
     routing::Params,
-    utils::{ByteStr, Json, State},
+    utils::{Json, State},
 };
 use sqlx::Row;
 use time::OffsetDateTime;
@@ -20,6 +20,11 @@ pub struct CommentResponse {
     author_name: String,
     content: String,
     date: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
+pub struct PostCommentForm {
+    content: String,
 }
 
 #[skyzen::error]
@@ -106,24 +111,39 @@ pub enum PostCommentError {
 
     #[error("Invalid activity id", status = BAD_REQUEST)]
     InvalidActivityId,
+
+    #[error("Activity not exists", status = NOT_FOUND)]
+    ActivityNotFound,
 }
 
+#[skyzen::openapi]
 pub async fn post(
     database: State<AppDatabase>,
     session: AuthSession,
     params: Params,
-    body: ByteStr,
+    form: Json<PostCommentForm>,
 ) -> Result<Json<CommentResponse>, PostCommentError> {
     let auth = session.into_auth().await.map_err(|err| match err {
         AuthError::SessionExpired => PostCommentError::SessionExpired,
         _ => PostCommentError::Forbidden,
     })?;
-    auth.ensure_authority("send_comment")
-        .await
-        .map_err(|_| PostCommentError::Forbidden)?;
     let activity_id =
         parse_oid(params.get("id").map_err(|_| PostCommentError::InvalidActivityId)?)
             .map_err(|_| PostCommentError::InvalidActivityId)?;
+    let exists = sqlx::query(
+        database
+            .sql("SELECT 1 FROM activities WHERE id = ?1 LIMIT 1")
+            .as_ref(),
+    )
+    .bind(activity_id.to_string())
+    .fetch_optional(database.sqlx())
+    .await
+    .expect("Database error")
+    .is_some();
+    if !exists {
+        return Err(PostCommentError::ActivityNotFound);
+    }
+    let Json(PostCommentForm { content }) = form;
     let id = Id::new();
     let now = OffsetDateTime::now_utc().to_string();
 
@@ -137,7 +157,7 @@ pub async fn post(
     .bind(id.to_string())
     .bind(activity_id.to_string())
     .bind(auth.uid().to_string())
-    .bind(body.as_str())
+    .bind(&content)
     .bind(&now)
     .execute(database.sqlx())
     .await
@@ -150,7 +170,7 @@ pub async fn post(
         id,
         author: auth.uid(),
         author_name,
-        content: body.as_str().to_owned(),
+        content,
         date: now,
     }))
 }
