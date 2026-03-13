@@ -28,12 +28,14 @@ final class SessionStore: ObservableObject {
     @Published var isAuthenticating = false
     var demoData: AppDemoData?
 
-    init(defaultServerURL: String = AppEnvironment.bundledServerURL(), runtimeMode: RuntimeMode? = nil) {
+    init(defaultServerURL: String? = nil, runtimeMode: RuntimeMode? = nil) {
         let resolvedMode = runtimeMode ?? Self.runtimeModeFromProcessInfo()
         self.runtimeMode = resolvedMode
         switch resolvedMode {
         case .live:
-            self.serverURLText = UserDefaults.standard.string(forKey: Self.serverURLDefaultsKey) ?? defaultServerURL
+            self.serverURLText = UserDefaults.standard.string(forKey: Self.serverURLDefaultsKey)
+                ?? defaultServerURL
+                ?? AppEnvironment.bundledServerURL()
             self.demoData = nil
         case .demoSignedOut:
             self.serverURLText = "http://demo.local"
