@@ -138,3 +138,7 @@ export interface ActivityDraft {
   description: string
   duration: number
 }
+
+export function activityChannelIsReadOnly(state: ActivityState): boolean {
+  return state === 'ended' || state === 'canceled'
+}

@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     auth::{Auth, AuthError, AuthSession},
+    channel,
     database::AppDatabase,
     record, user,
     utils::{parse_oid, ApiMessage, Id},
@@ -473,6 +474,10 @@ pub async fn create(
     .await
     .expect("Database error");
 
+    channel::ensure_activity_channel(&database, auth.uid(), id, &name)
+        .await
+        .expect("Database error");
+
     let promoter_name = user::get_name(&database, auth.uid())
         .await
         .expect("Database error");
@@ -553,6 +558,10 @@ pub async fn update(
     .execute(database.sqlx())
     .await
     .expect("Database error");
+
+    channel::rename_activity_channel(&database, activity_id, &form.name)
+        .await
+        .expect("Database error");
 
     let row = sqlx::query(
         database

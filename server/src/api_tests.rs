@@ -254,6 +254,55 @@ async fn join_adds_channel_membership_and_allows_message_post() {
 }
 
 #[tokio::test]
+async fn activity_create_auto_creates_activity_channel() {
+    let database = build_test_database().await;
+    let owner = insert_user(&database, "student", "owner-auto@example.com", "Owner").await;
+    ensure_group_authority_any(
+        database.sqlx(),
+        &group_id(&database, "student").await.to_string(),
+        "create_activity",
+    )
+    .await
+    .expect("grant create_activity");
+    let cookie = insert_session(&database, owner).await;
+    let client = test_client(database.clone());
+
+    let response = client
+        .post("/api/v1/activity")
+        .header("Cookie", &cookie)
+        .json(&json!({
+            "name": "Auto Channel Activity",
+            "date": "2026-03-20T09:00:00Z",
+            "max_volunteer_num": 16,
+            "description": "Detailed description",
+            "location": "Library",
+            "brief_description": "Brief description",
+            "duration": 120
+        }))
+        .send()
+        .await;
+    response.assert_status_success();
+    let created: serde_json::Value = response.assert_json();
+    let activity_id = created["id"].as_str().expect("activity id").to_string();
+
+    let channel = sqlx::query(
+        database
+            .sql("SELECT id, name FROM channels WHERE activity_id = ?1")
+            .as_ref(),
+    )
+    .bind(activity_id)
+    .fetch_optional(database.sqlx())
+    .await
+    .expect("load channel");
+
+    let channel = channel.expect("activity channel exists");
+    assert_eq!(
+        channel.try_get::<String, _>("name").expect("channel name"),
+        "Auto Channel Activity Channel"
+    );
+}
+
+#[tokio::test]
 async fn record_find_defaults_to_current_user() {
     let database = build_test_database().await;
     let user_one = insert_user(&database, "student", "u1@example.com", "User One").await;
@@ -291,6 +340,47 @@ async fn message_reads_require_channel_membership() {
         .send()
         .await;
     response.assert_status(403);
+}
+
+#[tokio::test]
+async fn ended_activity_channel_becomes_read_only() {
+    let database = build_test_database().await;
+    let owner = insert_user(&database, "student", "owner-readonly@example.com", "Owner").await;
+    let volunteer = insert_user(&database, "student", "readonly-vol@example.com", "Volunteer").await;
+    let activity = insert_activity(&database, owner, "Cleanup", "need_volunteer", 120).await;
+    let channel = insert_channel(&database, owner, activity, "Cleanup Channel").await;
+    let volunteer_cookie = insert_session(&database, volunteer).await;
+    let owner_cookie = insert_session(&database, owner).await;
+    let client = test_client(database.clone());
+
+    client
+        .post(&format!("/api/v1/activity/{activity}/apply"))
+        .header("Cookie", &volunteer_cookie)
+        .send()
+        .await
+        .assert_status_success();
+
+    client
+        .post(&format!("/api/v1/activity/{activity}/go"))
+        .header("Cookie", &owner_cookie)
+        .send()
+        .await
+        .assert_status_success();
+
+    client
+        .post(&format!("/api/v1/activity/{activity}/end"))
+        .header("Cookie", &owner_cookie)
+        .send()
+        .await
+        .assert_status_success();
+
+    client
+        .post(&format!("/api/v1/channel/{channel}"))
+        .header("Cookie", &volunteer_cookie)
+        .json(&json!({ "content": "can anyone still post?" }))
+        .send()
+        .await
+        .assert_status(403);
 }
 
 #[tokio::test]

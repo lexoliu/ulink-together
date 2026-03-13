@@ -321,20 +321,6 @@ function App() {
     onError: showMutationError,
   })
 
-  const createChannelMutation = useMutation({
-    mutationFn: async () => {
-      if (!resolvedSelectedActivityId || !selectedDetail) {
-        throw new ApiError('Choose an activity first.', 400)
-      }
-      return api.createChannel(`${selectedDetail.name} Channel`, resolvedSelectedActivityId)
-    },
-    onSuccess: async () => {
-      toast.success('Channel created.')
-      await queryClient.invalidateQueries({ queryKey: ['channels', resolvedSelectedActivityId] })
-    },
-    onError: showMutationError,
-  })
-
   const sendMessageMutation = useMutation({
     mutationFn: async (content: string) => {
       if (!channelQuery.data) {
@@ -397,7 +383,6 @@ function App() {
   }
 
   const canCreateActivity = authorities.create_activity === true
-  const canCreateChannel = authorities.create_channel === true
   const canGenerateExport = authorities.generate_export === true
   const canManageSelectedActivity =
     selectedDetail !== null &&
@@ -543,10 +528,8 @@ function App() {
                 messages={messagesQuery.data ?? []}
                 recordActionId={recordActionId}
                 canCreateActivity={canCreateActivity}
-                canCreateChannel={canCreateChannel}
                 canGenerateExport={canGenerateExport}
                 canManageSelectedActivity={canManageSelectedActivity}
-                isCreatingChannel={createChannelMutation.isPending}
                 isSendingMessage={sendMessageMutation.isPending}
                 isExporting={exportMutation.isPending}
                 onSearchChange={setSearch}
@@ -571,7 +554,6 @@ function App() {
                 }}
                 onPanelTabChange={setPanelTab}
                 onRecordAction={(id, action) => recordActionMutation.mutate({ id, action })}
-                onCreateChannel={() => createChannelMutation.mutate()}
                 onSendMessage={async (content) => {
                   await sendMessageMutation.mutateAsync(content)
                 }}
@@ -760,10 +742,8 @@ function ActivitiesPage({
   messages,
   recordActionId,
   canCreateActivity,
-  canCreateChannel,
   canGenerateExport,
   canManageSelectedActivity,
-  isCreatingChannel,
   isSendingMessage,
   isExporting,
   onSearchChange,
@@ -776,7 +756,6 @@ function ActivitiesPage({
   onTransition,
   onPanelTabChange,
   onRecordAction,
-  onCreateChannel,
   onSendMessage,
   pushUrl,
 }: {
@@ -796,10 +775,8 @@ function ActivitiesPage({
   messages: ChannelMessage[]
   recordActionId: string | null
   canCreateActivity: boolean
-  canCreateChannel: boolean
   canGenerateExport: boolean
   canManageSelectedActivity: boolean
-  isCreatingChannel: boolean
   isSendingMessage: boolean
   isExporting: boolean
   onSearchChange: (value: string) => void
@@ -812,7 +789,6 @@ function ActivitiesPage({
   onTransition: (action: 'need_volunteer' | 'go' | 'end' | 'cancel') => void
   onPanelTabChange: (value: PanelTab) => void
   onRecordAction: (id: string, action: 'approve_apply' | 'done' | 'disapprove_apply') => void
-  onCreateChannel: () => void
   onSendMessage: (content: string) => Promise<void>
   pushUrl: string
 }) {
@@ -1071,19 +1047,17 @@ function ActivitiesPage({
                 </TabsContent>
 
                 <TabsContent value="channel">
-                  <ChannelPanel
-                    pushUrl={pushUrl}
-                    channel={channel}
-                    initialMessages={messages}
-                    senderNames={senderNames}
-                    currentUserId={currentUserId}
-                    canCreateChannel={canCreateChannel}
-                    isCreatingChannel={isCreatingChannel}
-                    isSendingMessage={isSendingMessage}
-                    onCreateChannel={onCreateChannel}
-                    onSendMessage={onSendMessage}
-                  />
-                </TabsContent>
+                <ChannelPanel
+                  pushUrl={pushUrl}
+                  channel={channel}
+                  activityState={selectedDetail.state}
+                  initialMessages={messages}
+                  senderNames={senderNames}
+                  currentUserId={currentUserId}
+                  isSendingMessage={isSendingMessage}
+                  onSendMessage={onSendMessage}
+                />
+              </TabsContent>
               </Tabs>
             </>
           ) : (

@@ -37,6 +37,15 @@ enum ActivityState: String, Codable, CaseIterable, Sendable {
             "Cancelled"
         }
     }
+
+    var channelIsReadOnly: Bool {
+        switch self {
+        case .needVolunteer, .going:
+            false
+        case .ended, .canceled:
+            true
+        }
+    }
 }
 
 enum RecordState: String, Codable, CaseIterable, Sendable {

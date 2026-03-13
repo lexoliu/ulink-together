@@ -281,6 +281,12 @@ pub async fn post(
     if !can_post {
         return Err(PostMessageError::Forbidden);
     }
+    if !channel::activity_channel_is_writable(&database, channel_id)
+        .await
+        .map_err(|_| PostMessageError::Forbidden)?
+    {
+        return Err(PostMessageError::Forbidden);
+    }
 
     let Json(PostMessageForm { content }) = form;
     let id = Id::new();

@@ -4,6 +4,7 @@ use crate::{
     record,
     utils::{parse_oid, ApiMessage, Id},
 };
+use models::ActivityState;
 
 use serde::{Deserialize, Serialize};
 use skyzen::{
@@ -116,6 +117,112 @@ pub async fn ensure_channel_member(database: &AppDatabase, channel: &Id, user: &
     .is_some()
 }
 
+pub async fn activity_channel(
+    database: &AppDatabase,
+    activity_id: Id,
+) -> Result<Option<Id>, FindChannelsError> {
+    let row = sqlx::query(
+        database
+            .sql("SELECT id FROM channels WHERE activity_id = ?1 ORDER BY created_at ASC LIMIT 1")
+            .as_ref(),
+    )
+    .bind(activity_id.to_string())
+    .fetch_optional(database.sqlx())
+    .await
+    .expect("Database error");
+
+    row.map(|row| parse_db_oid(&row.try_get::<String, _>("id").expect("Database error")))
+        .transpose()
+}
+
+pub async fn rename_activity_channel(
+    database: &AppDatabase,
+    activity_id: Id,
+    activity_name: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        database
+            .sql("UPDATE channels SET name = ?1 WHERE activity_id = ?2")
+            .as_ref(),
+    )
+    .bind(format!("{activity_name} Channel"))
+    .bind(activity_id.to_string())
+    .execute(database.sqlx())
+    .await?;
+
+    Ok(())
+}
+
+pub async fn ensure_activity_channel(
+    database: &AppDatabase,
+    owner_id: Id,
+    activity_id: Id,
+    activity_name: &str,
+) -> Result<Id, sqlx::Error> {
+    if let Some(existing) = activity_channel(database, activity_id)
+        .await
+        .map_err(|_| sqlx::Error::Protocol("Corrupted activity channel id".into()))?
+    {
+        return Ok(existing);
+    }
+
+    let id = Id::new();
+    let now = OffsetDateTime::now_utc().to_string();
+
+    sqlx::query(
+        database
+            .sql(
+                "INSERT INTO channels (id, name, owner_id, activity_id, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            )
+            .as_ref(),
+    )
+    .bind(id.to_string())
+    .bind(format!("{activity_name} Channel"))
+    .bind(owner_id.to_string())
+    .bind(activity_id.to_string())
+    .bind(now)
+    .execute(database.sqlx())
+    .await?;
+
+    ensure_channel_membership(database, id, owner_id).await?;
+
+    let volunteers = record::get_volunteers(database, activity_id).await?;
+    for volunteer in volunteers {
+        ensure_channel_membership(database, id, volunteer).await?;
+    }
+
+    Ok(id)
+}
+
+pub async fn activity_channel_is_writable(
+    database: &AppDatabase,
+    channel_id: Id,
+) -> Result<bool, AuthError> {
+    let row = sqlx::query(
+        database
+            .sql(
+                "SELECT activities.state AS state FROM channels LEFT JOIN activities ON activities.id = channels.activity_id WHERE channels.id = ?1",
+            )
+            .as_ref(),
+    )
+    .bind(channel_id.to_string())
+    .fetch_optional(database.sqlx())
+    .await
+    .expect("Database error")
+    .ok_or(AuthError::Forbidden)?;
+
+    let state = row.try_get::<Option<String>, _>("state").expect("Database error");
+    let Some(state) = state else {
+        return Ok(true);
+    };
+
+    match ActivityState::from_db(&state) {
+        Some(ActivityState::NeedVolunteer | ActivityState::Going) => Ok(true),
+        Some(ActivityState::Ended | ActivityState::Canceled) => Ok(false),
+        None => Err(AuthError::Forbidden),
+    }
+}
+
 /// Create a new channel
 #[skyzen::openapi]
 pub async fn create(
@@ -131,6 +238,17 @@ pub async fn create(
         .await
         .map_err(|_| CreateChannelError::Forbidden)?;
     let Json(CreateChannelForm { name, activity }) = form;
+    if let Some(activity_id) = activity {
+        if let Some(existing) = activity_channel(&database, activity_id)
+            .await
+            .map_err(|_| CreateChannelError::Forbidden)?
+        {
+            return Ok(Json(ChannelCreated {
+                message: "Create channel successfully",
+                channel_id: existing,
+            }));
+        }
+    }
     let activity_hex = activity.map(|id| id.to_string());
     let id = Id::new();
     let now = OffsetDateTime::now_utc().to_string();

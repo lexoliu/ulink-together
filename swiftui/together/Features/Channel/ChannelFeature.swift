@@ -35,6 +35,13 @@ struct ActivityChannelView: View {
                     )
                 }
 
+                if activity.state.channelIsReadOnly {
+                    ContractNoteCard(
+                        title: "Channel Read Only",
+                        message: "This activity has finished, so the discussion is now locked for review only."
+                    )
+                }
+
                 if messages.isEmpty {
                     EmptyStateCard(
                         title: "No messages yet",
@@ -61,11 +68,12 @@ struct ActivityChannelView: View {
 
                 CardPanel {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Send a message")
+                        Text(activity.state.channelIsReadOnly ? "Channel archive" : "Send a message")
                             .font(.headline)
                         TextField("Coordinate with the activity team", text: $composer, axis: .vertical)
                             .textFieldStyle(.roundedBorder)
                             .lineLimit(2 ... 5)
+                            .disabled(activity.state.channelIsReadOnly)
                         if let errorMessage {
                             InlineErrorBanner(message: errorMessage)
                         }
@@ -75,28 +83,13 @@ struct ActivityChannelView: View {
                             }
                         }
                         .buttonStyle(.borderedProminent)
-                        .disabled(composer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .disabled(activity.state.channelIsReadOnly || composer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
-                }
-            } else if session.canCreateChannels {
-                EmptyStateCard(
-                    title: "No activity channel yet",
-                    message: "Create the activity chat when this event needs dedicated coordination.",
-                    systemImage: "message.badge.circle"
-                )
-
-                CardPanel {
-                    Button("Create Channel") {
-                        Task {
-                            await createChannel()
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
                 }
             } else {
                 EmptyStateCard(
                     title: "Channel unavailable",
-                    message: "This activity does not have a channel yet, and the current account is not allowed to create one.",
+                    message: "This activity channel is not ready yet. Pull to refresh after the organiser publishes the event.",
                     systemImage: "bubble.left.and.bubble.right"
                 )
             }
@@ -168,34 +161,6 @@ struct ActivityChannelView: View {
                 pushTask = nil
             }
             errorMessage = nil
-        } catch {
-            errorMessage = session.readableError(error)
-        }
-    }
-
-    private func createChannel() async {
-        if let demoData = session.demoData {
-            channel = demoData.channelsByActivity[activity.id]
-            if let channel {
-                messages = demoData.messagesByChannel[channel.id] ?? []
-                senderNames = demoData.userDisplayNames
-            }
-            errorMessage = nil
-            return
-        }
-
-        guard let serverURL = session.serverURL else {
-            errorMessage = "The server URL is invalid."
-            return
-        }
-
-        do {
-            _ = try await session.apiClient.createChannel(
-                baseURL: serverURL,
-                name: "\(activity.name) Channel",
-                activityID: activity.id
-            )
-            await load()
         } catch {
             errorMessage = session.readableError(error)
         }

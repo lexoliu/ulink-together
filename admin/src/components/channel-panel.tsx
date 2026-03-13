@@ -1,40 +1,37 @@
 import { useEffect, useMemo, useState } from 'react'
-import { MessagesSquare, Plus, Send } from 'lucide-react'
+import { Lock, MessagesSquare, Send } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { formatDateTime, shortIdentifier } from '@/lib/format'
-import type { ChannelMessage, ChannelResponse } from '@/lib/types'
+import { activityChannelIsReadOnly, type ActivityState, type ChannelMessage, type ChannelResponse } from '@/lib/types'
 
 interface ChannelPanelProps {
   pushUrl: string
   channel: ChannelResponse | null
+  activityState: ActivityState
   initialMessages: ChannelMessage[]
   senderNames: Record<string, string>
   currentUserId: string | null
-  canCreateChannel: boolean
-  isCreatingChannel: boolean
   isSendingMessage: boolean
-  onCreateChannel: () => void
   onSendMessage: (content: string) => Promise<void>
 }
 
 export function ChannelPanel({
   pushUrl,
   channel,
+  activityState,
   initialMessages,
   senderNames,
   currentUserId,
-  canCreateChannel,
-  isCreatingChannel,
   isSendingMessage,
-  onCreateChannel,
   onSendMessage,
 }: ChannelPanelProps) {
   const [composer, setComposer] = useState('')
   const [messages, setMessages] = useState<ChannelMessage[]>(initialMessages)
+  const readOnly = activityChannelIsReadOnly(activityState)
 
   useEffect(() => {
     setMessages(initialMessages)
@@ -76,20 +73,10 @@ export function ChannelPanel({
   return (
     <Card className="border-border/70 shadow-none">
       <CardHeader>
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <CardTitle>Channel</CardTitle>
-            <CardDescription>
-              Live coordination for organisers and volunteers.
-            </CardDescription>
-          </div>
-          {channel ? null : canCreateChannel ? (
-            <Button onClick={onCreateChannel} disabled={isCreatingChannel}>
-              <Plus className="mr-2 size-4" />
-              {isCreatingChannel ? 'Creating…' : 'Create channel'}
-            </Button>
-          ) : null}
-        </div>
+        <CardTitle>Channel</CardTitle>
+        <CardDescription>
+          Live coordination for organisers and volunteers.
+        </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
         {channel ? (
@@ -100,6 +87,18 @@ export function ChannelPanel({
                 {channel.members.length} members
               </span>
             </div>
+
+            {readOnly ? (
+              <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                <Lock className="mt-0.5 size-4 shrink-0" />
+                <div>
+                  <p className="font-medium">Channel is read only</p>
+                  <p className="mt-1 text-amber-800/80">
+                    This activity has ended, so the discussion is now archived.
+                  </p>
+                </div>
+              </div>
+            ) : null}
 
             <ScrollArea className="h-[320px] rounded-xl border border-border/70 bg-background">
               <div className="space-y-3 p-4">
@@ -147,6 +146,9 @@ export function ChannelPanel({
               className="flex gap-3"
               onSubmit={async (event) => {
                 event.preventDefault()
+                if (readOnly) {
+                  return
+                }
                 const content = composer.trim()
                 if (!content) {
                   return
@@ -158,9 +160,10 @@ export function ChannelPanel({
               <Input
                 value={composer}
                 onChange={(event) => setComposer(event.target.value)}
-                placeholder="Share an update with the activity team"
+                placeholder={readOnly ? 'Archived after activity completion' : 'Share an update with the activity team'}
+                disabled={readOnly}
               />
-              <Button type="submit" disabled={isSendingMessage || !composer.trim()}>
+              <Button type="submit" disabled={readOnly || isSendingMessage || !composer.trim()}>
                 <Send className="mr-2 size-4" />
                 {isSendingMessage ? 'Sending…' : 'Send'}
               </Button>
@@ -168,9 +171,7 @@ export function ChannelPanel({
           </>
         ) : (
           <div className="rounded-xl border border-dashed border-border bg-muted/20 p-6 text-sm text-muted-foreground">
-            {canCreateChannel
-              ? 'This activity has no channel yet. Create one to start live coordination.'
-              : 'This activity has no channel yet.'}
+            This activity channel is not ready yet. Refresh after the activity is created.
           </div>
         )}
       </CardContent>
