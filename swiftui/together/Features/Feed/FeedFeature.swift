@@ -249,12 +249,14 @@ struct ActivityDetailView: View {
                         title: "Edit Activity",
                         initialDraft: ActivityDraft(
                             name: detail.name,
-                            date: detail.date ?? "",
-                            maxVolunteerNum: detail.maxVolunteerNum.map(String.init) ?? "",
+                            scheduledDate: ServerDate.parsed(detail.date) ?? .now,
+                            hasScheduledDate: detail.date != nil,
+                            hasParticipantLimit: detail.maxVolunteerNum != nil,
+                            maxVolunteerNum: detail.maxVolunteerNum ?? 20,
                             location: detail.location,
                             briefDescription: String(detail.description.prefix(120)),
                             description: detail.description,
-                            durationMinutes: String(detail.duration)
+                            durationMinutes: detail.duration
                         )
                     ) { request in
                         try await updateActivity(with: request)
@@ -688,10 +690,31 @@ struct ActivityDetailView: View {
 struct ExportPreviewView: View {
     let batch: ExportBatchResponse
     @Environment(\.dismiss) private var dismiss
+    @State private var exportFileURL: URL?
 
     var body: some View {
         NavigationStack {
             PageWidthReader {
+                CardPanel {
+                    Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 12) {
+                        GridRow {
+                            Label("Rows", systemImage: "list.bullet.rectangle")
+                                .foregroundStyle(.secondary)
+                            Text("\(batch.items.count)")
+                        }
+                        GridRow {
+                            Label("Format", systemImage: "doc.text")
+                                .foregroundStyle(.secondary)
+                            Text(batch.targetFormat.uppercased())
+                        }
+                        GridRow {
+                            Label("Created", systemImage: "calendar")
+                                .foregroundStyle(.secondary)
+                            Text(ServerDate.dateTimeText(batch.createdAt))
+                        }
+                    }
+                }
+
                 CardPanel {
                     VStack(alignment: .leading, spacing: 12) {
                         Text(batch.fileName)
@@ -707,7 +730,19 @@ struct ExportPreviewView: View {
             }
             .navigationTitle("Export")
             .navigationBarTitleDisplayMode(.inline)
+            .task {
+                if exportFileURL == nil {
+                    exportFileURL = try? createTemporaryExportFile()
+                }
+            }
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    if let exportFileURL {
+                        ShareLink(item: exportFileURL) {
+                            Label("Share", systemImage: "square.and.arrow.up")
+                        }
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") {
                         dismiss()
@@ -715,5 +750,13 @@ struct ExportPreviewView: View {
                 }
             }
         }
+    }
+
+    private func createTemporaryExportFile() throws -> URL {
+        let directory = FileManager.default.temporaryDirectory.appending(path: "together-export", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let fileURL = directory.appending(path: batch.fileName)
+        try batch.content.write(to: fileURL, atomically: true, encoding: .utf8)
+        return fileURL
     }
 }

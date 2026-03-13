@@ -128,6 +128,14 @@ struct ActivityEditorView: View {
     @State private var draft: ActivityDraft
     @State private var errorMessage: String?
     @State private var isSubmitting = false
+    @FocusState private var focusedField: Field?
+
+    private enum Field: Hashable {
+        case name
+        case location
+        case summary
+        case details
+    }
 
     init(
         title: String,
@@ -142,22 +150,62 @@ struct ActivityEditorView: View {
 
     var body: some View {
         Form {
+            Section {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(title)
+                        .font(.title2.weight(.bold))
+                    Text("Keep the plan concise, scannable, and clear enough for volunteers to commit with confidence.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Section("Details") {
-                TextField("Name", text: $draft.name)
-                TextField("Date (RFC3339 optional)", text: $draft.date)
-                    .textInputAutocapitalization(.never)
+                TextField("Activity name", text: $draft.name)
+                    .focused($focusedField, equals: .name)
+
+                Toggle("Set a scheduled date", isOn: $draft.hasScheduledDate)
+                    .animation(.snappy, value: draft.hasScheduledDate)
+                if draft.hasScheduledDate {
+                    DatePicker("Date", selection: $draft.scheduledDate, displayedComponents: [.date, .hourAndMinute])
+                }
+
                 TextField("Location", text: $draft.location)
-                TextField("Duration in minutes", text: $draft.durationMinutes)
-                    .keyboardType(.numberPad)
-                TextField("Max participants", text: $draft.maxVolunteerNum)
-                    .keyboardType(.numberPad)
+                    .focused($focusedField, equals: .location)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Text("Duration")
+                        Spacer()
+                        Text(DisplayText.duration(minutes: draft.durationMinutes))
+                            .foregroundStyle(.secondary)
+                    }
+                    Stepper(value: $draft.durationMinutes, in: 30 ... 480, step: 30) {
+                        EmptyView()
+                    }
+                }
+
+                Toggle("Limit participants", isOn: $draft.hasParticipantLimit)
+                    .animation(.snappy, value: draft.hasParticipantLimit)
+                if draft.hasParticipantLimit {
+                    Stepper(value: $draft.maxVolunteerNum, in: 1 ... 500) {
+                        HStack {
+                            Text("Max participants")
+                            Spacer()
+                            Text("\(draft.maxVolunteerNum)")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
             }
 
             Section("Descriptions") {
-                TextField("Brief description", text: $draft.briefDescription, axis: .vertical)
+                TextField("Short summary", text: $draft.briefDescription, axis: .vertical)
                     .lineLimit(2 ... 4)
+                    .focused($focusedField, equals: .summary)
                 TextField("Full description", text: $draft.description, axis: .vertical)
-                    .lineLimit(4 ... 10)
+                    .lineLimit(5 ... 10)
+                    .focused($focusedField, equals: .details)
             }
 
             if let errorMessage {
@@ -169,6 +217,7 @@ struct ActivityEditorView: View {
         }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
+        .scrollDismissesKeyboard(.interactively)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button("Cancel") {
@@ -176,7 +225,7 @@ struct ActivityEditorView: View {
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Button("Save") {
+                Button(isSubmitting ? "Saving..." : "Save") {
                     Task {
                         await submit()
                     }
@@ -214,20 +263,15 @@ struct ActivityEditorView: View {
             throw APIError.transport("All activity details are required.")
         }
 
-        guard let duration = Int(draft.durationMinutes), duration > 0 else {
+        let duration = draft.durationMinutes
+        guard duration > 0 else {
             throw APIError.transport("Duration must be a positive number of minutes.")
-        }
-
-        let maxVolunteerNum = draft.maxVolunteerNum.trimmingCharacters(in: .whitespacesAndNewlines)
-        let parsedMax = maxVolunteerNum.isEmpty ? nil : Int(maxVolunteerNum)
-        if maxVolunteerNum.isEmpty == false && parsedMax == nil {
-            throw APIError.transport("Max participants must be a whole number.")
         }
 
         return CreateActivityRequest(
             name: name,
-            date: draft.date.trimmedNilIfEmpty,
-            maxVolunteerNum: parsedMax,
+            date: draft.hasScheduledDate ? ServerDate.encoded(draft.scheduledDate) : nil,
+            maxVolunteerNum: draft.hasParticipantLimit ? draft.maxVolunteerNum : nil,
             description: description,
             location: location,
             briefDescription: briefDescription,

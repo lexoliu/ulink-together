@@ -28,7 +28,7 @@ final class SessionStore: ObservableObject {
     @Published var isAuthenticating = false
     var demoData: AppDemoData?
 
-    init(defaultServerURL: String = "http://127.0.0.1:8000", runtimeMode: RuntimeMode? = nil) {
+    init(defaultServerURL: String = AppEnvironment.bundledServerURL(), runtimeMode: RuntimeMode? = nil) {
         let resolvedMode = runtimeMode ?? Self.runtimeModeFromProcessInfo()
         self.runtimeMode = resolvedMode
         switch resolvedMode {

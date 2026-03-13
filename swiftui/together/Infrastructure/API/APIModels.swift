@@ -282,12 +282,36 @@ struct RegisterRequest: Encodable, Sendable {
 
 struct ActivityDraft: Codable, Equatable, Sendable {
     var name: String = ""
-    var date: String = ""
-    var maxVolunteerNum: String = ""
+    var scheduledDate: Date = .now
+    var hasScheduledDate = true
+    var hasParticipantLimit = true
+    var maxVolunteerNum = 20
     var location: String = ""
     var briefDescription: String = ""
     var description: String = ""
-    var durationMinutes: String = ""
+    var durationMinutes = 120
+
+    init(
+        name: String = "",
+        scheduledDate: Date = .now,
+        hasScheduledDate: Bool = true,
+        hasParticipantLimit: Bool = true,
+        maxVolunteerNum: Int = 20,
+        location: String = "",
+        briefDescription: String = "",
+        description: String = "",
+        durationMinutes: Int = 120
+    ) {
+        self.name = name
+        self.scheduledDate = scheduledDate
+        self.hasScheduledDate = hasScheduledDate
+        self.hasParticipantLimit = hasParticipantLimit
+        self.maxVolunteerNum = maxVolunteerNum
+        self.location = location
+        self.briefDescription = briefDescription
+        self.description = description
+        self.durationMinutes = durationMinutes
+    }
 }
 
 struct CreateActivityRequest: Encodable, Sendable {

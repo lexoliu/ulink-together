@@ -43,6 +43,12 @@ enum AppTheme {
 }
 
 enum ServerDate {
+    static let encoderFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
     static func parsed(_ value: String?) -> Date? {
         guard let value else {
             return nil
@@ -69,6 +75,10 @@ enum ServerDate {
             return "Unavailable"
         }
         return date.formatted(date: .abbreviated, time: .shortened)
+    }
+
+    static func encoded(_ date: Date) -> String {
+        encoderFormatter.string(from: date)
     }
 }
 
