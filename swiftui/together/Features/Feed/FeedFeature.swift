@@ -270,7 +270,9 @@ struct ActivityDetailView: View {
     }
 
     private var participantPanel: some View {
-        CardPanel {
+        let canMarkDone = detail?.state == .ended
+
+        return CardPanel {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Participants")
                     .font(.title3.weight(.semibold))
@@ -311,6 +313,7 @@ struct ActivityDetailView: View {
                                     }
                                 }
                                 .buttonStyle(.borderedProminent)
+                                .disabled(!canMarkDone)
 
                                 Button("Cancel", role: .destructive) {
                                     Task {
@@ -416,10 +419,19 @@ struct ActivityDetailView: View {
                     labelRow(title: "Comments", subtitle: "Read organiser notes and volunteer replies.", systemImage: "text.bubble")
                 }
 
-                NavigationLink {
-                    ActivityChannelView(activity: detail)
-                } label: {
-                    labelRow(title: "Channel", subtitle: "Activity-scoped messaging and coordination.", systemImage: "message")
+                if canAccessChannel(detail: detail) {
+                    NavigationLink {
+                        ActivityChannelView(activity: detail)
+                    } label: {
+                        labelRow(title: "Channel", subtitle: "Activity-scoped messaging and coordination.", systemImage: "message")
+                    }
+                } else {
+                    labelRow(
+                        title: "Channel",
+                        subtitle: "Join this activity before opening its coordination room.",
+                        systemImage: "lock.message"
+                    )
+                    .opacity(0.6)
                 }
             }
         }
@@ -487,6 +499,10 @@ struct ActivityDetailView: View {
 
     private func canManage(detail: ActivityDetail) -> Bool {
         detail.promoter == session.currentUser?.id || session.canManageRecords || session.canCreateActivities
+    }
+
+    private func canAccessChannel(detail: ActivityDetail) -> Bool {
+        detail.viewerJoined || canManage(detail: detail)
     }
 
     private func load() async {

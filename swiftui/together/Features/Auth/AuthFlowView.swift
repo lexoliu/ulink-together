@@ -130,6 +130,8 @@ struct AuthFlowView: View {
     private var formPanel: some View {
         CardPanel {
             VStack(alignment: .leading, spacing: 18) {
+                serverPanel
+
                 Picker("Authentication", selection: $mode) {
                     ForEach(AuthMode.allCases) { authMode in
                         Text(authMode.title).tag(authMode)
@@ -156,6 +158,27 @@ struct AuthFlowView: View {
                     registerForm
                 }
             }
+        }
+    }
+
+    private var serverPanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Server URL")
+                .font(.headline)
+            Text("Enter the Together server used by your school before signing in.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            TextField(
+                "https://volunteer.ulink.edu.cn",
+                text: Binding(
+                    get: { session.serverURLText },
+                    set: { session.updateServerURL($0) }
+                )
+            )
+            .textInputAutocapitalization(.never)
+            .keyboardType(.URL)
+            .textFieldStyle(.roundedBorder)
         }
     }
 
@@ -265,6 +288,9 @@ struct AuthFlowView: View {
     }
 
     private func validateLogin() -> String? {
+        if session.hasConfiguredServerURL == false {
+            return "Server URL is required."
+        }
         if loginEmail.isEmpty || loginPassword.isEmpty {
             return "Email and password are required."
         }
@@ -272,6 +298,9 @@ struct AuthFlowView: View {
     }
 
     private func validateRegistration() -> String? {
+        if session.hasConfiguredServerURL == false {
+            return "Server URL is required."
+        }
         if registerEmail.isEmpty || registerRealname.isEmpty || registerClassname.isEmpty {
             return "Email, real name, and class name are required."
         }

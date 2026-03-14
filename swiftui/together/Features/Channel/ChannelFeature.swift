@@ -20,6 +20,12 @@ struct ActivityChannelView: View {
             VStack(spacing: 16) {
                 if isLoading {
                     LoadingCard(title: "Loading channel")
+                } else if !canAccessChannel {
+                    EmptyStateCard(
+                        title: "Join Required",
+                        message: "Join this activity before opening its coordination room.",
+                        systemImage: "lock.fill"
+                    )
                 } else if let channel {
                     channelHeader(channel: channel)
 
@@ -48,7 +54,9 @@ struct ActivityChannelView: View {
         .navigationTitle("Channel")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable {
-            await load()
+            if canAccessChannel {
+                await load()
+            }
         }
         .safeAreaInset(edge: .bottom) {
             if channel != nil {
@@ -60,7 +68,11 @@ struct ActivityChannelView: View {
             }
         }
         .task {
-            await load()
+            if canAccessChannel {
+                await load()
+            } else {
+                isLoading = false
+            }
         }
         .onDisappear {
             pushTask?.cancel()
@@ -70,6 +82,14 @@ struct ActivityChannelView: View {
 
     private var sortedMessages: [ChannelMessage] {
         messages.sorted { $0.datetime < $1.datetime }
+    }
+
+    private var canAccessChannel: Bool {
+        activity.viewerJoined || canManageActivity
+    }
+
+    private var canManageActivity: Bool {
+        activity.promoter == session.currentUser?.id || session.canManageRecords || session.canCreateActivities
     }
 
     private func channelHeader(channel: ChannelResponse) -> some View {

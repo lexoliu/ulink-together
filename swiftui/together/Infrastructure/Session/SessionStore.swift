@@ -36,6 +36,7 @@ final class SessionStore: ObservableObject {
             self.serverURLText = UserDefaults.standard.string(forKey: Self.serverURLDefaultsKey)
                 ?? defaultServerURL
                 ?? AppEnvironment.bundledServerURL()
+                ?? ""
             self.demoData = nil
         case .demoSignedOut:
             self.serverURLText = "http://demo.local"
@@ -57,6 +58,10 @@ final class SessionStore: ObservableObject {
 
     var serverURL: URL? {
         try? Self.normalizeServerURL(from: serverURLText)
+    }
+
+    var hasConfiguredServerURL: Bool {
+        serverURLText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
     }
 
     var usesFixtureData: Bool {

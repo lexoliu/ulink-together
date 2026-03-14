@@ -115,6 +115,24 @@ struct AccountHomeView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Account")
                     .font(.headline)
+                TextField(
+                    "Server URL",
+                    text: Binding(
+                        get: { session.serverURLText },
+                        set: { session.updateServerURL($0) }
+                    )
+                )
+                .textInputAutocapitalization(.never)
+                .keyboardType(.URL)
+                .textFieldStyle(.roundedBorder)
+
+                Button("Reconnect") {
+                    Task {
+                        await session.reconnect()
+                    }
+                }
+                .buttonStyle(.bordered)
+
                 Button("Refresh Details") {
                     Task {
                         await session.refreshCurrentUser()
