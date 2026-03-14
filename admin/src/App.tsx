@@ -1095,39 +1095,37 @@ function ActivitiesPage({
               </div>
             </aside>
 
-            <div className="min-h-0 rounded-[2rem] bg-white px-6 py-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
+            <div className="min-h-0 rounded-[2rem] bg-white px-5 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
               {selectedDetail ? (
-                <div className="flex h-full min-h-0 flex-col gap-6">
+                <div className="flex h-full min-h-0 flex-col gap-4">
                   <Card className="shrink-0 overflow-hidden border-slate-200/70 bg-[linear-gradient(180deg,rgba(255,255,255,1),rgba(248,251,255,0.96))] shadow-none">
-                    <CardHeader className="gap-5">
-                      <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-                        <div className="space-y-4">
+                    <CardHeader className="gap-4 p-5">
+                      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                        <div className="space-y-3">
                           <div className="flex flex-wrap items-center gap-2">
                             <Badge variant="secondary">{activityStateLabel(selectedDetail.state)}</Badge>
-                            <Badge variant="outline">{formatDuration(selectedDetail.duration)}</Badge>
+                            <Badge variant="outline" className="hidden sm:inline-flex">{formatDuration(selectedDetail.duration)}</Badge>
                           </div>
 
-                          <div>
-                            <CardTitle className="text-4xl font-semibold tracking-tight text-slate-950">
-                              {selectedDetail.name}
-                            </CardTitle>
-                          </div>
+                          <CardTitle className="text-3xl font-semibold tracking-tight text-slate-950">
+                            {selectedDetail.name}
+                          </CardTitle>
 
-                          <div className="flex flex-wrap gap-x-8 gap-y-4 text-sm">
-                            <InlineMeta label="Organiser" value={selectedDetail.promoter_name} />
-                            <InlineMeta label="Date" value={formatDateTime(selectedDetail.date)} />
-                            <InlineMeta label="Location" value={selectedDetail.location} />
+                          <div className="flex flex-wrap gap-3 text-sm">
+                            <CompactMeta label="Organiser" value={selectedDetail.promoter_name} />
+                            <CompactMeta label="Date" value={formatDateTime(selectedDetail.date)} />
+                            <CompactMeta label="Location" value={selectedDetail.location} />
                           </div>
                         </div>
 
                         <div className="flex flex-wrap gap-2">
                           {canManageSelectedActivity ? (
-                            <Button variant="outline" onClick={onEditActivity}>
+                            <Button size="sm" variant="outline" onClick={onEditActivity}>
                               Edit
                             </Button>
                           ) : null}
 
-                          <Button variant="outline" onClick={onOpenChat}>
+                          <Button size="sm" variant="outline" onClick={onOpenChat}>
                             <MessageSquareMore className="mr-2 size-4" />
                             Open chat
                           </Button>
@@ -1136,6 +1134,7 @@ function ActivitiesPage({
 
                       <div className="flex flex-wrap gap-2">
                         <Button
+                          size="sm"
                           variant={selectedDetail.state === 'need_volunteer' ? 'default' : 'outline'}
                           disabled={!canManageSelectedActivity}
                           onClick={() => onTransition('need_volunteer')}
@@ -1143,6 +1142,7 @@ function ActivitiesPage({
                           Recruiting
                         </Button>
                         <Button
+                          size="sm"
                           variant={selectedDetail.state === 'going' ? 'default' : 'outline'}
                           disabled={!canManageSelectedActivity}
                           onClick={() => onTransition('go')}
@@ -1150,6 +1150,7 @@ function ActivitiesPage({
                           Start
                         </Button>
                         <Button
+                          size="sm"
                           variant={selectedDetail.state === 'ended' ? 'default' : 'outline'}
                           disabled={!canManageSelectedActivity}
                           onClick={() => onTransition('end')}
@@ -1157,6 +1158,7 @@ function ActivitiesPage({
                           Complete
                         </Button>
                         <Button
+                          size="sm"
                           variant="destructive"
                           disabled={!canManageSelectedActivity}
                           onClick={() => onTransition('cancel')}
@@ -1170,9 +1172,9 @@ function ActivitiesPage({
                   <Tabs
                     value={panelTab}
                     onValueChange={(value) => onPanelTabChange(value as PanelTab)}
-                    className="min-h-0 flex-1 gap-5"
+                    className="min-h-0 flex-1 gap-3"
                   >
-                    <TabsList variant="line" className="shrink-0 rounded-2xl bg-slate-50 p-1.5 shadow-none">
+                    <TabsList variant="line" className="shrink-0 rounded-2xl bg-slate-50 p-1 shadow-none">
                       <TabsTrigger value="overview">Overview</TabsTrigger>
                       <TabsTrigger value="records">Records</TabsTrigger>
                       <TabsTrigger value="channel">Coordination</TabsTrigger>
@@ -1182,19 +1184,19 @@ function ActivitiesPage({
                       <ScrollArea className="h-full pr-2">
                         <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
                           <Card className="border-slate-200/70 bg-slate-50/65 shadow-none">
-                            <CardHeader>
+                            <CardHeader className="p-5">
                               <CardTitle>Brief</CardTitle>
                             </CardHeader>
-                            <CardContent>
-                              <p className="text-sm leading-7 text-slate-700">{selectedDetail.description}</p>
+                            <CardContent className="px-5 pb-5 pt-0">
+                              <p className="text-sm leading-6 text-slate-700">{selectedDetail.description}</p>
                             </CardContent>
                           </Card>
 
                           <Card className="border-slate-200/70 bg-slate-50/65 shadow-none">
-                            <CardHeader>
+                            <CardHeader className="p-5">
                               <CardTitle>Participation</CardTitle>
                             </CardHeader>
-                            <CardContent className="grid gap-4">
+                            <CardContent className="grid gap-3 px-5 pb-5 pt-0">
                               <div>
                                 <p className="text-3xl font-semibold tracking-tight text-slate-950">
                                   {selectedDetail.volunteer_num}/{selectedDetail.max_volunteer_num ?? '∞'}
@@ -1213,6 +1215,7 @@ function ActivitiesPage({
 
                               {canGenerateExport ? (
                                 <Button
+                                  size="sm"
                                   variant="outline"
                                   className="justify-between rounded-2xl"
                                   disabled={isExporting}
@@ -1243,7 +1246,6 @@ function ActivitiesPage({
                     <TabsContent value="channel" className="min-h-0 flex-1">
                       <ScrollArea className="h-full pr-2">
                         <ChannelStatusCard
-                          activityName={selectedDetail.name}
                           channel={channel}
                           activityState={selectedDetail.state}
                           messages={messages}
@@ -1321,11 +1323,11 @@ function HomeStatCard({
   )
 }
 
-function InlineMeta({ label, value }: { label: string; value: string }) {
+function CompactMeta({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-[180px]">
-      <p className="text-[11px] uppercase tracking-[0.18em] text-slate-400">{label}</p>
-      <p className="mt-1 font-medium text-slate-900">{value}</p>
+    <div className="rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2">
+      <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">{label}</p>
+      <p className="mt-1 text-sm font-medium text-slate-900">{value}</p>
     </div>
   )
 }
