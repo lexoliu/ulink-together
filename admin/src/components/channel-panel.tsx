@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { BellRing, Lock, MessagesSquare, Send, Sparkles, Users } from 'lucide-react'
+import { Lock, MessagesSquare, Send, Users } from 'lucide-react'
 import TextareaAutosize from 'react-textarea-autosize'
 
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { formatDateTime, shortIdentifier } from '@/lib/format'
 import {
@@ -22,7 +22,6 @@ interface ChannelPanelProps {
   senderNames: Record<string, string>
   currentUserId: string | null
   ownerId?: string | null
-  ownerLabel?: string | null
   isSendingMessage: boolean
   onSendMessage: (content: string) => Promise<void>
 }
@@ -42,7 +41,6 @@ export function ChannelPanel({
   senderNames,
   currentUserId,
   ownerId,
-  ownerLabel,
   isSendingMessage,
   onSendMessage,
 }: ChannelPanelProps) {
@@ -95,30 +93,23 @@ export function ChannelPanel({
   }, [timeline.length])
 
   return (
-    <Card className="border-white/70 bg-white/95 shadow-lg shadow-slate-200/40">
-      <CardHeader className="gap-4 border-b border-slate-200/70 pb-5">
+    <Card className="flex min-h-0 flex-1 flex-col border-white/70 bg-white/95 shadow-lg shadow-slate-200/40">
+      <CardHeader className="shrink-0 gap-4 border-b border-slate-200/70 pb-5">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div>
-            <CardDescription>Live room</CardDescription>
-            <CardTitle className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">
-              {channel?.name ?? 'Activity room'}
+            <CardTitle className="text-2xl font-semibold tracking-tight text-slate-950">
+              Messages
             </CardTitle>
           </div>
 
           <div className="flex flex-wrap gap-2">
             <HeaderPill icon={<Users className="size-3.5" />} label={`${channel?.members.length ?? 0} members`} />
-            <HeaderPill
-              icon={readOnly ? <Lock className="size-3.5" /> : <BellRing className="size-3.5" />}
-              label={readOnly ? 'Archived' : 'Live'}
-            />
-            {ownerId ? (
-              <HeaderPill icon={<Sparkles className="size-3.5" />} label={`${ownerLabel ?? 'Organiser'} notices highlighted`} />
-            ) : null}
+            <HeaderPill icon={<Lock className="size-3.5" />} label={readOnly ? 'Archived' : 'Available'} />
           </div>
         </div>
       </CardHeader>
 
-      <CardContent className="grid gap-4 p-0">
+      <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-0">
         {channel ? (
           <>
             {readOnly ? (
@@ -127,15 +118,15 @@ export function ChannelPanel({
                 <div>
                   <p className="font-medium">Room is read only</p>
                   <p className="mt-1 text-amber-800/80">
-                    This activity has ended, so the discussion is preserved as an archive.
+                    This activity has ended.
                   </p>
                 </div>
               </div>
             ) : null}
 
-            <ScrollArea className="h-[min(68vh,760px)] px-6">
-              <div className="space-y-5 py-6">
-                {timeline.length > 0 ? (
+            {timeline.length > 0 ? (
+              <ScrollArea className="min-h-0 flex-1 px-6">
+                <div className="space-y-5 py-6">
                   <AnimatePresence initial={false}>
                     {timeline.map((entry) =>
                       entry.type === 'day' ? (
@@ -159,28 +150,24 @@ export function ChannelPanel({
                           currentUserId={currentUserId}
                           senderNames={senderNames}
                           ownerId={ownerId}
-                          ownerLabel={ownerLabel}
                         />
                       ),
                     )}
                   </AnimatePresence>
-                ) : (
-                  <div className="flex min-h-[360px] flex-col items-center justify-center gap-4 text-center text-sm text-slate-500">
-                    <MessagesSquare className="size-9" />
-                    <div>
-                      <p className="font-medium text-slate-950">No messages yet</p>
-                      <p className="mt-2 max-w-sm leading-7">
-                        This room is ready for schedule changes, arrival notes, and organiser announcements.
-                      </p>
-                    </div>
-                  </div>
-                )}
-                <div ref={endRef} />
+                  <div ref={endRef} />
+                </div>
+              </ScrollArea>
+            ) : (
+              <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-10">
+                <div className="flex flex-col items-center gap-4 text-center text-sm text-slate-500">
+                  <MessagesSquare className="size-9" />
+                  <p className="font-medium text-slate-950">No messages yet</p>
+                </div>
               </div>
-            </ScrollArea>
+            )}
 
             <form
-              className="border-t border-slate-200/70 bg-white/92 px-6 py-5"
+              className="shrink-0 border-t border-slate-200/70 bg-white/92 px-6 py-5"
               onSubmit={async (event) => {
                 event.preventDefault()
                 if (readOnly) {
@@ -197,7 +184,7 @@ export function ChannelPanel({
               <div className="rounded-[1.6rem] border border-slate-200/80 bg-slate-50/85 p-3 shadow-sm">
                 <TextareaAutosize
                   minRows={1}
-                  maxRows={6}
+                  maxRows={4}
                   value={composer}
                   onChange={(event) => setComposer(event.target.value)}
                   placeholder={
@@ -206,15 +193,10 @@ export function ChannelPanel({
                       : 'Write an update for the activity team'
                   }
                   disabled={readOnly}
-                  className="w-full resize-none border-0 bg-transparent px-1 py-1 text-sm leading-7 text-slate-950 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed"
+                  className="w-full resize-none border-0 bg-transparent px-1 py-1 text-sm leading-6 text-slate-950 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed"
                 />
 
-                <div className="mt-3 flex items-center justify-between gap-3">
-                  <p className="text-xs text-slate-500">
-                    {readOnly
-                      ? 'Archived rooms stay visible but cannot accept new posts.'
-                      : 'Organiser posts are surfaced as notices to keep key updates easy to spot.'}
-                  </p>
+                <div className="mt-3 flex items-center justify-end gap-3">
                   <Button
                     type="submit"
                     className="rounded-2xl"
@@ -244,13 +226,11 @@ function MessageRow({
   currentUserId,
   senderNames,
   ownerId,
-  ownerLabel,
 }: {
   message: ChannelMessage
   currentUserId: string | null
   senderNames: Record<string, string>
   ownerId?: string | null
-  ownerLabel?: string | null
 }) {
   const isCurrentUser = message.sender === currentUserId
   const isOwnerNotice = ownerId !== undefined && ownerId !== null && message.sender === ownerId
@@ -272,11 +252,6 @@ function MessageRow({
           }`}
         >
           <span className="font-medium text-slate-700">{senderLabel}</span>
-          {isOwnerNotice ? (
-            <span className="rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-800">
-              {ownerLabel ?? 'Organiser'} notice
-            </span>
-          ) : null}
           <span>{formatDateTime(message.datetime)}</span>
         </div>
 

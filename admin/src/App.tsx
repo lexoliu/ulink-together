@@ -14,7 +14,6 @@ import {
   PanelLeftOpen,
   Plus,
   Search,
-  Sparkles,
 } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -27,7 +26,6 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Select,
   SelectContent,
@@ -518,17 +516,13 @@ function App() {
             <div className={`flex items-start justify-between gap-3 ${sidebarCollapsed ? 'mb-2' : 'mb-1'}`}>
               {sidebarCollapsed ? (
                 <div className="flex size-11 items-center justify-center rounded-2xl bg-slate-950 text-white">
-                  <Sparkles className="size-4" />
+                  <span className="text-sm font-semibold tracking-tight">T</span>
                 </div>
               ) : (
                 <div className="space-y-5">
-                  <div className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] text-white">
-                    <Sparkles className="size-3.5" />
-                    Admin workspace
-                  </div>
                   <div>
                     <h1 className="text-2xl font-semibold tracking-tight text-slate-950">
-                      Volunteer operations
+                      Together Admin
                     </h1>
                   </div>
                 </div>
@@ -685,38 +679,40 @@ function App() {
                 }}
               />
             ) : currentView === 'chats' ? (
-              <Suspense fallback={<WorkspaceFallback />}>
-                <ChatWorkspace
-                  activities={chatActivities}
-                  selectedActivityId={resolvedSelectedChatActivityId}
-                  selectedActivity={selectedChatDetail}
-                  channel={chatChannelQuery.data ?? null}
-                  messages={chatMessagesQuery.data ?? []}
-                  senderNames={chatSenderNames}
-                  currentUserId={currentUser?.id ?? null}
-                  isSendingMessage={sendMessageMutation.isPending}
-                  search={chatSearch}
-                  onSearchChange={setChatSearch}
-                  onSelectActivity={(activityId) => navigateChats(activityId)}
-                  onOpenActivities={() => {
-                    if (resolvedSelectedChatActivityId) {
-                      navigateActivities(resolvedSelectedChatActivityId)
-                    } else {
-                      navigateActivities()
-                    }
-                  }}
-                  onSendMessage={async (content) => {
-                    if (!chatChannelQuery.data) {
-                      throw new ApiError('No channel is available yet.', 400)
-                    }
-                    await sendMessageMutation.mutateAsync({
-                      channelId: chatChannelQuery.data.id,
-                      content,
-                    })
-                  }}
-                  pushUrl={api.pushURL()}
-                />
-              </Suspense>
+              <div className="min-h-0 flex-1">
+                <Suspense fallback={<WorkspaceFallback />}>
+                  <ChatWorkspace
+                    activities={chatActivities}
+                    selectedActivityId={resolvedSelectedChatActivityId}
+                    selectedActivity={selectedChatDetail}
+                    channel={chatChannelQuery.data ?? null}
+                    messages={chatMessagesQuery.data ?? []}
+                    senderNames={chatSenderNames}
+                    currentUserId={currentUser?.id ?? null}
+                    isSendingMessage={sendMessageMutation.isPending}
+                    search={chatSearch}
+                    onSearchChange={setChatSearch}
+                    onSelectActivity={(activityId) => navigateChats(activityId)}
+                    onOpenActivities={() => {
+                      if (resolvedSelectedChatActivityId) {
+                        navigateActivities(resolvedSelectedChatActivityId)
+                      } else {
+                        navigateActivities()
+                      }
+                    }}
+                    onSendMessage={async (content) => {
+                      if (!chatChannelQuery.data) {
+                        throw new ApiError('No channel is available yet.', 400)
+                      }
+                      await sendMessageMutation.mutateAsync({
+                        channelId: chatChannelQuery.data.id,
+                        content,
+                      })
+                    }}
+                    pushUrl={api.pushURL()}
+                  />
+                </Suspense>
+              </div>
             ) : (
               <ActivitiesPage
                 search={search}
@@ -1044,7 +1040,6 @@ function ActivitiesPage({
             </div>
 
             <div className="mt-5 rounded-[1.8rem] bg-white/72 p-2 ring-1 ring-white/80">
-              <ScrollArea className="h-[calc(100vh-22rem)] pr-2">
               <div className="grid gap-4 pb-4">
                 {activitiesLoading ? (
                   <>
@@ -1093,7 +1088,6 @@ function ActivitiesPage({
                   </div>
                 )}
               </div>
-              </ScrollArea>
             </div>
           </aside>
 

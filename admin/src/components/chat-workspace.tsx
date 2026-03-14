@@ -1,11 +1,8 @@
 import { useMemo } from 'react'
 import {
-  BellRing,
   Clock3,
-  FolderKanban,
   Lock,
   MapPin,
-  MessageSquareMore,
   Search,
   Users,
 } from 'lucide-react'
@@ -67,20 +64,17 @@ export function ChatWorkspace({
     () => [
       {
         key: 'going',
-        title: 'Live now',
-        description: 'Activities currently underway.',
+        title: 'Current',
         items: activities.filter((activity) => activity.state === 'going'),
       },
       {
         key: 'need_volunteer',
-        title: 'Recruiting',
-        description: 'Upcoming rooms you may want to monitor.',
+        title: 'Upcoming',
         items: activities.filter((activity) => activity.state === 'need_volunteer'),
       },
       {
         key: 'ended',
         title: 'Archived',
-        description: 'Read-only conversations after wrap-up.',
         items: activities.filter((activity) => activity.state === 'ended'),
       },
     ].filter((group) => group.items.length > 0),
@@ -88,8 +82,8 @@ export function ChatWorkspace({
   )
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)_280px]">
-      <Card className="border-white/70 bg-white/90 shadow-lg shadow-slate-200/40">
+    <div className="grid h-full min-h-0 gap-4 xl:grid-cols-[300px_minmax(0,1fr)] xl:items-stretch">
+      <Card className="flex min-h-0 flex-col border-white/70 bg-white/90 shadow-lg shadow-slate-200/40">
         <CardHeader className="gap-4">
           <div>
             <CardDescription>Chats</CardDescription>
@@ -109,8 +103,8 @@ export function ChatWorkspace({
           </div>
         </CardHeader>
 
-        <CardContent className="pb-0">
-          <ScrollArea className="h-[calc(100vh-18rem)] pr-3">
+        <CardContent className="min-h-0 flex-1 pb-3">
+          <ScrollArea className="h-full pr-3">
             <div className="space-y-5 pb-5">
               {groupedActivities.length > 0 ? (
                 groupedActivities.map((group) => (
@@ -119,7 +113,6 @@ export function ChatWorkspace({
                       <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
                         {group.title}
                       </p>
-                      <p className="mt-1 text-xs text-slate-500">{group.description}</p>
                     </div>
 
                     <div className="grid gap-2">
@@ -137,14 +130,18 @@ export function ChatWorkspace({
                                 : 'border-slate-200/80 bg-slate-50/70 hover:border-slate-300 hover:bg-white'
                             }`}
                           >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <p className="truncate font-medium text-slate-950">{activity.name}</p>
-                                <p className="mt-1 truncate text-sm text-slate-500">
-                                  {formatDateOnly(activity.date)} · {activity.location}
+                            <div className="min-w-0">
+                              <div className="flex min-w-0 items-start gap-3">
+                                <p className="min-w-0 flex-1 text-sm font-medium leading-6 text-slate-950">
+                                  {activity.name}
                                 </p>
+                                <Badge variant="secondary" className="shrink-0">
+                                  {activityStateLabel(activity.state)}
+                                </Badge>
                               </div>
-                              <Badge variant="secondary">{activityStateLabel(activity.state)}</Badge>
+                              <p className="mt-1 truncate text-sm text-slate-500">
+                                {formatDateOnly(activity.date)} · {activity.location}
+                              </p>
                             </div>
                           </button>
                         )
@@ -163,23 +160,42 @@ export function ChatWorkspace({
       </Card>
 
       {selectedActivity ? (
-        <>
-          <div className="grid gap-4">
-            <Card className="border-white/70 bg-white/94 shadow-lg shadow-slate-200/40">
+          <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
+            <Card className="shrink-0 border-white/70 bg-white/94 shadow-lg shadow-slate-200/40">
               <CardHeader className="gap-5">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="secondary">{activityStateLabel(selectedActivity.state)}</Badge>
-                  <Badge variant="outline">{formatDuration(selectedActivity.duration)}</Badge>
-                  <Badge variant="outline">
-                    {selectedActivity.volunteer_num}/{selectedActivity.max_volunteer_num ?? '∞'} joined
-                  </Badge>
-                </div>
+                <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="space-y-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="secondary">{activityStateLabel(selectedActivity.state)}</Badge>
+                      <Badge variant="outline">{formatDuration(selectedActivity.duration)}</Badge>
+                      <Badge variant="outline">
+                        {selectedActivity.volunteer_num}/{selectedActivity.max_volunteer_num ?? '∞'} volunteers
+                      </Badge>
+                    </div>
 
-                <div>
-                  <CardDescription>Conversation workspace</CardDescription>
-                  <CardTitle className="mt-1 text-3xl font-semibold tracking-tight text-slate-950">
-                    {selectedActivity.name}
-                  </CardTitle>
+                    <CardTitle className="text-3xl font-semibold tracking-tight text-slate-950">
+                      {selectedActivity.name}
+                    </CardTitle>
+
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                      <SummaryChip icon={<Clock3 className="size-4" />} label="When" value={formatDateTime(selectedActivity.date)} />
+                      <SummaryChip icon={<MapPin className="size-4" />} label="Where" value={selectedActivity.location} />
+                      <SummaryChip
+                        icon={<Users className="size-4" />}
+                        label="People"
+                        value={`${selectedActivity.volunteer_num}/${selectedActivity.max_volunteer_num ?? '∞'} volunteers`}
+                      />
+                      <SummaryChip
+                        icon={<Lock className="size-4" />}
+                        label="Status"
+                        value={activityChannelIsReadOnly(selectedActivity.state) ? 'Archived' : 'Available'}
+                      />
+                    </div>
+                  </div>
+
+                  <Button variant="outline" className="rounded-2xl" onClick={onOpenActivities}>
+                    Open activity
+                  </Button>
                 </div>
               </CardHeader>
             </Card>
@@ -192,70 +208,15 @@ export function ChatWorkspace({
               senderNames={senderNames}
               currentUserId={currentUserId}
               ownerId={selectedActivity.promoter}
-              ownerLabel={selectedActivity.promoter_name}
               isSendingMessage={isSendingMessage}
               onSendMessage={onSendMessage}
             />
           </div>
-
-          <div className="grid gap-4">
-            <Card className="border-white/70 bg-white/92 shadow-lg shadow-slate-200/40">
-              <CardHeader>
-                <CardTitle>Room details</CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-4">
-                <RailItem
-                  icon={<Clock3 className="size-4" />}
-                  label="When"
-                  value={formatDateTime(selectedActivity.date)}
-                />
-                <RailItem
-                  icon={<MapPin className="size-4" />}
-                  label="Where"
-                  value={selectedActivity.location}
-                />
-                <RailItem
-                  icon={<Users className="size-4" />}
-                  label="People"
-                  value={`${selectedActivity.volunteer_num}/${selectedActivity.max_volunteer_num ?? '∞'} volunteers`}
-                />
-                <RailItem
-                  icon={activityChannelIsReadOnly(selectedActivity.state) ? <Lock className="size-4" /> : <BellRing className="size-4" />}
-                  label="Status"
-                  value={
-                    activityChannelIsReadOnly(selectedActivity.state)
-                      ? 'Read only archive'
-                      : 'Open for live coordination'
-                  }
-                />
-              </CardContent>
-            </Card>
-
-            <Card className="border-white/70 bg-white/92 shadow-lg shadow-slate-200/40">
-              <CardHeader>
-                <CardTitle>Next step</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Button variant="outline" className="w-full justify-between rounded-2xl" onClick={onOpenActivities}>
-                  <span className="flex items-center gap-2">
-                    <FolderKanban className="size-4" />
-                    Open activity details
-                  </span>
-                  <MessageSquareMore className="size-4 text-slate-400" />
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
-        </>
       ) : (
-        <Card className="border-white/70 bg-white/92 shadow-lg shadow-slate-200/40 xl:col-span-2">
+        <Card className="border-white/70 bg-white/92 shadow-lg shadow-slate-200/40">
           <CardContent className="flex min-h-[520px] flex-col items-center justify-center gap-4 text-center">
-            <MessageSquareMore className="size-10 text-slate-400" />
             <div>
               <h2 className="text-xl font-semibold text-slate-950">Choose a room</h2>
-              <p className="mt-2 max-w-md text-sm leading-7 text-slate-600">
-                Select an activity from the rail to open its chat workspace.
-              </p>
             </div>
           </CardContent>
         </Card>
@@ -264,7 +225,7 @@ export function ChatWorkspace({
   )
 }
 
-function RailItem({
+function SummaryChip({
   icon,
   label,
   value,
@@ -274,12 +235,12 @@ function RailItem({
   value: string
 }) {
   return (
-    <div className="rounded-[1.4rem] border border-slate-200/80 bg-slate-50/80 p-4">
+    <div className="rounded-[1.35rem] border border-slate-200/80 bg-slate-50/80 p-4">
       <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
         {icon}
         {label}
       </div>
-      <p className="mt-3 text-sm leading-7 text-slate-950">{value}</p>
+      <p className="mt-3 text-sm leading-6 text-slate-950">{value}</p>
     </div>
   )
 }
