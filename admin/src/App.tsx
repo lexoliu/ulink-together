@@ -1,8 +1,6 @@
 import { Suspense, lazy, startTransition, useDeferredValue, useMemo, useState } from 'react'
 import {
   ArrowRight,
-  CheckCircle2,
-  Clock3,
   Download,
   FileSpreadsheet,
   FolderKanban,
@@ -26,6 +24,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Select,
   SelectContent,
@@ -506,8 +505,8 @@ function App() {
 
   return (
     <>
-      <div className="min-h-screen bg-[radial-gradient(circle_at_top_right,_rgba(148,163,184,0.1),_transparent_28%),radial-gradient(circle_at_bottom_left,_rgba(120,137,128,0.08),_transparent_32%),linear-gradient(to_bottom,_#f7f5f2,_#f1efe9)]">
-        <div className="mx-auto flex min-h-screen max-w-[1600px] gap-6 px-6 py-6">
+      <div className="min-h-screen bg-[radial-gradient(circle_at_top_right,_rgba(148,163,184,0.1),_transparent_28%),radial-gradient(circle_at_bottom_left,_rgba(120,137,128,0.08),_transparent_32%),linear-gradient(to_bottom,_#f7f5f2,_#f1efe9)] xl:h-screen xl:overflow-hidden">
+        <div className="mx-auto flex min-h-screen max-w-[1600px] gap-6 px-6 py-6 xl:h-full xl:min-h-0">
           <aside
             className={`hidden shrink-0 flex-col rounded-[2rem] border border-white/70 bg-white/88 shadow-xl shadow-slate-200/50 backdrop-blur transition-all duration-300 lg:flex ${
               sidebarCollapsed ? 'w-24 p-4' : 'w-72 p-6'
@@ -610,7 +609,7 @@ function App() {
             </div>
           </aside>
 
-          <main className="flex min-w-0 flex-1 flex-col gap-6">
+          <main className="flex min-w-0 flex-1 flex-col gap-6 xl:min-h-0">
             <header className="rounded-[2rem] border border-white/70 bg-white/80 px-6 py-5 shadow-lg shadow-slate-200/45 backdrop-blur lg:hidden">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -665,19 +664,21 @@ function App() {
             </header>
 
             {currentView === 'home' ? (
-              <HomePage
-                user={currentUser}
-                activities={activitiesQuery.data ?? []}
-                recentActivities={recentActivities}
-                canCreateActivity={canCreateActivity}
-                onCreateActivity={() => {
-                  setEditingActivity(null)
-                  setFormOpen(true)
-                }}
-                onOpenActivity={(activityId) => {
-                  navigateActivities(activityId)
-                }}
-              />
+              <div className="xl:min-h-0 xl:flex-1 xl:overflow-auto xl:pr-1">
+                <HomePage
+                  user={currentUser}
+                  activities={activitiesQuery.data ?? []}
+                  recentActivities={recentActivities}
+                  canCreateActivity={canCreateActivity}
+                  onCreateActivity={() => {
+                    setEditingActivity(null)
+                    setFormOpen(true)
+                  }}
+                  onOpenActivity={(activityId) => {
+                    navigateActivities(activityId)
+                  }}
+                />
+              </div>
             ) : currentView === 'chats' ? (
               <div className="min-h-0 flex-1">
                 <Suspense fallback={<WorkspaceFallback />}>
@@ -973,286 +974,303 @@ function ActivitiesPage({
 }) {
   return (
     <>
-      <div className="rounded-[2.3rem] border border-white/75 bg-white/76 px-7 py-6 shadow-[0_28px_80px_-34px_rgba(15,23,42,0.24)] backdrop-blur-xl">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Activities</p>
-            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">
-              Manage publishing, records, and readiness
-            </h2>
-          </div>
-          {canCreateActivity ? (
-            <Button className="rounded-2xl px-4" onClick={onCreateActivity}>
-              <Plus className="mr-2 size-4" />
-              New activity
-            </Button>
-          ) : null}
-        </div>
-      </div>
-
-      <div className="rounded-[2.4rem] border border-white/70 bg-white/70 p-2 shadow-[0_34px_100px_-42px_rgba(15,23,42,0.3)] backdrop-blur-xl">
-        <div className="grid gap-2 xl:grid-cols-[340px_minmax(0,1fr)]">
-          <aside className="rounded-[2rem] bg-[linear-gradient(180deg,rgba(240,245,250,0.98),rgba(234,240,246,0.84))] p-5">
+      <div className="flex h-full min-h-0 flex-col gap-4">
+        <div className="shrink-0 rounded-[2.3rem] border border-white/75 bg-white/76 px-7 py-6 shadow-[0_28px_80px_-34px_rgba(15,23,42,0.24)] backdrop-blur-xl">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Activity rail</p>
-              <h3 className="mt-2 text-lg font-semibold text-slate-950">Pick the event you want to work on.</h3>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Activities</p>
+              <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">
+                Manage publishing, records, and readiness
+              </h2>
             </div>
-
-            <div className="mt-5 grid gap-3">
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  className="rounded-2xl border-slate-200/80 bg-white/90 pl-9"
-                  placeholder="Search activity name or location"
-                  value={search}
-                  onChange={(event) => onSearchChange(event.target.value)}
-                />
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Select value={scope} onValueChange={(value) => onScopeChange(value as ActivityScope)}>
-                  <SelectTrigger className="w-full rounded-2xl border-slate-200/80 bg-white/90">
-                    <SelectValue placeholder="Scope" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All activities</SelectItem>
-                    <SelectItem value="mine">My activities</SelectItem>
-                  </SelectContent>
-                </Select>
-
-                <Select
-                  value={stateFilter}
-                  onValueChange={(value) => onStateFilterChange(value as ActivityFilter)}
-                >
-                  <SelectTrigger className="w-full rounded-2xl border-slate-200/80 bg-white/90">
-                    <ListFilter className="size-4" />
-                    <SelectValue placeholder="State" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All states</SelectItem>
-                    <SelectItem value="need_volunteer">Recruiting</SelectItem>
-                    <SelectItem value="going">In progress</SelectItem>
-                    <SelectItem value="ended">Completed</SelectItem>
-                    <SelectItem value="canceled">Cancelled</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="mt-5 rounded-[1.8rem] bg-white/72 p-2 ring-1 ring-white/80">
-              <div className="grid gap-4 pb-4">
-                {activitiesLoading ? (
-                  <>
-                    <Skeleton className="h-32 rounded-2xl" />
-                    <Skeleton className="h-32 rounded-2xl" />
-                  </>
-                ) : filteredActivities.length > 0 ? (
-                  filteredActivities.map((activity) => (
-                    <button
-                      key={activity.id}
-                      type="button"
-                      onClick={() => onSelectActivity(activity.id)}
-                      className={`rounded-[1.6rem] border px-4 py-4 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-slate-300/80 focus-visible:ring-offset-2 ${
-                        activity.id === selectedActivityId
-                          ? 'border-white bg-white shadow-[0_18px_40px_-26px_rgba(15,23,42,0.28)] ring-1 ring-slate-200/90'
-                          : 'border-transparent bg-transparent hover:bg-white/85'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <h3 className="text-[15px] font-semibold leading-6 text-slate-950">{activity.name}</h3>
-                          <p className="mt-1 line-clamp-2 text-sm leading-6 text-slate-500">
-                            {activity.brief_description}
-                          </p>
-                        </div>
-                        <Badge variant="secondary">{activityStateLabel(activity.state)}</Badge>
-                      </div>
-
-                      <div className="mt-4 grid gap-2 text-xs text-slate-500">
-                        <div className="flex items-center justify-between">
-                          <span>{formatDateOnly(activity.date)}</span>
-                          <span>
-                            {activity.volunteer_num}/{activity.max_volunteer_num ?? '∞'}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span>{activity.location}</span>
-                          <span>{formatDuration(activity.duration)}</span>
-                        </div>
-                      </div>
-                    </button>
-                  ))
-                ) : (
-                  <div className="rounded-[1.5rem] border border-dashed border-slate-200 bg-white/80 p-6 text-sm text-slate-500">
-                    No activities match the current filters.
-                  </div>
-                )}
-              </div>
-            </div>
-          </aside>
-
-        <div className="rounded-[2rem] bg-white px-6 py-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
-          <div className="grid gap-6">
-          {selectedDetail ? (
-            <>
-              <Card className="overflow-hidden border-slate-200/70 bg-[linear-gradient(180deg,rgba(255,255,255,1),rgba(248,251,255,0.96))] shadow-none">
-                <CardHeader className="gap-5">
-                  <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-                    <div className="space-y-4">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="secondary">{activityStateLabel(selectedDetail.state)}</Badge>
-                        <Badge variant="outline">{formatDuration(selectedDetail.duration)}</Badge>
-                        <Badge variant="outline">
-                          {selectedDetail.volunteer_num}/{selectedDetail.max_volunteer_num ?? '∞'} volunteers
-                        </Badge>
-                      </div>
-
-                      <div>
-                        <CardTitle className="text-4xl font-semibold tracking-tight text-slate-950">
-                          {selectedDetail.name}
-                        </CardTitle>
-                        <CardDescription className="mt-3 max-w-3xl text-sm leading-7">{selectedDetail.description}</CardDescription>
-                      </div>
-
-                      <div className="flex flex-wrap gap-x-8 gap-y-4 text-sm">
-                        <InlineMeta label="Organiser" value={selectedDetail.promoter_name} />
-                        <InlineMeta label="Date" value={formatDateTime(selectedDetail.date)} />
-                        <InlineMeta label="Location" value={selectedDetail.location} />
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      {canManageSelectedActivity ? (
-                        <Button variant="outline" onClick={onEditActivity}>
-                          Edit
-                        </Button>
-                      ) : null}
-
-                      <Button variant="outline" onClick={onOpenChat}>
-                        <MessageSquareMore className="mr-2 size-4" />
-                        Open chat
-                      </Button>
-
-                      {canGenerateExport ? (
-                        <Button variant="outline" disabled={isExporting} onClick={onGenerateExport}>
-                          <Download className="mr-2 size-4" />
-                          {isExporting ? 'Preparing…' : 'Export'}
-                        </Button>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant={selectedDetail.state === 'need_volunteer' ? 'default' : 'outline'}
-                      disabled={!canManageSelectedActivity}
-                      onClick={() => onTransition('need_volunteer')}
-                    >
-                      Recruiting
-                    </Button>
-                    <Button
-                      variant={selectedDetail.state === 'going' ? 'default' : 'outline'}
-                      disabled={!canManageSelectedActivity}
-                      onClick={() => onTransition('go')}
-                    >
-                      Start
-                    </Button>
-                    <Button
-                      variant={selectedDetail.state === 'ended' ? 'default' : 'outline'}
-                      disabled={!canManageSelectedActivity}
-                      onClick={() => onTransition('end')}
-                    >
-                      Complete
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      disabled={!canManageSelectedActivity}
-                      onClick={() => onTransition('cancel')}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </CardHeader>
-              </Card>
-
-              <Tabs value={panelTab} onValueChange={(value) => onPanelTabChange(value as PanelTab)} className="gap-5">
-                <TabsList variant="line" className="rounded-2xl bg-slate-50 p-1.5 shadow-none">
-                  <TabsTrigger value="overview">Overview</TabsTrigger>
-                  <TabsTrigger value="records">Records</TabsTrigger>
-                  <TabsTrigger value="channel">Coordination</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="overview">
-                  <Card className="border-slate-200/70 bg-slate-50/65 shadow-none">
-                    <CardHeader>
-                      <CardTitle>Activity snapshot</CardTitle>
-                    </CardHeader>
-                    <CardContent className="grid gap-4 md:grid-cols-3">
-                      <OverviewMetric
-                        label="Scheduled"
-                        value={formatDateTime(selectedDetail.date)}
-                        description="The next confirmed start time."
-                        icon={<Clock3 className="size-4" />}
-                      />
-                      <OverviewMetric
-                        label="Participants"
-                        value={`${selectedDetail.volunteer_num}/${selectedDetail.max_volunteer_num ?? '∞'}`}
-                        description="Joined volunteers against available capacity."
-                        icon={<CheckCircle2 className="size-4" />}
-                      />
-                      <OverviewMetric
-                        label="Export readiness"
-                        value={canGenerateExport ? 'Ready' : 'Unavailable'}
-                        description={
-                          canGenerateExport
-                            ? 'Generate CSV once records are confirmed.'
-                            : 'This account cannot export batches.'
-                        }
-                        icon={<FileSpreadsheet className="size-4" />}
-                      />
-                    </CardContent>
-                  </Card>
-                </TabsContent>
-
-                <TabsContent value="records">
-                  <ActivityRecordsTable
-                    records={records}
-                    names={participantNames}
-                    canManage={canManageSelectedActivity}
-                    pendingActionId={recordActionId ?? undefined}
-                    onRecordAction={onRecordAction}
-                  />
-                </TabsContent>
-
-                <TabsContent value="channel">
-                  <ChannelStatusCard
-                    activityName={selectedDetail.name}
-                    channel={channel}
-                    activityState={selectedDetail.state}
-                    messages={messages}
-                    onOpenChat={onOpenChat}
-                  />
-                </TabsContent>
-              </Tabs>
-            </>
-          ) : (
-            <Card className="border-slate-200/70 bg-slate-50/65 shadow-none">
-              <CardContent className="flex min-h-[480px] flex-col items-center justify-center gap-4 text-center">
-                <div className="flex size-14 items-center justify-center rounded-2xl bg-slate-950 text-white">
-                  <FileSpreadsheet className="size-6" />
-                </div>
-                <div>
-                  <h2 className="text-xl font-semibold text-slate-950">Choose an activity</h2>
-                  <p className="mt-2 max-w-md text-sm leading-6 text-slate-600">
-                    Activity detail, participant records, channel traffic, and export controls appear here.
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+            {canCreateActivity ? (
+              <Button className="rounded-2xl px-4" onClick={onCreateActivity}>
+                <Plus className="mr-2 size-4" />
+                New activity
+              </Button>
+            ) : null}
           </div>
         </div>
-      </div>
+
+        <div className="min-h-0 flex-1 rounded-[2.4rem] border border-white/70 bg-white/70 p-2 shadow-[0_34px_100px_-42px_rgba(15,23,42,0.3)] backdrop-blur-xl">
+          <div className="grid h-full min-h-0 gap-2 xl:grid-cols-[340px_minmax(0,1fr)]">
+            <aside className="flex min-h-0 flex-col rounded-[2rem] bg-[linear-gradient(180deg,rgba(240,245,250,0.98),rgba(234,240,246,0.84))] p-5">
+              <div className="shrink-0">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Activity rail</p>
+                <h3 className="mt-2 text-lg font-semibold text-slate-950">Pick the event you want to work on.</h3>
+              </div>
+
+              <div className="mt-5 shrink-0 grid gap-3">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    className="rounded-2xl border-slate-200/80 bg-white/90 pl-9"
+                    placeholder="Search activity name or location"
+                    value={search}
+                    onChange={(event) => onSearchChange(event.target.value)}
+                  />
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Select value={scope} onValueChange={(value) => onScopeChange(value as ActivityScope)}>
+                    <SelectTrigger className="w-full rounded-2xl border-slate-200/80 bg-white/90">
+                      <SelectValue placeholder="Scope" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All activities</SelectItem>
+                      <SelectItem value="mine">My activities</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  <Select
+                    value={stateFilter}
+                    onValueChange={(value) => onStateFilterChange(value as ActivityFilter)}
+                  >
+                    <SelectTrigger className="w-full rounded-2xl border-slate-200/80 bg-white/90">
+                      <ListFilter className="size-4" />
+                      <SelectValue placeholder="State" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All states</SelectItem>
+                      <SelectItem value="need_volunteer">Recruiting</SelectItem>
+                      <SelectItem value="going">In progress</SelectItem>
+                      <SelectItem value="ended">Completed</SelectItem>
+                      <SelectItem value="canceled">Cancelled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="mt-5 min-h-0 flex-1 rounded-[1.8rem] bg-white/72 p-2 ring-1 ring-white/80">
+                <ScrollArea className="h-full pr-2">
+                  <div className="grid gap-4 pb-4">
+                    {activitiesLoading ? (
+                      <>
+                        <Skeleton className="h-32 rounded-2xl" />
+                        <Skeleton className="h-32 rounded-2xl" />
+                      </>
+                    ) : filteredActivities.length > 0 ? (
+                      filteredActivities.map((activity) => (
+                        <button
+                          key={activity.id}
+                          type="button"
+                          onClick={() => onSelectActivity(activity.id)}
+                          className={`rounded-[1.6rem] border px-4 py-4 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-slate-300/80 focus-visible:ring-offset-2 ${
+                            activity.id === selectedActivityId
+                              ? 'border-white bg-white shadow-[0_18px_40px_-26px_rgba(15,23,42,0.28)] ring-1 ring-slate-200/90'
+                              : 'border-transparent bg-transparent hover:bg-white/85'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <h3 className="text-[15px] font-semibold leading-6 text-slate-950">{activity.name}</h3>
+                              <p className="mt-1 line-clamp-2 text-sm leading-6 text-slate-500">
+                                {activity.brief_description}
+                              </p>
+                            </div>
+                            <Badge variant="secondary">{activityStateLabel(activity.state)}</Badge>
+                          </div>
+
+                          <div className="mt-4 grid gap-2 text-xs text-slate-500">
+                            <div className="flex items-center justify-between">
+                              <span>{formatDateOnly(activity.date)}</span>
+                              <span>
+                                {activity.volunteer_num}/{activity.max_volunteer_num ?? '∞'}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span>{activity.location}</span>
+                              <span>{formatDuration(activity.duration)}</span>
+                            </div>
+                          </div>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="rounded-[1.5rem] border border-dashed border-slate-200 bg-white/80 p-6 text-sm text-slate-500">
+                        No activities match the current filters.
+                      </div>
+                    )}
+                  </div>
+                </ScrollArea>
+              </div>
+            </aside>
+
+            <div className="min-h-0 rounded-[2rem] bg-white px-6 py-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
+              {selectedDetail ? (
+                <div className="flex h-full min-h-0 flex-col gap-6">
+                  <Card className="shrink-0 overflow-hidden border-slate-200/70 bg-[linear-gradient(180deg,rgba(255,255,255,1),rgba(248,251,255,0.96))] shadow-none">
+                    <CardHeader className="gap-5">
+                      <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+                        <div className="space-y-4">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="secondary">{activityStateLabel(selectedDetail.state)}</Badge>
+                            <Badge variant="outline">{formatDuration(selectedDetail.duration)}</Badge>
+                          </div>
+
+                          <div>
+                            <CardTitle className="text-4xl font-semibold tracking-tight text-slate-950">
+                              {selectedDetail.name}
+                            </CardTitle>
+                          </div>
+
+                          <div className="flex flex-wrap gap-x-8 gap-y-4 text-sm">
+                            <InlineMeta label="Organiser" value={selectedDetail.promoter_name} />
+                            <InlineMeta label="Date" value={formatDateTime(selectedDetail.date)} />
+                            <InlineMeta label="Location" value={selectedDetail.location} />
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          {canManageSelectedActivity ? (
+                            <Button variant="outline" onClick={onEditActivity}>
+                              Edit
+                            </Button>
+                          ) : null}
+
+                          <Button variant="outline" onClick={onOpenChat}>
+                            <MessageSquareMore className="mr-2 size-4" />
+                            Open chat
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant={selectedDetail.state === 'need_volunteer' ? 'default' : 'outline'}
+                          disabled={!canManageSelectedActivity}
+                          onClick={() => onTransition('need_volunteer')}
+                        >
+                          Recruiting
+                        </Button>
+                        <Button
+                          variant={selectedDetail.state === 'going' ? 'default' : 'outline'}
+                          disabled={!canManageSelectedActivity}
+                          onClick={() => onTransition('go')}
+                        >
+                          Start
+                        </Button>
+                        <Button
+                          variant={selectedDetail.state === 'ended' ? 'default' : 'outline'}
+                          disabled={!canManageSelectedActivity}
+                          onClick={() => onTransition('end')}
+                        >
+                          Complete
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          disabled={!canManageSelectedActivity}
+                          onClick={() => onTransition('cancel')}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </CardHeader>
+                  </Card>
+
+                  <Tabs
+                    value={panelTab}
+                    onValueChange={(value) => onPanelTabChange(value as PanelTab)}
+                    className="min-h-0 flex-1 gap-5"
+                  >
+                    <TabsList variant="line" className="shrink-0 rounded-2xl bg-slate-50 p-1.5 shadow-none">
+                      <TabsTrigger value="overview">Overview</TabsTrigger>
+                      <TabsTrigger value="records">Records</TabsTrigger>
+                      <TabsTrigger value="channel">Coordination</TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="overview" className="min-h-0 flex-1">
+                      <ScrollArea className="h-full pr-2">
+                        <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+                          <Card className="border-slate-200/70 bg-slate-50/65 shadow-none">
+                            <CardHeader>
+                              <CardTitle>Brief</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                              <p className="text-sm leading-7 text-slate-700">{selectedDetail.description}</p>
+                            </CardContent>
+                          </Card>
+
+                          <Card className="border-slate-200/70 bg-slate-50/65 shadow-none">
+                            <CardHeader>
+                              <CardTitle>Participation</CardTitle>
+                            </CardHeader>
+                            <CardContent className="grid gap-4">
+                              <div>
+                                <p className="text-3xl font-semibold tracking-tight text-slate-950">
+                                  {selectedDetail.volunteer_num}/{selectedDetail.max_volunteer_num ?? '∞'}
+                                </p>
+                                <p className="mt-1 text-sm text-slate-600">Volunteers</p>
+                              </div>
+
+                              <div className="h-2 overflow-hidden rounded-full bg-slate-200">
+                                <div
+                                  className="h-full rounded-full bg-slate-900 transition-[width]"
+                                  style={{
+                                    width: `${activityCapacityRatio(selectedDetail)}%`,
+                                  }}
+                                />
+                              </div>
+
+                              {canGenerateExport ? (
+                                <Button
+                                  variant="outline"
+                                  className="justify-between rounded-2xl"
+                                  disabled={isExporting}
+                                  onClick={onGenerateExport}
+                                >
+                                  <span>{isExporting ? 'Preparing…' : 'Export records'}</span>
+                                  <Download className="size-4 text-slate-400" />
+                                </Button>
+                              ) : null}
+                            </CardContent>
+                          </Card>
+                        </div>
+                      </ScrollArea>
+                    </TabsContent>
+
+                    <TabsContent value="records" className="min-h-0 flex-1">
+                      <ScrollArea className="h-full pr-2">
+                        <ActivityRecordsTable
+                          records={records}
+                          names={participantNames}
+                          canManage={canManageSelectedActivity}
+                          pendingActionId={recordActionId ?? undefined}
+                          onRecordAction={onRecordAction}
+                        />
+                      </ScrollArea>
+                    </TabsContent>
+
+                    <TabsContent value="channel" className="min-h-0 flex-1">
+                      <ScrollArea className="h-full pr-2">
+                        <ChannelStatusCard
+                          activityName={selectedDetail.name}
+                          channel={channel}
+                          activityState={selectedDetail.state}
+                          messages={messages}
+                          onOpenChat={onOpenChat}
+                        />
+                      </ScrollArea>
+                    </TabsContent>
+                  </Tabs>
+                </div>
+              ) : (
+                <Card className="h-full border-slate-200/70 bg-slate-50/65 shadow-none">
+                  <CardContent className="flex h-full min-h-[480px] flex-col items-center justify-center gap-4 text-center">
+                    <div className="flex size-14 items-center justify-center rounded-2xl bg-slate-950 text-white">
+                      <FileSpreadsheet className="size-6" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-semibold text-slate-950">Choose an activity</h2>
+                      <p className="mt-2 max-w-md text-sm leading-6 text-slate-600">
+                        Activity detail, participant records, channel traffic, and export controls appear here.
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
     </>
   )
@@ -1285,29 +1303,6 @@ function SidebarItem({
       {icon}
       {collapsed ? null : <span>{label}</span>}
     </button>
-  )
-}
-
-function OverviewMetric({
-  label,
-  value,
-  description,
-  icon,
-}: {
-  label: string
-  value: string
-  description: string
-  icon: React.ReactNode
-}) {
-  return (
-    <div className="rounded-2xl border border-border/70 bg-muted/20 p-5">
-      <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
-        {icon}
-        {label}
-      </div>
-      <p className="mt-3 text-2xl font-semibold tracking-tight text-slate-950">{value}</p>
-      <p className="mt-2 text-sm leading-6 text-slate-600">{description}</p>
-    </div>
   )
 }
 
@@ -1381,6 +1376,17 @@ function toDatetimeLocal(value: string): string {
   const hours = `${date.getHours()}`.padStart(2, '0')
   const minutes = `${date.getMinutes()}`.padStart(2, '0')
   return `${year}-${month}-${day}T${hours}:${minutes}`
+}
+
+function activityCapacityRatio(activity: ActivityDetail): number {
+  if (!activity.max_volunteer_num || activity.max_volunteer_num <= 0) {
+    return 100
+  }
+
+  return Math.max(
+    0,
+    Math.min(100, (activity.volunteer_num / activity.max_volunteer_num) * 100),
+  )
 }
 
 async function invalidateSelectedActivity(queryClient: QueryClient, activityId: string | null) {
