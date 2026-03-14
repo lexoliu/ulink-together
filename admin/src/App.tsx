@@ -182,7 +182,7 @@ function App() {
 
   const resolvedSelectedActivityId =
     selectedActivityId &&
-    filteredActivities.some((activity) => activity.id === selectedActivityId)
+    (activitiesQuery.isLoading || filteredActivities.some((activity) => activity.id === selectedActivityId))
       ? selectedActivityId
       : filteredActivities[0]?.id ?? null
 
@@ -204,7 +204,7 @@ function App() {
 
   const resolvedSelectedChatActivityId =
     selectedChatActivityId &&
-    chatActivities.some((activity) => activity.id === selectedChatActivityId)
+    (activitiesQuery.isLoading || chatActivities.some((activity) => activity.id === selectedChatActivityId))
       ? selectedChatActivityId
       : chatActivities[0]?.id ?? null
 
@@ -215,6 +215,10 @@ function App() {
   })
 
   const selectedDetail = selectedDetailQuery.data ?? null
+  const selectedDetailPending =
+    Boolean(resolvedSelectedActivityId) &&
+    selectedDetail === null &&
+    (selectedDetailQuery.isLoading || selectedDetailQuery.isFetching)
 
   const selectedChatDetailQuery = useQuery({
     queryKey: ['chat-activity-detail', resolvedSelectedChatActivityId],
@@ -223,6 +227,10 @@ function App() {
   })
 
   const selectedChatDetail = selectedChatDetailQuery.data ?? null
+  const selectedChatDetailPending =
+    Boolean(resolvedSelectedChatActivityId) &&
+    selectedChatDetail === null &&
+    (selectedChatDetailQuery.isLoading || selectedChatDetailQuery.isFetching)
 
   const recordsQuery = useQuery({
     queryKey: ['activity-records', resolvedSelectedActivityId],
@@ -686,6 +694,7 @@ function App() {
                     activities={chatActivities}
                     selectedActivityId={resolvedSelectedChatActivityId}
                     selectedActivity={selectedChatDetail}
+                    selectedActivityPending={selectedChatDetailPending}
                     channel={chatChannelQuery.data ?? null}
                     messages={chatMessagesQuery.data ?? []}
                     senderNames={chatSenderNames}
@@ -723,6 +732,7 @@ function App() {
                 selectedActivityId={resolvedSelectedActivityId}
                 activitiesLoading={activitiesQuery.isLoading}
                 selectedDetail={selectedDetail}
+                selectedDetailPending={selectedDetailPending}
                 records={recordsQuery.data ?? []}
                 participantNames={participantNames}
                 panelTab={panelTab}
@@ -921,6 +931,7 @@ function ActivitiesPage({
   selectedActivityId,
   activitiesLoading,
   selectedDetail,
+  selectedDetailPending,
   records,
   participantNames,
   panelTab,
@@ -950,6 +961,7 @@ function ActivitiesPage({
   selectedActivityId: string | null
   activitiesLoading: boolean
   selectedDetail: ActivityDetail | null
+  selectedDetailPending: boolean
   records: RecordEntry[]
   participantNames: Record<string, string>
   panelTab: PanelTab
@@ -1234,6 +1246,7 @@ function ActivitiesPage({
                     <TabsContent value="records" className="min-h-0 flex-1">
                       <ScrollArea className="h-full pr-2">
                         <ActivityRecordsTable
+                          activityState={selectedDetail.state}
                           records={records}
                           names={participantNames}
                           canManage={canManageSelectedActivity}
@@ -1255,6 +1268,13 @@ function ActivitiesPage({
                     </TabsContent>
                   </Tabs>
                 </div>
+              ) : selectedDetailPending ? (
+                <Card className="h-full border-slate-200/70 bg-slate-50/65 shadow-none">
+                  <CardContent className="flex h-full min-h-[480px] flex-col gap-4 p-6">
+                    <Skeleton className="h-32 rounded-3xl" />
+                    <Skeleton className="h-full rounded-3xl" />
+                  </CardContent>
+                </Card>
               ) : (
                 <Card className="h-full border-slate-200/70 bg-slate-50/65 shadow-none">
                   <CardContent className="flex h-full min-h-[480px] flex-col items-center justify-center gap-4 text-center">

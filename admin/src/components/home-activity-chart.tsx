@@ -79,13 +79,13 @@ export function HomeActivityChart({ activities }: HomeActivityChartProps) {
       <CardHeader>
         <CardTitle>Overview</CardTitle>
       </CardHeader>
-      <CardContent className="grid gap-6 xl:grid-cols-2">
-        <div className="rounded-[1.7rem] border border-slate-200/80 bg-slate-50/70 p-4">
+      <CardContent className="grid min-w-0 gap-6 xl:grid-cols-2">
+        <div className="min-w-0 rounded-[1.7rem] border border-slate-200/80 bg-slate-50/70 p-4">
           <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
             Activity states
           </p>
-          <div className="mt-4 h-64">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="mt-4 h-64 min-w-0">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <BarChart data={stateData} barCategoryGap={18}>
                 <CartesianGrid vertical={false} stroke="#e7e5e4" />
                 <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: '#78716c', fontSize: 12 }} />
@@ -108,13 +108,13 @@ export function HomeActivityChart({ activities }: HomeActivityChartProps) {
           </div>
         </div>
 
-        <div className="rounded-[1.7rem] border border-slate-200/80 bg-slate-50/70 p-4">
+        <div className="min-w-0 rounded-[1.7rem] border border-slate-200/80 bg-slate-50/70 p-4">
           <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
             Upcoming capacity
           </p>
-          <div className="mt-4 h-64">
+          <div className="mt-4 h-64 min-w-0">
             {upcomingData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                 <AreaChart data={upcomingData}>
                   <defs>
                     <linearGradient id="joinedFill" x1="0" x2="0" y1="0" y2="1">

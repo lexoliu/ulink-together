@@ -4,7 +4,7 @@ use crate::{
     utils::{parse_oid, ApiMessage, Id},
 };
 
-use models::{FindRecordForm, RecordEntry, RecordState};
+use models::{ActivityState, FindRecordForm, RecordEntry, RecordState};
 use skyzen::{
     routing::Params,
     utils::{Form, State},
@@ -38,7 +38,10 @@ where
     Ok(())
 }
 
-pub async fn get_volunteers(database: &AppDatabase, activity_id: Id) -> Result<Vec<Id>, sqlx::Error> {
+pub async fn get_volunteers(
+    database: &AppDatabase,
+    activity_id: Id,
+) -> Result<Vec<Id>, sqlx::Error> {
     let rows = sqlx::query(
         database
             .sql(
@@ -116,9 +119,7 @@ pub async fn sync_activity_channel_member(
             if !exists {
                 sqlx::query(
                     database
-                        .sql(
-                            "INSERT INTO channel_members (channel_id, user_id) VALUES (?1, ?2)",
-                        )
+                        .sql("INSERT INTO channel_members (channel_id, user_id) VALUES (?1, ?2)")
                         .as_ref(),
                 )
                 .bind(&channel_id)
@@ -227,7 +228,10 @@ pub async fn find(
         query = query.bind(activity.to_string());
     }
 
-    let records = query.fetch_all(database.sqlx()).await.expect("Database error");
+    let records = query
+        .fetch_all(database.sqlx())
+        .await
+        .expect("Database error");
 
     let mut result = Vec::with_capacity(records.len());
     for row in records {
@@ -268,6 +272,9 @@ pub enum UpdateRecordError {
 
     #[error("You have no access to this activity", status = FORBIDDEN)]
     Forbidden,
+
+    #[error("Activity must be completed before hours can be confirmed", status = CONFLICT)]
+    ActivityNotCompleted,
 }
 
 async fn update_record_state(
@@ -292,7 +299,7 @@ async fn update_record_state(
 
     let activity = sqlx::query(
         database
-            .sql("SELECT promoter_id, duration_minutes FROM activities WHERE id = ?1")
+            .sql("SELECT promoter_id, duration_minutes, state FROM activities WHERE id = ?1")
             .as_ref(),
     )
     .bind(&activity_hex)
@@ -301,6 +308,12 @@ async fn update_record_state(
     .expect("Database error")
     .ok_or(UpdateRecordError::ActivityNotFound)?;
     let promoter_hex: String = activity.try_get("promoter_id").expect("Database error");
+    let activity_state = ActivityState::from_db(
+        &activity
+            .try_get::<String, _>("state")
+            .expect("Database error"),
+    )
+    .expect("Database error");
 
     if promoter_hex != auth.uid().to_string()
         && !auth
@@ -309,6 +322,10 @@ async fn update_record_state(
             .map_err(|_| UpdateRecordError::Forbidden)?
     {
         return Err(UpdateRecordError::Forbidden);
+    }
+
+    if state == RecordState::Done && activity_state != ActivityState::Ended {
+        return Err(UpdateRecordError::ActivityNotCompleted);
     }
 
     let now = OffsetDateTime::now_utc().to_string();
@@ -373,6 +390,9 @@ pub enum MarkDoneError {
 
     #[error("Activity not exists", status = NOT_FOUND)]
     ActivityNotFound,
+
+    #[error("Activity must be completed before hours can be confirmed", status = CONFLICT)]
+    ActivityNotCompleted,
 }
 
 /// Mark a volunteer's task as done
@@ -398,6 +418,7 @@ pub async fn mark_done(
             UpdateRecordError::RecordNotFound => MarkDoneError::NotFound,
             UpdateRecordError::ActivityNotFound => MarkDoneError::ActivityNotFound,
             UpdateRecordError::Forbidden => MarkDoneError::Forbidden,
+            UpdateRecordError::ActivityNotCompleted => MarkDoneError::ActivityNotCompleted,
         })?;
     Ok(ApiMessage::new("Mark done successfully"))
 }
@@ -443,6 +464,9 @@ pub async fn approve_apply(
             UpdateRecordError::RecordNotFound => ApproveApplyError::NotFound,
             UpdateRecordError::ActivityNotFound => ApproveApplyError::ActivityNotFound,
             UpdateRecordError::Forbidden => ApproveApplyError::Forbidden,
+            UpdateRecordError::ActivityNotCompleted => {
+                unreachable!("activity completion is only required when marking records done")
+            }
         })?;
     Ok(ApiMessage::new("Approve apply successfully"))
 }
@@ -488,6 +512,9 @@ pub async fn disapprove_apply(
             UpdateRecordError::RecordNotFound => DisapproveApplyError::NotFound,
             UpdateRecordError::ActivityNotFound => DisapproveApplyError::ActivityNotFound,
             UpdateRecordError::Forbidden => DisapproveApplyError::Forbidden,
+            UpdateRecordError::ActivityNotCompleted => {
+                unreachable!("activity completion is only required when marking records done")
+            }
         })?;
     Ok(ApiMessage::new("Disapprove apply successfully"))
 }

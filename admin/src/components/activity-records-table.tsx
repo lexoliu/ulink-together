@@ -9,10 +9,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { formatDateTime, formatHours, recordStateLabel, shortIdentifier } from '@/lib/format'
-import type { RecordEntry } from '@/lib/types'
+import { activityStateLabel, formatDateTime, formatHours, recordStateLabel, shortIdentifier } from '@/lib/format'
+import type { ActivityState, RecordEntry } from '@/lib/types'
 
 interface ActivityRecordsTableProps {
+  activityState: ActivityState
   records: RecordEntry[]
   names: Record<string, string>
   canManage: boolean
@@ -24,12 +25,15 @@ interface ActivityRecordsTableProps {
 }
 
 export function ActivityRecordsTable({
+  activityState,
   records,
   names,
   canManage,
   pendingActionId,
   onRecordAction,
 }: ActivityRecordsTableProps) {
+  const canConfirmHours = activityState === 'ended'
+
   return (
     <Card className="border-border/70 shadow-none">
       <CardHeader>
@@ -85,10 +89,10 @@ export function ActivityRecordsTable({
                         </Button>
                         <Button
                           size="sm"
-                          disabled={pendingActionId === record.id}
+                          disabled={pendingActionId === record.id || !canConfirmHours}
                           onClick={() => onRecordAction(record.id, 'done')}
                         >
-                          Mark done
+                          {canConfirmHours ? 'Mark done' : `${activityStateLabel(activityState)} first`}
                         </Button>
                         <Button
                           size="sm"

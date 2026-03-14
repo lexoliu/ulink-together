@@ -31,6 +31,7 @@ interface ChatWorkspaceProps {
   activities: ActivitySummary[]
   selectedActivityId: string | null
   selectedActivity: ActivityDetail | null
+  selectedActivityPending: boolean
   channel: ChannelResponse | null
   messages: ChannelMessage[]
   senderNames: Record<string, string>
@@ -48,6 +49,7 @@ export function ChatWorkspace({
   activities,
   selectedActivityId,
   selectedActivity,
+  selectedActivityPending,
   channel,
   messages,
   senderNames,
@@ -212,6 +214,13 @@ export function ChatWorkspace({
               onSendMessage={onSendMessage}
             />
           </div>
+      ) : selectedActivityPending ? (
+        <Card className="border-white/70 bg-white/92 shadow-lg shadow-slate-200/40">
+          <CardContent className="flex min-h-[520px] flex-col gap-4 p-6">
+            <div className="h-28 animate-pulse rounded-[1.7rem] bg-slate-100" />
+            <div className="min-h-0 flex-1 animate-pulse rounded-[1.7rem] bg-slate-100" />
+          </CardContent>
+        </Card>
       ) : (
         <Card className="border-white/70 bg-white/92 shadow-lg shadow-slate-200/40">
           <CardContent className="flex min-h-[520px] flex-col items-center justify-center gap-4 text-center">

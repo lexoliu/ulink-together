@@ -12,20 +12,19 @@ use sqlx::Row;
 use time::OffsetDateTime;
 
 async fn group_id(database: &AppDatabase, code: &str) -> Id {
-    let row = sqlx::query(database.sql("SELECT id FROM groups WHERE code = ?1").as_ref())
-        .bind(code)
-        .fetch_one(database.sqlx())
-        .await
-        .expect("fetch group");
+    let row = sqlx::query(
+        database
+            .sql("SELECT id FROM groups WHERE code = ?1")
+            .as_ref(),
+    )
+    .bind(code)
+    .fetch_one(database.sqlx())
+    .await
+    .expect("fetch group");
     row.get::<String, _>("id").parse().expect("group id")
 }
 
-async fn insert_user(
-    database: &AppDatabase,
-    group_code: &str,
-    email: &str,
-    realname: &str,
-) -> Id {
+async fn insert_user(database: &AppDatabase, group_code: &str, email: &str, realname: &str) -> Id {
     let group = group_id(database, group_code).await;
     let id = Id::new();
     sqlx::query(
@@ -174,11 +173,15 @@ async fn non_owner_cannot_change_activity_state() {
         .await;
     response.assert_status(403);
 
-    let row = sqlx::query(database.sql("SELECT state FROM activities WHERE id = ?1").as_ref())
-        .bind(activity.to_string())
-        .fetch_one(database.sqlx())
-        .await
-        .expect("fetch activity");
+    let row = sqlx::query(
+        database
+            .sql("SELECT state FROM activities WHERE id = ?1")
+            .as_ref(),
+    )
+    .bind(activity.to_string())
+    .fetch_one(database.sqlx())
+    .await
+    .expect("fetch activity");
     assert_eq!(row.get::<String, _>("state"), "need_volunteer");
 }
 
@@ -215,9 +218,13 @@ async fn owner_can_update_activity() {
 async fn join_adds_channel_membership_and_allows_message_post() {
     let database = build_test_database().await;
     let owner = insert_user(&database, "student", "owner3@example.com", "Owner").await;
-    ensure_group_authority_any(database.sqlx(), &group_id(&database, "student").await.to_string(), "create_channel")
-        .await
-        .expect("grant create_channel");
+    ensure_group_authority_any(
+        database.sqlx(),
+        &group_id(&database, "student").await.to_string(),
+        "create_channel",
+    )
+    .await
+    .expect("grant create_channel");
     let volunteer = insert_user(&database, "student", "vol@example.com", "Volunteer").await;
     let activity = insert_activity(&database, owner, "Cleanup", "need_volunteer", 120).await;
     let channel = insert_channel(&database, owner, activity, "Cleanup Channel").await;
@@ -346,7 +353,13 @@ async fn message_reads_require_channel_membership() {
 async fn ended_activity_channel_becomes_read_only() {
     let database = build_test_database().await;
     let owner = insert_user(&database, "student", "owner-readonly@example.com", "Owner").await;
-    let volunteer = insert_user(&database, "student", "readonly-vol@example.com", "Volunteer").await;
+    let volunteer = insert_user(
+        &database,
+        "student",
+        "readonly-vol@example.com",
+        "Volunteer",
+    )
+    .await;
     let activity = insert_activity(&database, owner, "Cleanup", "need_volunteer", 120).await;
     let channel = insert_channel(&database, owner, activity, "Cleanup Channel").await;
     let volunteer_cookie = insert_session(&database, volunteer).await;
@@ -426,4 +439,37 @@ async fn export_requires_authority_and_generates_csv() {
     response.assert_json_path("target_format", &json!("csv"));
     response.assert_body_contains("student_identifier");
     response.assert_body_contains("Student");
+}
+
+#[tokio::test]
+async fn mark_done_requires_completed_activity() {
+    let database = build_test_database().await;
+    let organizer = insert_user(&database, "admin", "organizer@example.com", "Organizer").await;
+    let volunteer = insert_user(
+        &database,
+        "student",
+        "student-pending@example.com",
+        "Student",
+    )
+    .await;
+    let activity = insert_activity(
+        &database,
+        organizer,
+        "Pending Cleanup",
+        "need_volunteer",
+        90,
+    )
+    .await;
+    let record = insert_record(&database, volunteer, activity, "todo", 0).await;
+    let cookie = insert_session(&database, organizer).await;
+    let client = test_client(database);
+
+    let response = client
+        .post(&format!("/api/v1/record/{record}/done"))
+        .header("Cookie", &cookie)
+        .send()
+        .await;
+
+    response.assert_status(409);
+    response.assert_body_contains("Activity must be completed before hours can be confirmed");
 }

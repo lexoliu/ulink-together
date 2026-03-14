@@ -6,7 +6,7 @@ import TextareaAutosize from 'react-textarea-autosize'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { formatDateTime, shortIdentifier } from '@/lib/format'
+import { formatDateOnly, formatDateTime, shortIdentifier } from '@/lib/format'
 import {
   activityChannelIsReadOnly,
   type ActivityState,
@@ -290,14 +290,7 @@ function buildTimeline(messages: ChannelMessage[]): TimelineEntry[] {
   let lastDay = ''
 
   return messages.flatMap((message) => {
-    const date = new Date(message.datetime)
-    const dayKey = Number.isNaN(date.getTime())
-      ? message.datetime.slice(0, 10)
-      : date.toLocaleDateString(undefined, {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-        })
+    const dayKey = formatDateOnly(message.datetime)
     const entries: TimelineEntry[] = []
 
     if (dayKey !== lastDay) {
