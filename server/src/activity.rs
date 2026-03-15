@@ -7,7 +7,9 @@ use crate::{
     record, user,
     utils::{parse_oid, ApiMessage, Id},
 };
-use models::{ActivityDetail, ActivityState, ActivitySummary, CreateActivityForm, ListActivityQuery};
+use models::{
+    ActivityDetail, ActivityState, ActivitySummary, CreateActivityForm, ListActivityQuery,
+};
 use skyzen::{
     extract::Query,
     routing::Params,
@@ -66,7 +68,10 @@ pub async fn list(
         query = query.bind(user);
     }
 
-    let rows = query.fetch_all(database.sqlx()).await.expect("Database error");
+    let rows = query
+        .fetch_all(database.sqlx())
+        .await
+        .expect("Database error");
     let viewer_states = load_viewer_record_states(&database, auth.uid())
         .await
         .expect("Database error");
@@ -249,11 +254,7 @@ pub async fn join(
     )
     .map_err(|_| JoinActivityError::InvalidActivityId)?;
 
-    let mut db_conn = database
-        .sqlx()
-        .acquire()
-        .await
-        .expect("Database error");
+    let mut db_conn = database.sqlx().acquire().await.expect("Database error");
     let conn = db_conn.as_mut();
     let begin_stmt = match database.kind() {
         crate::database::DatabaseKind::Sqlite => "BEGIN IMMEDIATE",
@@ -589,7 +590,9 @@ pub async fn update(
         id: activity_id,
         name: row.try_get("name").expect("Database error"),
         location: row.try_get("location").expect("Database error"),
-        volunteer_num: row.try_get::<i64, _>("volunteer_num").expect("Database error") as u16,
+        volunteer_num: row
+            .try_get::<i64, _>("volunteer_num")
+            .expect("Database error") as u16,
         max_volunteer_num: row
             .try_get::<Option<i64>, _>("max_volunteer_num")
             .expect("Database error")
@@ -695,11 +698,9 @@ async fn change_state(
     .fetch_one(database.sqlx())
     .await
     .expect("Database error");
-    let current_state = ActivityState::from_db(
-        &row.try_get::<String, _>("state")
-            .expect("Database error"),
-    )
-    .ok_or(ChangeActivityStateError::InvalidTransition)?;
+    let current_state =
+        ActivityState::from_db(&row.try_get::<String, _>("state").expect("Database error"))
+            .ok_or(ChangeActivityStateError::InvalidTransition)?;
 
     if !can_transition(current_state, target_state) {
         return Err(ChangeActivityStateError::InvalidTransition);
@@ -776,9 +777,13 @@ pub async fn turn_need_volunteer(
         .map_err(|err| match err {
             ChangeActivityStateError::SessionExpired => TurnNeedVolunteerError::SessionExpired,
             ChangeActivityStateError::Forbidden => TurnNeedVolunteerError::Forbidden,
-            ChangeActivityStateError::InvalidActivityId => TurnNeedVolunteerError::InvalidActivityId,
+            ChangeActivityStateError::InvalidActivityId => {
+                TurnNeedVolunteerError::InvalidActivityId
+            }
             ChangeActivityStateError::NotFound => TurnNeedVolunteerError::NotFound,
-            ChangeActivityStateError::InvalidTransition => TurnNeedVolunteerError::InvalidTransition,
+            ChangeActivityStateError::InvalidTransition => {
+                TurnNeedVolunteerError::InvalidTransition
+            }
         })
 }
 

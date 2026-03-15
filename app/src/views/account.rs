@@ -1,6 +1,6 @@
 //! Account view - displays user profile and settings
 
-use waterui::navigation::{NavigationView, NavigationLink};
+use waterui::navigation::{NavigationLink, NavigationView};
 use waterui::prelude::*;
 use waterui::task::spawn_local;
 use waterui::theme::color::*;
@@ -15,20 +15,14 @@ pub fn view(state: &AppState) -> NavigationView {
         text!("Account"),
         scroll(vstack((
             // Profile section
-            watch(state.current_user.clone(), |user| {
-                match user {
-                    Some(user) => AnyView::new(profile_section(&user)),
-                    None => AnyView::new(loading_profile()),
-                }
+            watch(state.current_user.clone(), |user| match user {
+                Some(user) => AnyView::new(profile_section(&user)),
+                None => AnyView::new(loading_profile()),
             }),
-
             Divider,
-
             // Menu items
             menu_section(state),
-
             spacer(),
-
             // Logout button
             button(hstack((
                 SystemIcon::from_static("rectangle.portrait.and.arrow.right"),
@@ -39,7 +33,6 @@ pub fn view(state: &AppState) -> NavigationView {
                 move || state.logout()
             })
             .padding(),
-
             // Version info
             text!("Version")
                 .font(font::Caption)
@@ -47,7 +40,6 @@ pub fn view(state: &AppState) -> NavigationView {
             text!("0.1.0")
                 .font(font::Caption)
                 .foreground(MutedForeground),
-
             spacer_min(32.0),
         )))
         .padding()
@@ -67,26 +59,19 @@ fn profile_section(user: &models::User) -> impl View {
 
     vstack((
         // Avatar placeholder
-        SystemIcon::PERSON
-            .foreground(Accent),
-
+        SystemIcon::PERSON.foreground(Accent),
         spacer_min(16.0),
-
         // User name
         text!("{realname}").font(font::Title),
-
         // Email
         text!("{email}")
             .font(font::Caption)
             .foreground(MutedForeground),
-
         // Class
         text!("{classname}")
             .font(font::Caption)
             .foreground(MutedForeground),
-
         spacer_min(16.0),
-
         // Description
         text!("{description}")
             .font(font::Body)
@@ -98,8 +83,7 @@ fn profile_section(user: &models::User) -> impl View {
 /// Loading profile placeholder
 fn loading_profile() -> impl View {
     vstack((
-        SystemIcon::PERSON
-            .foreground(MutedForeground),
+        SystemIcon::PERSON.foreground(MutedForeground),
         spacer_min(16.0),
         text!("Loading...").foreground(MutedForeground),
     ))
@@ -119,26 +103,17 @@ fn menu_section(state: &AppState) -> impl View {
             {
                 let state = state.clone();
                 move || manage_activity::view(&state)
-            }
+            },
         ),
         Divider,
-        NavigationLink::new(
-            menu_row(SystemIcon::PLUS, text!("Host Activity")),
-            {
-                let state = state.clone();
-                move || create_activity::view(&state)
-            }
-        ),
+        NavigationLink::new(menu_row(SystemIcon::PLUS, text!("Host Activity")), {
+            let state = state.clone();
+            move || create_activity::view(&state)
+        }),
         Divider,
-        menu_button(
-            SystemIcon::SETTINGS,
-            text!("Settings"),
-        ),
+        menu_button(SystemIcon::SETTINGS, text!("Settings")),
         Divider,
-        menu_button(
-            SystemIcon::from_static("info.circle"),
-            text!("About"),
-        ),
+        menu_button(SystemIcon::from_static("info.circle"), text!("About")),
     ))
 }
 

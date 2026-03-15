@@ -1,4 +1,7 @@
-use skyzen::{StatusCode, utils::{json::JsonEncodingError, Json}};
+use skyzen::{
+    utils::{json::JsonEncodingError, Json},
+    StatusCode,
+};
 use utoipa::ToSchema;
 
 // Re-export Id from models crate

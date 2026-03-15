@@ -25,7 +25,6 @@ pub fn view(state: &AppState) -> NavigationView {
                     AnyView::new(spacer_min(0.0))
                 }
             }),
-
             // Activity list
             watch(state.activities.clone(), {
                 let state = state.clone();
@@ -47,7 +46,7 @@ pub fn view(state: &AppState) -> NavigationView {
                             activities
                                 .into_iter()
                                 .map(|activity| ActivityCard::new(activity, state.clone()))
-                                .collect::<Vec<_>>()
+                                .collect::<Vec<_>>(),
                         ))
                     }
                 }

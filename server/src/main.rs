@@ -3,14 +3,14 @@ mod auth;
 mod channel;
 mod comment;
 mod database;
-mod login;
+mod export;
 mod leaderboard;
+mod login;
 mod message;
 mod notification;
 mod push;
 mod record;
 mod resource;
-mod export;
 mod schema;
 mod user;
 mod utils;
@@ -36,19 +36,26 @@ pub fn api() -> Route {
         "/activity"
             .at(activity::list)
             .post(activity::create)
-            .route(("/{id}".at(activity::get).put(activity::update).delete(activity::delete).route((
-                "/apply".post(activity::join),
-                "/comment".at(comment::list).post(comment::post),
-                "/need_volunteer".post(activity::turn_need_volunteer),
-                "/go".post(activity::turn_going),
-                "/end".post(activity::turn_ended),
-                "/cancel".post(activity::turn_canceled),
+            .route(("/{id}"
+                .at(activity::get)
+                .put(activity::update)
+                .delete(activity::delete)
+                .route((
+                    "/apply".post(activity::join),
+                    "/comment".at(comment::list).post(comment::post),
+                    "/need_volunteer".post(activity::turn_need_volunteer),
+                    "/go".post(activity::turn_going),
+                    "/end".post(activity::turn_ended),
+                    "/cancel".post(activity::turn_canceled),
+                )),)),
+        "/record"
+            .at(record::find)
+            .post(record::find)
+            .route(("/{id}".route((
+                "/done".post(record::mark_done),
+                "/approve_apply".post(record::approve_apply),
+                "/disapprove_apply".post(record::disapprove_apply),
             )),)),
-        "/record".at(record::find).post(record::find).route(("/{id}".route((
-            "/done".post(record::mark_done),
-            "/approve_apply".post(record::approve_apply),
-            "/disapprove_apply".post(record::disapprove_apply),
-        )),)),
         "/message"
             .at(message::find)
             .route(("/{id}".at(message::get).delete(message::delete),)),
@@ -82,7 +89,8 @@ pub(crate) fn build_router(database: AppDatabase, push_hub: PushHub) -> Router {
 
 #[skyzen::main]
 async fn main() -> Router {
-    let sqlx_database_url = parse_database_url().unwrap_or_else(|| "sqlite://together.db".to_string());
+    let sqlx_database_url =
+        parse_database_url().unwrap_or_else(|| "sqlite://together.db".to_string());
     let sqlx_pool = database::build_database(&sqlx_database_url)
         .await
         .expect("connect sql database");

@@ -21,8 +21,8 @@ pub fn view(state: &AppState) -> NavigationView {
                 filter_button(&filter, RecordFilter::All, text!("All")),
                 filter_button(&filter, RecordFilter::Todo, text!("Todo")),
                 filter_button(&filter, RecordFilter::Done, text!("Done")),
-            )).padding(),
-
+            ))
+            .padding(),
             // Records list
             scroll(watch(state.records.clone(), {
                 let filter = filter.clone();
@@ -45,10 +45,7 @@ pub fn view(state: &AppState) -> NavigationView {
                         )))
                     } else {
                         AnyView::new(vstack(
-                            filtered
-                                .into_iter()
-                                .map(record_row)
-                                .collect::<Vec<_>>()
+                            filtered.into_iter().map(record_row).collect::<Vec<_>>(),
                         ))
                     }
                 }
@@ -79,13 +76,17 @@ fn filter_button(
     let current_filter = current_filter.clone();
 
     if is_selected {
-        AnyView::new(button(label)
-            .action(move || current_filter.set(filter))
-            .foreground(Accent))
+        AnyView::new(
+            button(label)
+                .action(move || current_filter.set(filter))
+                .foreground(Accent),
+        )
     } else {
-        AnyView::new(button(label)
-            .action(move || current_filter.set(filter))
-            .foreground(Foreground))
+        AnyView::new(
+            button(label)
+                .action(move || current_filter.set(filter))
+                .foreground(Foreground),
+        )
     }
 }
 
@@ -95,9 +96,7 @@ fn record_row(record: models::RecordEntry) -> impl View {
     let state = record.state;
 
     hstack((
-        vstack((
-            text!("{activity_id}").font(font::Subheadline),
-        )),
+        vstack((text!("{activity_id}").font(font::Subheadline),)),
         spacer(),
         state_badge(state),
     ))
@@ -107,15 +106,13 @@ fn record_row(record: models::RecordEntry) -> impl View {
 /// State badge with appropriate styling
 fn state_badge(state: RecordState) -> AnyView {
     match state {
-        RecordState::Todo => AnyView::new(text!("Todo")
-            .font(font::Caption)
-            .foreground(Accent)),
-        RecordState::Done => AnyView::new(text!("Done")
-            .font(font::Caption)
-            .foreground(Foreground)),
-        RecordState::Canceled => AnyView::new(text!("Canceled")
-            .font(font::Caption)
-            .foreground(MutedForeground)),
+        RecordState::Todo => AnyView::new(text!("Todo").font(font::Caption).foreground(Accent)),
+        RecordState::Done => AnyView::new(text!("Done").font(font::Caption).foreground(Foreground)),
+        RecordState::Canceled => AnyView::new(
+            text!("Canceled")
+                .font(font::Caption)
+                .foreground(MutedForeground),
+        ),
     }
 }
 

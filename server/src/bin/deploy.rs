@@ -29,7 +29,10 @@ enum DatabaseKind {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut config = parse_config()?;
     if config.database_url.starts_with("d1://") {
-        let converted = format!("sqlite://{}", config.database_url.trim_start_matches("d1://"));
+        let converted = format!(
+            "sqlite://{}",
+            config.database_url.trim_start_matches("d1://")
+        );
         println!("Using SQLite URL for D1: {converted}");
         config.database_url = converted;
     }
@@ -113,10 +116,10 @@ fn parse_config() -> Result<Config, String> {
         }
     }
 
-    let database_url =
-        database_url.ok_or_else(|| "--database-url is required in non-interactive mode".to_string())?;
-    let admin_email =
-        admin_email.ok_or_else(|| "--admin-email is required in non-interactive mode".to_string())?;
+    let database_url = database_url
+        .ok_or_else(|| "--database-url is required in non-interactive mode".to_string())?;
+    let admin_email = admin_email
+        .ok_or_else(|| "--admin-email is required in non-interactive mode".to_string())?;
     let admin_password = admin_password
         .ok_or_else(|| "--admin-password is required in non-interactive mode".to_string())?;
 

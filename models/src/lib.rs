@@ -1,13 +1,15 @@
-mod id;
 mod activity;
-mod user;
-mod record;
 mod comment;
+mod id;
 mod notification;
+mod record;
+mod user;
 
-pub use id::Id;
-pub use activity::{ActivityState, ActivitySummary, ActivityDetail, CreateActivityForm, ListActivityQuery};
-pub use user::{User, RegisterForm};
-pub use record::{RecordState, RecordEntry, FindRecordForm};
+pub use activity::{
+    ActivityDetail, ActivityState, ActivitySummary, CreateActivityForm, ListActivityQuery,
+};
 pub use comment::CommentResponse;
-pub use notification::{Notification, CreateNotificationForm};
+pub use id::Id;
+pub use notification::{CreateNotificationForm, Notification};
+pub use record::{FindRecordForm, RecordEntry, RecordState};
+pub use user::{RegisterForm, User};

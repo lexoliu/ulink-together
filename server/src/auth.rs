@@ -29,11 +29,15 @@ fn expired_error() -> AuthError {
 }
 
 pub async fn get_group_id(database: &AppDatabase, name: &str) -> Option<Id> {
-    let row = sqlx::query(database.sql("SELECT id FROM groups WHERE code = ?1").as_ref())
-        .bind(name)
-        .fetch_optional(database.sqlx())
-        .await
-        .expect("Database error");
+    let row = sqlx::query(
+        database
+            .sql("SELECT id FROM groups WHERE code = ?1")
+            .as_ref(),
+    )
+    .bind(name)
+    .fetch_optional(database.sqlx())
+    .await
+    .expect("Database error");
 
     row.map(|row| {
         row.get::<String, _>("id")
@@ -116,21 +120,29 @@ async fn auth(database: &AppDatabase, headermap: &HeaderMap) -> Result<Auth, Aut
     let session_hex = session_id.to_string();
     let pool = database.sqlx();
 
-    let session = sqlx::query(database.sql("SELECT user_id FROM sessions WHERE id = ?1").as_ref())
-        .bind(&session_hex)
-        .fetch_optional(pool)
-        .await
-        .expect("Database error")
-        .ok_or_else(expired_error)?;
+    let session = sqlx::query(
+        database
+            .sql("SELECT user_id FROM sessions WHERE id = ?1")
+            .as_ref(),
+    )
+    .bind(&session_hex)
+    .fetch_optional(pool)
+    .await
+    .expect("Database error")
+    .ok_or_else(expired_error)?;
     let uid_hex: String = session.try_get("user_id").map_err(|_| expired_error())?;
     let uid = uid_hex.parse().map_err(|_| expired_error())?;
 
-    let user_row = sqlx::query(database.sql("SELECT group_id FROM users WHERE id = ?1").as_ref())
-        .bind(&uid_hex)
-        .fetch_optional(pool)
-        .await
-        .expect("Database error")
-        .ok_or_else(expired_error)?;
+    let user_row = sqlx::query(
+        database
+            .sql("SELECT group_id FROM users WHERE id = ?1")
+            .as_ref(),
+    )
+    .bind(&uid_hex)
+    .fetch_optional(pool)
+    .await
+    .expect("Database error")
+    .ok_or_else(expired_error)?;
     let group_hex: String = user_row.get("group_id");
     let group = group_hex.parse().map_err(|_| expired_error())?;
 
@@ -150,12 +162,15 @@ async fn match_group_authority(
     let group_hex = group.to_string();
     let pool = database.sqlx();
 
-    if let Some(row) =
-        sqlx::query(database.sql("SELECT allow_all_authorities FROM groups WHERE id = ?1").as_ref())
-        .bind(&group_hex)
-        .fetch_optional(pool)
-        .await
-        .expect("Database error")
+    if let Some(row) = sqlx::query(
+        database
+            .sql("SELECT allow_all_authorities FROM groups WHERE id = ?1")
+            .as_ref(),
+    )
+    .bind(&group_hex)
+    .fetch_optional(pool)
+    .await
+    .expect("Database error")
     {
         let allow_all: i64 = row.get("allow_all_authorities");
         if allow_all != 0 {
@@ -167,9 +182,7 @@ async fn match_group_authority(
 
     let has_authority = sqlx::query(
         database
-            .sql(
-                "SELECT 1 FROM group_authorities WHERE group_id = ?1 AND authority = ?2 LIMIT 1",
-            )
+            .sql("SELECT 1 FROM group_authorities WHERE group_id = ?1 AND authority = ?2 LIMIT 1")
             .as_ref(),
     )
     .bind(&group_hex)

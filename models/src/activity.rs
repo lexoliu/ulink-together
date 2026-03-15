@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{record::RecordState, Id};
+use crate::{Id, record::RecordState};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

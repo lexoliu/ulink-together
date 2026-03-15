@@ -55,7 +55,8 @@ pub async fn get(
     session: AuthSession,
 ) -> Result<Json<User>, GetUserError> {
     let auth = session.into_auth().await.map_err(|_| GetUserError::Auth)?;
-    let id = resolve_requested_user(&params, auth.uid()).map_err(|_| GetUserError::InvalidUserId)?;
+    let id =
+        resolve_requested_user(&params, auth.uid()).map_err(|_| GetUserError::InvalidUserId)?;
 
     if id != auth.uid() {
         auth.ensure_authority("view_user")
@@ -91,8 +92,12 @@ pub async fn update(
     session: AuthSession,
     form: Json<UpdateUserForm>,
 ) -> Result<Json<User>, UpdateUserError> {
-    let auth = session.into_auth().await.map_err(|_| UpdateUserError::SessionExpired)?;
-    let id = resolve_requested_user(&params, auth.uid()).map_err(|_| UpdateUserError::InvalidUserId)?;
+    let auth = session
+        .into_auth()
+        .await
+        .map_err(|_| UpdateUserError::SessionExpired)?;
+    let id =
+        resolve_requested_user(&params, auth.uid()).map_err(|_| UpdateUserError::InvalidUserId)?;
     if id != auth.uid() {
         auth.ensure_authority("update_user_anyway")
             .await
@@ -184,11 +189,15 @@ pub enum DeleteUserError {
 }
 
 pub async fn get_name(database: &AppDatabase, uid: Id) -> Result<String, GetNameError> {
-    let row = sqlx::query(database.sql("SELECT realname FROM users WHERE id = ?1").as_ref())
-        .bind(uid.to_string())
-        .fetch_optional(database.sqlx())
-        .await
-        .expect("Database error");
+    let row = sqlx::query(
+        database
+            .sql("SELECT realname FROM users WHERE id = ?1")
+            .as_ref(),
+    )
+    .bind(uid.to_string())
+    .fetch_optional(database.sqlx())
+    .await
+    .expect("Database error");
     row.and_then(|row| row.get("realname"))
         .ok_or(GetNameError::NotFound)
 }
@@ -351,11 +360,15 @@ mod tests {
 
     async fn setup_db() -> (AppDatabase, Id) {
         let database = build_test_database().await;
-        let row = sqlx::query(database.sql("SELECT id FROM groups WHERE code = ?1").as_ref())
-            .bind("student")
-            .fetch_one(database.sqlx())
-            .await
-            .expect("fetch student group");
+        let row = sqlx::query(
+            database
+                .sql("SELECT id FROM groups WHERE code = ?1")
+                .as_ref(),
+        )
+        .bind("student")
+        .fetch_one(database.sqlx())
+        .await
+        .expect("fetch student group");
         let group_id: String = row.get("id");
         (database, group_id.parse().expect("group id"))
     }

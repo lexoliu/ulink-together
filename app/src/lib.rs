@@ -1,26 +1,28 @@
 //! Together App - Volunteer activity management app built with WaterUI
 
 mod api;
+mod components;
 mod state;
 mod views;
-mod components;
 
 use core::num::NonZeroI32;
 
 use waterui::app::App;
-use waterui::preview;
 use waterui::id::{Id, TaggedView};
 use waterui::navigation::tab::{Tab, TabPosition, Tabs};
 use waterui::prelude::*;
+use waterui::preview;
 use waterui::reactive::binding;
 use waterui_icon::SystemIcon;
 
-use views::{account, login, record, square};
 use state::AppState;
+use views::{account, login, record, square};
 
 /// Tab IDs
 fn tab_id(n: i32) -> Id {
-    NonZeroI32::new(n).expect("tab id should be non-zero").into()
+    NonZeroI32::new(n)
+        .expect("tab id should be non-zero")
+        .into()
 }
 
 /// Creates a tab label with icon and text
@@ -36,14 +38,22 @@ fn main_tabs(state: &AppState) -> impl View {
         selection,
         vec![
             Tab::new(
-                tab_label(tab_id(1), SystemIcon::from_static("square.grid.2x2"), text!("Square")),
+                tab_label(
+                    tab_id(1),
+                    SystemIcon::from_static("square.grid.2x2"),
+                    text!("Square"),
+                ),
                 {
                     let state = state.clone();
                     move || square::view(&state)
                 },
             ),
             Tab::new(
-                tab_label(tab_id(2), SystemIcon::from_static("doc.text"), text!("Records")),
+                tab_label(
+                    tab_id(2),
+                    SystemIcon::from_static("doc.text"),
+                    text!("Records"),
+                ),
                 {
                     let state = state.clone();
                     move || record::view(&state)
@@ -103,14 +113,22 @@ pub fn login_minimal() -> impl View {
 /// Modern login preview with beautiful UI
 #[preview]
 pub fn login_static() -> impl View {
-    use waterui::graphics::{AnimatedMeshGradient, AnimatedMeshGradientConfig, Gradient, ResolvedColor};
+    use waterui::graphics::{
+        AnimatedMeshGradient, AnimatedMeshGradientConfig, Gradient, ResolvedColor,
+    };
     use waterui::layout::padding::EdgeInsets;
     use waterui::shape::RoundedRectangle;
     use waterui::style::{Shadow, Vector};
 
     // Helper to create resolved colors
     fn rc(r: f32, g: f32, b: f32) -> ResolvedColor {
-        ResolvedColor { red: r, green: g, blue: b, opacity: 1.0, headroom: 0.0 }
+        ResolvedColor {
+            red: r,
+            green: g,
+            blue: b,
+            opacity: 1.0,
+            headroom: 0.0,
+        }
     }
 
     // Colors - dark theme palette
@@ -164,8 +182,8 @@ pub fn login_static() -> impl View {
     // Primary button with gradient
     let button_gradient = Gradient::linear(
         vec![
-            (0.0, rc(0.4, 0.6, 1.0)),  // accent
-            (1.0, rc(0.6, 0.4, 1.0)),  // accent_light
+            (0.0, rc(0.4, 0.6, 1.0)), // accent
+            (1.0, rc(0.6, 0.4, 1.0)), // accent_light
         ],
         [0.0, 0.5],
         [1.0, 0.5],
@@ -175,7 +193,10 @@ pub fn login_static() -> impl View {
         button_gradient.clip(RoundedRectangle::new(14.0)),
         hstack((
             spacer(),
-            text!("Sign In").font(font::Body).bold().foreground(white.clone()),
+            text!("Sign In")
+                .font(font::Body)
+                .bold()
+                .foreground(white.clone()),
             spacer(),
         ))
         .padding_with(EdgeInsets::symmetric(24.0, 16.0)),

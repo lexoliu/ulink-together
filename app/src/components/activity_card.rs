@@ -28,10 +28,9 @@ impl View for ActivityCard {
         let activity_for_nav = self.activity.clone();
         let state = self.state.clone();
 
-        NavigationLink::new(
-            card_content(self.activity),
-            move || activity_detail::view(&activity_for_nav, &state),
-        )
+        NavigationLink::new(card_content(self.activity), move || {
+            activity_detail::view(&activity_for_nav, &state)
+        })
     }
 }
 
@@ -81,11 +80,9 @@ pub fn card_content(activity: ActivitySummary) -> impl View {
             volunteer_count_text(volunteer_num, max_volunteer_num),
         )),
         // Promoter
-        hstack((
-            text!("{promoter}")
-                .font(font::Caption)
-                .foreground(MutedForeground),
-        )),
+        hstack((text!("{promoter}")
+            .font(font::Caption)
+            .foreground(MutedForeground),)),
         // Brief description
         text!("{description}")
             .font(font::Body)

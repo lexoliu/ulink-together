@@ -56,9 +56,12 @@ pub async fn list(
         AuthError::SessionExpired => ListCommentsError::SessionExpired,
         _ => ListCommentsError::Forbidden,
     })?;
-    let activity_id =
-        parse_oid(params.get("id").map_err(|_| ListCommentsError::InvalidActivityId)?)
-            .map_err(|_| ListCommentsError::InvalidActivityId)?;
+    let activity_id = parse_oid(
+        params
+            .get("id")
+            .map_err(|_| ListCommentsError::InvalidActivityId)?,
+    )
+    .map_err(|_| ListCommentsError::InvalidActivityId)?;
     let rows = sqlx::query(
         database
             .sql(
@@ -127,9 +130,12 @@ pub async fn post(
         AuthError::SessionExpired => PostCommentError::SessionExpired,
         _ => PostCommentError::Forbidden,
     })?;
-    let activity_id =
-        parse_oid(params.get("id").map_err(|_| PostCommentError::InvalidActivityId)?)
-            .map_err(|_| PostCommentError::InvalidActivityId)?;
+    let activity_id = parse_oid(
+        params
+            .get("id")
+            .map_err(|_| PostCommentError::InvalidActivityId)?,
+    )
+    .map_err(|_| PostCommentError::InvalidActivityId)?;
     let exists = sqlx::query(
         database
             .sql("SELECT 1 FROM activities WHERE id = ?1 LIMIT 1")

@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use sqlx::{Any, Pool, Row, PgPool, SqlitePool};
+use sqlx::{Any, PgPool, Pool, Row, SqlitePool};
 use uuid::Uuid;
 
 pub fn schema_statements() -> &'static [&'static str] {
@@ -219,12 +219,14 @@ pub async fn ensure_group_sqlite(
     }
 
     let id = Uuid::new_v4().to_string();
-    sqlx::query("INSERT OR IGNORE INTO groups (id, code, allow_all_authorities) VALUES (?1, ?2, ?3)")
-        .bind(&id)
-        .bind(code)
-        .bind(if allow_all { 1 } else { 0 })
-        .execute(pool)
-        .await?;
+    sqlx::query(
+        "INSERT OR IGNORE INTO groups (id, code, allow_all_authorities) VALUES (?1, ?2, ?3)",
+    )
+    .bind(&id)
+    .bind(code)
+    .bind(if allow_all { 1 } else { 0 })
+    .execute(pool)
+    .await?;
     Ok(id)
 }
 

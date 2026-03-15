@@ -41,20 +41,28 @@ impl Api {
         let form = LoginForm { email, password };
 
         let mut client = zenwave::client();
-        let req = client.post(&url)
-            .json_body(&form);
+        let req = client.post(&url).json_body(&form);
 
         let response = req.await.map_err(ApiError::Network)?;
 
         if !response.status().is_success() {
-             let status = response.status();
-             let msg: ApiMessage = response.into_body().into_json().await
-                .unwrap_or(ApiMessage { message: "Unknown error".to_string() });
-             return Err(ApiError::Server { status: status.as_u16(), message: msg.message });
+            let status = response.status();
+            let msg: ApiMessage = response
+                .into_body()
+                .into_json()
+                .await
+                .unwrap_or(ApiMessage {
+                    message: "Unknown error".to_string(),
+                });
+            return Err(ApiError::Server {
+                status: status.as_u16(),
+                message: msg.message,
+            });
         }
 
         // Extract cookies
-        let cookies: Vec<String> = response.headers()
+        let cookies: Vec<String> = response
+            .headers()
             .get_all("set-cookie")
             .iter()
             .filter_map(|v| v.to_str().ok().map(|s| s.to_string()))
@@ -77,16 +85,17 @@ impl Api {
         // No auth needed for register usually?
         // Code didn't add it.
 
-        let response = req.json_body(form)
-            .await
-            .map_err(ApiError::Network)?;
+        let response = req.json_body(form).await.map_err(ApiError::Network)?;
         parse_empty_response(response).await
     }
 
     // Activity endpoints
 
     /// List activities with optional filters
-    pub async fn list_activities(&self, query: &ListActivityQuery) -> Result<Vec<ActivitySummary>, ApiError> {
+    pub async fn list_activities(
+        &self,
+        query: &ListActivityQuery,
+    ) -> Result<Vec<ActivitySummary>, ApiError> {
         let mut path = "/activity".to_string();
 
         // Add query parameters
@@ -134,9 +143,7 @@ impl Api {
             req = req.header("Cookie", token);
         }
 
-        let response = req.json_body(form)
-            .await
-            .map_err(ApiError::Network)?;
+        let response = req.json_body(form).await.map_err(ApiError::Network)?;
         parse_empty_response(response).await
     }
 
@@ -220,10 +227,10 @@ impl Api {
     pub async fn find_records(&self, form: &FindRecordForm) -> Result<Vec<RecordEntry>, ApiError> {
         let mut params = Vec::new();
         if let Some(ref user) = form.user {
-             params.push(format!("user={}", user));
+            params.push(format!("user={}", user));
         }
         if let Some(ref activity) = form.activity {
-             params.push(format!("activity={}", activity));
+            params.push(format!("activity={}", activity));
         }
         let body = params.join("&");
 
@@ -234,7 +241,8 @@ impl Api {
             req = req.header("Cookie", token);
         }
 
-        let response = req.header("Content-Type", "application/x-www-form-urlencoded")
+        let response = req
+            .header("Content-Type", "application/x-www-form-urlencoded")
             .bytes_body(body.into_bytes())
             .await
             .map_err(ApiError::Network)?;
@@ -338,7 +346,9 @@ impl std::fmt::Display for ApiError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ApiError::Network(e) => write!(f, "Network error: {}", e),
-            ApiError::Server { status, message } => write!(f, "Server error {}: {}", status, message),
+            ApiError::Server { status, message } => {
+                write!(f, "Server error {}: {}", status, message)
+            }
             ApiError::Parse(msg) => write!(f, "Parse error: {}", msg),
         }
     }
@@ -351,14 +361,28 @@ struct ApiMessage {
 }
 
 /// Parse JSON response
-async fn parse_response<T: serde::de::DeserializeOwned>(response: zenwave::Response) -> Result<T, ApiError> {
+async fn parse_response<T: serde::de::DeserializeOwned>(
+    response: zenwave::Response,
+) -> Result<T, ApiError> {
     let status = response.status();
     if status.is_success() {
-        response.into_body().into_json().await.map_err(|e| ApiError::Parse(e.to_string()))
+        response
+            .into_body()
+            .into_json()
+            .await
+            .map_err(|e| ApiError::Parse(e.to_string()))
     } else {
-        let msg: ApiMessage = response.into_body().into_json().await
-            .unwrap_or(ApiMessage { message: "Unknown error".to_string() });
-        Err(ApiError::Server { status: status.as_u16(), message: msg.message })
+        let msg: ApiMessage = response
+            .into_body()
+            .into_json()
+            .await
+            .unwrap_or(ApiMessage {
+                message: "Unknown error".to_string(),
+            });
+        Err(ApiError::Server {
+            status: status.as_u16(),
+            message: msg.message,
+        })
     }
 }
 
@@ -368,8 +392,16 @@ async fn parse_empty_response(response: zenwave::Response) -> Result<(), ApiErro
     if status.is_success() {
         Ok(())
     } else {
-        let msg: ApiMessage = response.into_body().into_json().await
-            .unwrap_or(ApiMessage { message: "Unknown error".to_string() });
-        Err(ApiError::Server { status: status.as_u16(), message: msg.message })
+        let msg: ApiMessage = response
+            .into_body()
+            .into_json()
+            .await
+            .unwrap_or(ApiMessage {
+                message: "Unknown error".to_string(),
+            });
+        Err(ApiError::Server {
+            status: status.as_u16(),
+            message: msg.message,
+        })
     }
 }

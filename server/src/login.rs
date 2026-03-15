@@ -28,12 +28,15 @@ pub async fn handler(
 ) -> Result<(ApiMessage, CookieJar), LoginError> {
     let Json(form) = form;
 
-    let users =
-        sqlx::query(database.sql("SELECT id, password_hash, salt FROM users WHERE email = ?1").as_ref())
-        .bind(form.email.as_ref())
-        .fetch_optional(database.sqlx())
-        .await
-        .expect("Database error");
+    let users = sqlx::query(
+        database
+            .sql("SELECT id, password_hash, salt FROM users WHERE email = ?1")
+            .as_ref(),
+    )
+    .bind(form.email.as_ref())
+    .fetch_optional(database.sqlx())
+    .await
+    .expect("Database error");
 
     let row = users.ok_or(LoginError::NotFound)?;
     let user_id: String = row.get("id");
@@ -104,13 +107,13 @@ async fn generate_session(database: &AppDatabase, uid_hex: &str, ip: IpAddr) -> 
             .sql("INSERT INTO sessions (id, user_id, generated_at, ip) VALUES (?1, ?2, ?3, ?4)")
             .as_ref(),
     )
-        .bind(&session_id)
-        .bind(uid_hex)
-        .bind(OffsetDateTime::now_utc().to_string())
-        .bind(ip.to_string())
-        .execute(database.sqlx())
-        .await
-        .expect("Database error");
+    .bind(&session_id)
+    .bind(uid_hex)
+    .bind(OffsetDateTime::now_utc().to_string())
+    .bind(ip.to_string())
+    .execute(database.sqlx())
+    .await
+    .expect("Database error");
 
     session_id
 }
@@ -185,8 +188,9 @@ mod tests {
         let cookies = CookieJar::from_str("").expect("cookie jar");
         let ip = ClientIp(IpAddr::from([127, 0, 0, 1]));
 
-        let (_message, jar) =
-            handler(State(database.clone()), ip, cookies, Json(form)).await.unwrap();
+        let (_message, jar) = handler(State(database.clone()), ip, cookies, Json(form))
+            .await
+            .unwrap();
         assert_eq!(jar.get("uid").unwrap().value(), user_id);
         assert!(jar.get("session").is_some());
 

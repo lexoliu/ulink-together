@@ -132,10 +132,12 @@ pub async fn find(
                 Ok(Message {
                     id: parse_db_oid(&row.try_get::<String, _>("id").expect("Database error"))?,
                     channel: parse_db_oid(
-                        &row.try_get::<String, _>("channel_id").expect("Database error"),
+                        &row.try_get::<String, _>("channel_id")
+                            .expect("Database error"),
                     )?,
                     sender: parse_db_oid(
-                        &row.try_get::<String, _>("sender_id").expect("Database error"),
+                        &row.try_get::<String, _>("sender_id")
+                            .expect("Database error"),
                     )?,
                     content: row.try_get("content").expect("Database error"),
                     datetime: row.try_get("sent_at").expect("Database error"),
@@ -270,9 +272,12 @@ pub async fn post(
         AuthError::SessionExpired => PostMessageError::SessionExpired,
         _ => PostMessageError::Forbidden,
     })?;
-    let channel_id =
-        parse_oid(params.get("id").map_err(|_| PostMessageError::InvalidChannelId)?)
-            .map_err(|_| PostMessageError::InvalidChannelId)?;
+    let channel_id = parse_oid(
+        params
+            .get("id")
+            .map_err(|_| PostMessageError::InvalidChannelId)?,
+    )
+    .map_err(|_| PostMessageError::InvalidChannelId)?;
     let can_post = channel::ensure_channel_member(&database, &channel_id, &auth.uid()).await
         || auth
             .match_authority("send_message_anyway")
