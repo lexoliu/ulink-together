@@ -98,11 +98,9 @@ struct FeedHomeView: View {
                     .background(AppBackgroundView())
             }
         }
+        .navigationSplitViewStyle(.balanced)
         .task {
             await loadFeed()
-        }
-        .navigationDestination(for: String.self) { activityID in
-            ActivityDetailView(activityID: activityID)
         }
         .alert("Unable to Load Feed", isPresented: Binding(get: {
             errorMessage != nil
@@ -167,7 +165,7 @@ struct FeedHomeView: View {
         }
 
         guard let serverURL = session.serverURL else {
-            errorMessage = "The server URL is invalid."
+            errorMessage = "Enter a valid service address."
             isLoading = false
             return
         }
@@ -198,11 +196,12 @@ struct ActivityDetailView: View {
     @State private var detail: ActivityDetail?
     @State private var records: [RecordEntry] = []
     @State private var participantNames: [String: String] = [:]
-    @State private var exportBatch: ExportBatchResponse?
     @State private var isLoading = true
     @State private var isUpdating = false
     @State private var errorMessage: String?
     @State private var showingEditor = false
+    @State private var isManagementExpanded = false
+    @State private var isParticipantsExpanded = false
 
     var body: some View {
         PageWidthReader {
@@ -230,6 +229,9 @@ struct ActivityDetailView: View {
         }
         .navigationTitle(detail?.name ?? "Activity")
         .navigationBarTitleDisplayMode(.inline)
+        .refreshable {
+            await load()
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 if canEditCurrentActivity {
@@ -264,73 +266,51 @@ struct ActivityDetailView: View {
                 }
             }
         }
-        .sheet(item: $exportBatch) { batch in
-            ExportPreviewView(batch: batch)
-        }
     }
 
     private var participantPanel: some View {
-        let canMarkDone = detail?.state == .ended
-
         return CardPanel {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Participants")
-                    .font(.title3.weight(.semibold))
-
-                if records.isEmpty {
-                    Text("No participant records yet.")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(records) { record in
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(participantTitle(for: record))
-                                        .font(.headline)
-                                    Text(record.activityName ?? "Untitled activity")
-                                        .font(.subheadline)
-                                        .foregroundStyle(.secondary)
+            DisclosureGroup(isExpanded: $isParticipantsExpanded) {
+                VStack(alignment: .leading, spacing: 16) {
+                    if records.isEmpty {
+                        Text("No participant records yet.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(records) { record in
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(participantTitle(for: record))
+                                            .font(.headline)
+                                        Text(record.activityName ?? "Untitled activity")
+                                            .font(.subheadline)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    StateChip(title: record.state.title, tint: AppTheme.stateTint(for: record.state))
                                 }
-                                Spacer()
-                                StateChip(title: record.state.title, tint: AppTheme.stateTint(for: record.state))
+
+                                Text("Confirmed: \(DisplayText.hours(minutes: record.confirmedMinutes))")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+
+                                participantControls(for: record)
                             }
+                            .padding(.top, 14)
+                            .padding(.bottom, record.id == records.last?.id ? 0 : 14)
 
-                            Text("Confirmed: \(DisplayText.hours(minutes: record.confirmedMinutes))")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-
-                            HStack {
-                                Button("Approve") {
-                                    Task {
-                                        await updateRecord(recordID: record.id, action: "approve_apply")
-                                    }
-                                }
-                                .buttonStyle(.bordered)
-
-                                Button("Mark Done") {
-                                    Task {
-                                        await updateRecord(recordID: record.id, action: "done")
-                                    }
-                                }
-                                .buttonStyle(.borderedProminent)
-                                .disabled(!canMarkDone)
-
-                                Button("Cancel", role: .destructive) {
-                                    Task {
-                                        await updateRecord(recordID: record.id, action: "disapprove_apply")
-                                    }
-                                }
-                                .buttonStyle(.bordered)
+                            if record.id != (records.last?.id ?? "") {
+                                Divider()
                             }
-                        }
-                        .padding(.vertical, 8)
-
-                        if record.id != (records.last?.id ?? "") {
-                            Divider()
                         }
                     }
                 }
+                .padding(.top, 14)
+            } label: {
+                Text("Participants (\(records.count))")
+                    .font(.title3.weight(.semibold))
             }
+            .tint(.primary)
         }
     }
 
@@ -411,24 +391,32 @@ struct ActivityDetailView: View {
     private func actionPanel(for detail: ActivityDetail) -> some View {
         CardPanel {
             VStack(alignment: .leading, spacing: 14) {
-                Text("Conversation")
+                Text("Communication")
                     .font(.title3.weight(.semibold))
                 NavigationLink {
                     CommentsView(activityID: detail.id)
                 } label: {
-                    labelRow(title: "Comments", subtitle: "Read organiser notes and volunteer replies.", systemImage: "text.bubble")
+                    labelRow(
+                        title: "Public Notes",
+                        subtitle: "Announcements and questions visible to everyone.",
+                        systemImage: "text.bubble"
+                    )
                 }
 
                 if canAccessChannel(detail: detail) {
                     NavigationLink {
                         ActivityChannelView(activity: detail)
                     } label: {
-                        labelRow(title: "Channel", subtitle: "Activity-scoped messaging and coordination.", systemImage: "message")
+                        labelRow(
+                            title: "Team Chat",
+                            subtitle: "Live messaging for joined volunteers.",
+                            systemImage: "message"
+                        )
                     }
                 } else {
                     labelRow(
-                        title: "Channel",
-                        subtitle: "Join this activity before opening its coordination room.",
+                        title: "Team Chat",
+                        subtitle: "Join this activity before opening live team chat.",
                         systemImage: "lock.message"
                     )
                     .opacity(0.6)
@@ -439,54 +427,50 @@ struct ActivityDetailView: View {
 
     private func managementPanel(for detail: ActivityDetail) -> some View {
         CardPanel {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Manage Activity")
-                    .font(.title3.weight(.semibold))
-                Text("Organiser controls stay in the detail screen so state, participant progress, and reporting remain in one place.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+            DisclosureGroup(isExpanded: $isManagementExpanded) {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("Update the activity state here while keeping participant progress in the same workflow.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
 
-                HStack {
-                    Button("Recruiting") {
-                        Task {
-                            await transition(path: "need_volunteer")
-                        }
-                    }
-                    .buttonStyle(.bordered)
-
-                    Button("Start") {
-                        Task {
-                            await transition(path: "go")
-                        }
-                    }
-                    .buttonStyle(.bordered)
-
-                    Button("End") {
-                        Task {
-                            await transition(path: "end")
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
-
-                HStack {
-                    Button("Cancel", role: .destructive) {
-                        Task {
-                            await transition(path: "cancel")
-                        }
-                    }
-                    .buttonStyle(.bordered)
-
-                    if session.canGenerateExport {
-                        Button("Export Hours") {
+                    HStack {
+                        Button("Recruiting") {
                             Task {
-                                await exportHours()
+                                await transition(path: "need_volunteer")
+                            }
+                        }
+                        .buttonStyle(.bordered)
+
+                        Button("Start") {
+                            Task {
+                                await transition(path: "go")
+                            }
+                        }
+                        .buttonStyle(.bordered)
+
+                        Button("End") {
+                            Task {
+                                await transition(path: "end")
                             }
                         }
                         .buttonStyle(.borderedProminent)
                     }
+
+                    HStack {
+                        Button("Cancel", role: .destructive) {
+                            Task {
+                                await transition(path: "cancel")
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                    }
                 }
+                .padding(.top, 14)
+            } label: {
+                Text("Manage Activity")
+                    .font(.title3.weight(.semibold))
             }
+            .tint(.primary)
         }
     }
 
@@ -517,7 +501,7 @@ struct ActivityDetailView: View {
 
         guard let serverURL = session.serverURL else {
             isLoading = false
-            errorMessage = "The server URL is invalid."
+            errorMessage = "Enter a valid service address."
             return
         }
 
@@ -549,7 +533,7 @@ struct ActivityDetailView: View {
         }
 
         guard let serverURL = session.serverURL else {
-            errorMessage = "The server URL is invalid."
+            errorMessage = "Enter a valid service address."
             return
         }
 
@@ -573,7 +557,7 @@ struct ActivityDetailView: View {
         }
 
         guard let serverURL = session.serverURL else {
-            errorMessage = "The server URL is invalid."
+            errorMessage = "Enter a valid service address."
             return
         }
 
@@ -592,7 +576,7 @@ struct ActivityDetailView: View {
         }
 
         guard let serverURL = session.serverURL else {
-            errorMessage = "The server URL is invalid."
+            errorMessage = "Enter a valid service address."
             return
         }
 
@@ -606,7 +590,7 @@ struct ActivityDetailView: View {
 
     private func updateActivity(with request: CreateActivityRequest) async throws {
         if session.demoData != nil {
-            throw APIError.transport("Editing is disabled in demo mode.")
+            throw APIError.transport(code: nil, message: "Editing is disabled in demo mode.")
         }
 
         guard let serverURL = session.serverURL else {
@@ -615,24 +599,6 @@ struct ActivityDetailView: View {
         _ = try await session.apiClient.updateActivity(baseURL: serverURL, activityID: activityID, request: request)
         await load()
         showingEditor = false
-    }
-
-    private func exportHours() async {
-        if let batch = session.demoData?.exportBatch {
-            exportBatch = batch
-            return
-        }
-
-        guard let serverURL = session.serverURL else {
-            errorMessage = "The server URL is invalid."
-            return
-        }
-
-        do {
-            exportBatch = try await session.apiClient.generateExport(baseURL: serverURL)
-        } catch {
-            errorMessage = session.readableError(error)
-        }
     }
 
     private func meta(_ title: String, systemImage: String) -> some View {
@@ -675,7 +641,7 @@ struct ActivityDetailView: View {
         HStack(spacing: 14) {
             Image(systemName: systemImage)
                 .font(.title3.weight(.semibold))
-                .foregroundStyle(.blue)
+                .foregroundStyle(AppTheme.accentTint)
                 .frame(width: 28)
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
@@ -688,6 +654,40 @@ struct ActivityDetailView: View {
             Image(systemName: "chevron.right")
                 .foregroundStyle(.tertiary)
         }
+    }
+
+    @ViewBuilder
+    private func participantControls(for record: RecordEntry) -> some View {
+        switch record.state {
+        case .todo:
+            HStack(spacing: 12) {
+                if detail?.state == .ended {
+                    Button("Mark Done") {
+                        Task {
+                            await updateRecord(recordID: record.id, action: "done")
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+
+                Button("Cancel", role: .destructive) {
+                    Task {
+                        await updateRecord(recordID: record.id, action: "disapprove_apply")
+                    }
+                }
+                .buttonStyle(.bordered)
+            }
+        case .done:
+            recordStatusLabel(title: "Completed", systemImage: "checkmark.circle.fill", tint: AppTheme.stateTint(for: RecordState.done))
+        case .canceled:
+            recordStatusLabel(title: "Cancelled", systemImage: "xmark.circle.fill", tint: AppTheme.stateTint(for: RecordState.canceled))
+        }
+    }
+
+    private func recordStatusLabel(title: String, systemImage: String, tint: Color) -> some View {
+        Label(title, systemImage: systemImage)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(tint)
     }
 }
 

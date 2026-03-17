@@ -28,12 +28,19 @@ struct LeaderboardHomeView: View {
                     systemImage: "trophy"
                 )
             } else {
-                ForEach(entries) { entry in
-                    CardPanel {
-                        RankingRow(
-                            entry: entry,
-                            avatarURL: session.serverURL.flatMap { session.apiClient.avatarURL(baseURL: $0, path: entry.avatar) }
-                        )
+                CardPanel {
+                    VStack(spacing: 0) {
+                        ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                            RankingRow(
+                                entry: entry,
+                                avatarURL: session.serverURL.flatMap { session.apiClient.avatarURL(baseURL: $0, path: entry.avatar) }
+                            )
+                            .padding(.vertical, 10)
+
+                            if index < entries.count - 1 {
+                                Divider()
+                            }
+                        }
                     }
                 }
             }
@@ -62,7 +69,7 @@ struct LeaderboardHomeView: View {
 
         guard let serverURL = session.serverURL else {
             isLoading = false
-            errorMessage = "The server URL is invalid."
+            errorMessage = "Enter a valid service address."
             return
         }
 

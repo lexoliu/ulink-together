@@ -5,20 +5,6 @@ struct AppBackgroundView: View {
         Rectangle()
             .fill(AppTheme.pageBackground)
             .ignoresSafeArea()
-            .overlay(alignment: .topTrailing) {
-                Circle()
-                    .fill(AppTheme.accentTint.opacity(0.08))
-                    .frame(width: 320, height: 320)
-                    .blur(radius: 16)
-                    .offset(x: 90, y: -60)
-            }
-            .overlay(alignment: .bottomLeading) {
-                Circle()
-                    .fill(Color(red: 0.62, green: 0.67, blue: 0.58).opacity(0.10))
-                    .frame(width: 360, height: 360)
-                    .blur(radius: 18)
-                    .offset(x: -120, y: 110)
-            }
     }
 }
 
@@ -89,7 +75,7 @@ struct CapacityBar: View {
             }
 
             ProgressView(value: progress)
-                .tint(progress > 0.8 ? .orange : .blue)
+                .tint(progress > 0.8 ? .orange : AppTheme.accentTint)
         }
     }
 }
@@ -144,12 +130,26 @@ struct InlineErrorBanner: View {
     let message: String
 
     var body: some View {
-        Label(message, systemImage: "exclamationmark.triangle.fill")
-            .font(.subheadline)
-            .foregroundStyle(.orange)
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color(uiColor: .systemOrange))
+                .frame(width: 24, height: 24)
+
+            Text(message)
+                .font(.subheadline)
+                .foregroundStyle(.primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.cardRadius, style: .continuous)
+                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: AppTheme.cardRadius, style: .continuous)
+                .strokeBorder(Color(uiColor: .separator).opacity(0.18), lineWidth: 1)
+        }
     }
 }
 
@@ -197,30 +197,16 @@ struct LoadingCard: View {
 
 private struct AppCardSurface: ViewModifier {
     func body(content: Content) -> some View {
-        if #available(iOS 26, *) {
-            content
-                .background(
-                    RoundedRectangle(cornerRadius: AppTheme.cardRadius, style: .continuous)
-                        .fill(.clear)
-                        .glassEffect(.regular, in: .rect(cornerRadius: AppTheme.cardRadius))
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: AppTheme.cardRadius, style: .continuous)
-                        .strokeBorder(.white.opacity(0.45), lineWidth: 1)
-                }
-                .shadow(color: .black.opacity(0.05), radius: 20, y: 12)
-        } else {
-            content
-                .background(
-                    RoundedRectangle(cornerRadius: AppTheme.cardRadius, style: .continuous)
-                        .fill(.thinMaterial)
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: AppTheme.cardRadius, style: .continuous)
-                        .strokeBorder(.white.opacity(0.45), lineWidth: 1)
-                }
-                .shadow(color: .black.opacity(0.05), radius: 20, y: 12)
-        }
+        content
+            .background(
+                RoundedRectangle(cornerRadius: AppTheme.cardRadius, style: .continuous)
+                    .fill(Color(uiColor: .secondarySystemGroupedBackground))
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: AppTheme.cardRadius, style: .continuous)
+                    .strokeBorder(Color(uiColor: .separator).opacity(0.14), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.04), radius: 14, y: 6)
     }
 }
 
@@ -230,9 +216,7 @@ struct RankingRow: View {
 
     var body: some View {
         HStack(spacing: 16) {
-            Text("#\(entry.rank)")
-                .font(.title3.weight(.bold))
-                .foregroundStyle(entry.rank <= 3 ? .blue : .secondary)
+            rankingIndicator
                 .frame(width: 44, alignment: .leading)
 
             AvatarBadge(title: entry.realname, imageURL: avatarURL, size: 46)
@@ -251,6 +235,39 @@ struct RankingRow: View {
                 .font(.headline.weight(.semibold))
         }
         .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private var rankingIndicator: some View {
+        if let medalColor {
+            ZStack {
+                Image(systemName: "medal.fill")
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(medalColor)
+
+                Text("\(entry.rank)")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.white)
+                    .offset(y: -1)
+            }
+        } else {
+            Text("#\(entry.rank)")
+                .font(.title3.weight(.bold))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var medalColor: Color? {
+        switch entry.rank {
+        case 1:
+            Color(red: 0.85, green: 0.65, blue: 0.13)
+        case 2:
+            Color(red: 0.60, green: 0.62, blue: 0.65)
+        case 3:
+            Color(red: 0.72, green: 0.45, blue: 0.20)
+        default:
+            nil
+        }
     }
 }
 
@@ -313,7 +330,7 @@ struct ActivityCard: View {
                 if let action {
                     Button(activity.viewerJoined ? "Joined" : "Join Activity", action: action)
                         .buttonStyle(.borderedProminent)
-                        .tint(activity.viewerJoined ? .orange : .blue)
+                        .tint(activity.viewerJoined ? .orange : AppTheme.accentTint)
                         .disabled(activity.viewerJoined || activity.state != .needVolunteer)
                 }
             }

@@ -27,14 +27,16 @@ struct ActivityChannelView: View {
                         systemImage: "lock.fill"
                     )
                 } else if let channel {
-                    channelHeader(channel: channel)
+                    VStack(alignment: .leading, spacing: 16) {
+                        channelHeader(channel: channel)
 
-                    if activity.state.channelIsReadOnly {
-                        InlineErrorBanner(message: "This room is archived because the activity has already ended.")
-                    }
+                        if activity.state.channelIsReadOnly {
+                            InlineErrorBanner(message: "This room is archived because the activity has already ended.")
+                        }
 
-                    if !session.canViewUserDetails {
-                        InlineErrorBanner(message: "Sender names are limited on this account.")
+                        if !session.canViewUserDetails {
+                            InlineErrorBanner(message: "Sender names are limited on this account.")
+                        }
                     }
 
                     messageTimeline
@@ -46,12 +48,12 @@ struct ActivityChannelView: View {
                     )
                 }
             }
-            .frame(maxWidth: AppTheme.contentWidth)
+            .frame(maxWidth: AppTheme.contentWidth, maxHeight: .infinity, alignment: .top)
             .padding(.horizontal, 20)
             .padding(.top, 18)
             .padding(.bottom, 12)
         }
-        .navigationTitle("Channel")
+        .navigationTitle("Team Chat")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable {
             if canAccessChannel {
@@ -61,10 +63,6 @@ struct ActivityChannelView: View {
         .safeAreaInset(edge: .bottom) {
             if channel != nil {
                 composerBar
-                    .padding(.horizontal, 20)
-                    .padding(.top, 8)
-                    .padding(.bottom, 12)
-                    .background(.clear)
             }
         }
         .task {
@@ -121,56 +119,56 @@ struct ActivityChannelView: View {
     }
 
     private var messageTimeline: some View {
-        CardPanel {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(spacing: 16) {
-                        if sortedMessages.isEmpty {
-                            ContentUnavailableView(
-                                "No Messages Yet",
-                                systemImage: "message.badge.waveform",
-                                description: Text("Updates and volunteer replies will appear here.")
-                            )
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 60)
-                        } else {
-                            ForEach(Array(sortedMessages.enumerated()), id: \.element.id) { index, message in
-                                if dayLabel(at: index) != dayLabel(at: index - 1) {
-                                    dayDivider(for: message.datetime)
-                                }
-
-                                MessageBubbleRow(
-                                    message: message,
-                                    isCurrentUser: session.isCurrentUser(id: message.sender),
-                                    senderName: senderLabel(for: message.sender)
-                                )
-                                .id(message.id)
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 16) {
+                    if sortedMessages.isEmpty {
+                        ContentUnavailableView(
+                            "No Messages Yet",
+                            systemImage: "message.badge.waveform",
+                            description: Text("Updates and volunteer replies will appear here.")
+                        )
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 60)
+                    } else {
+                        ForEach(Array(sortedMessages.enumerated()), id: \.element.id) { index, message in
+                            if dayLabel(at: index) != dayLabel(at: index - 1) {
+                                dayDivider(for: message.datetime)
                             }
+
+                            MessageBubbleRow(
+                                message: message,
+                                isCurrentUser: session.isCurrentUser(id: message.sender),
+                                senderName: senderLabel(for: message.sender)
+                            )
+                            .id(message.id)
                         }
                     }
-                    .padding(.vertical, 6)
                 }
-                .frame(minHeight: 320)
-                .onChange(of: sortedMessages.last?.id) { _, newValue in
-                    guard let newValue else {
-                        return
-                    }
+                .padding(.vertical, 6)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            .onChange(of: sortedMessages.last?.id) { _, newValue in
+                guard let newValue else {
+                    return
+                }
 
-                    withAnimation(.snappy) {
-                        proxy.scrollTo(newValue, anchor: .bottom)
-                    }
+                withAnimation(.snappy) {
+                    proxy.scrollTo(newValue, anchor: .bottom)
                 }
-                .onAppear {
-                    if let lastID = sortedMessages.last?.id {
-                        proxy.scrollTo(lastID, anchor: .bottom)
-                    }
+            }
+            .onAppear {
+                if let lastID = sortedMessages.last?.id {
+                    proxy.scrollTo(lastID, anchor: .bottom)
                 }
             }
         }
     }
 
     private var composerBar: some View {
-        CardPanel {
+        VStack(spacing: 0) {
+            Divider()
+
             VStack(alignment: .leading, spacing: 12) {
                 Text(activity.state.channelIsReadOnly ? "Channel archive" : "New message")
                     .font(.headline)
@@ -211,7 +209,12 @@ struct ActivityChannelView: View {
                     .disabled(activity.state.channelIsReadOnly || composer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
+            .frame(maxWidth: AppTheme.contentWidth, alignment: .leading)
+            .padding(.horizontal, 20)
+            .padding(.top, 14)
+            .padding(.bottom, 12)
         }
+        .background(.ultraThinMaterial)
     }
 
     private func dayDivider(for value: String) -> some View {
@@ -265,7 +268,7 @@ struct ActivityChannelView: View {
         }
 
         guard let serverURL = session.serverURL else {
-            errorMessage = "The server URL is invalid."
+            errorMessage = "Enter a valid service address."
             isLoading = false
             return
         }

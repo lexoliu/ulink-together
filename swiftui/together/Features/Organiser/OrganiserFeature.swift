@@ -4,6 +4,7 @@ struct OrganiserHomeView: View {
     @EnvironmentObject private var session: SessionStore
 
     @State private var activities: [ActivitySummary] = []
+    @State private var exportBatch: ExportBatchResponse?
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var showingCreateSheet = false
@@ -18,11 +19,44 @@ struct OrganiserHomeView: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
 
-                    if session.canCreateActivities {
-                        Button("Create Activity") {
-                            showingCreateSheet = true
+                    if session.canCreateActivities || session.canGenerateExport {
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 12) {
+                                if session.canCreateActivities {
+                                    Button("Create Activity") {
+                                        showingCreateSheet = true
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                }
+
+                                if session.canGenerateExport {
+                                    Button("Export Hours") {
+                                        Task {
+                                            await exportHours()
+                                        }
+                                    }
+                                    .buttonStyle(.bordered)
+                                }
+                            }
+
+                            VStack(alignment: .leading, spacing: 12) {
+                                if session.canCreateActivities {
+                                    Button("Create Activity") {
+                                        showingCreateSheet = true
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                }
+
+                                if session.canGenerateExport {
+                                    Button("Export Hours") {
+                                        Task {
+                                            await exportHours()
+                                        }
+                                    }
+                                    .buttonStyle(.bordered)
+                                }
+                            }
                         }
-                        .buttonStyle(.borderedProminent)
                     }
                 }
             }
@@ -65,6 +99,9 @@ struct OrganiserHomeView: View {
                 }
             }
         }
+        .sheet(item: $exportBatch) { batch in
+            ExportPreviewView(batch: batch)
+        }
     }
 
     private func load() async {
@@ -100,7 +137,7 @@ struct OrganiserHomeView: View {
 
     private func createActivity(with request: CreateActivityRequest) async throws {
         if session.demoData != nil {
-            throw APIError.transport("Creating activities is disabled in demo mode.")
+            throw APIError.transport(code: nil, message: "Creating activities is disabled in demo mode.")
         }
         guard let serverURL = session.serverURL else {
             throw APIError.invalidBaseURL
@@ -108,6 +145,24 @@ struct OrganiserHomeView: View {
         _ = try await session.apiClient.createActivity(baseURL: serverURL, request: request)
         await load()
         showingCreateSheet = false
+    }
+
+    private func exportHours() async {
+        if let batch = session.demoData?.exportBatch {
+            exportBatch = batch
+            return
+        }
+
+        guard let serverURL = session.serverURL else {
+            errorMessage = "Enter a valid service address."
+            return
+        }
+
+        do {
+            exportBatch = try await session.apiClient.generateExport(baseURL: serverURL)
+        } catch {
+            errorMessage = session.readableError(error)
+        }
     }
 }
 
@@ -180,7 +235,7 @@ struct ActivityEditorView: View {
                         Text(DisplayText.duration(minutes: draft.durationMinutes))
                             .foregroundStyle(.secondary)
                     }
-                    Stepper(value: $draft.durationMinutes, in: 30 ... 480, step: 30) {
+                    Stepper(value: $draft.durationMinutes, in: 15 ... 480, step: 15) {
                         EmptyView()
                     }
                 }
@@ -260,12 +315,12 @@ struct ActivityEditorView: View {
         let description = draft.description.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard !name.isEmpty, !location.isEmpty, !briefDescription.isEmpty, !description.isEmpty else {
-            throw APIError.transport("All activity details are required.")
+            throw APIError.transport(code: nil, message: "All activity details are required.")
         }
 
         let duration = draft.durationMinutes
         guard duration > 0 else {
-            throw APIError.transport("Duration must be a positive number of minutes.")
+            throw APIError.transport(code: nil, message: "Duration must be a positive number of minutes.")
         }
 
         return CreateActivityRequest(

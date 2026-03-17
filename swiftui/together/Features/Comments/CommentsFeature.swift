@@ -13,11 +13,11 @@ struct CommentsView: View {
     var body: some View {
         PageWidthReader {
             if isLoading {
-                LoadingCard(title: "Loading comments")
+                LoadingCard(title: "Loading public notes")
             } else if comments.isEmpty {
                 EmptyStateCard(
-                    title: "No comments yet",
-                    message: "Be the first volunteer to ask a question or leave a planning note.",
+                    title: "No public notes yet",
+                    message: "Be the first to share an announcement or question for everyone.",
                     systemImage: "text.bubble"
                 )
             } else {
@@ -41,9 +41,9 @@ struct CommentsView: View {
 
             CardPanel {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Add a comment")
+                    Text("Add a public note")
                         .font(.headline)
-                    TextField("Share a question or update", text: $composer, axis: .vertical)
+                    TextField("Share an announcement or question", text: $composer, axis: .vertical)
                         .lineLimit(3 ... 6)
                         .textFieldStyle(.roundedBorder)
 
@@ -51,7 +51,7 @@ struct CommentsView: View {
                         InlineErrorBanner(message: errorMessage)
                     }
 
-                    Button("Post Comment") {
+                    Button("Post Note") {
                         Task {
                             await postComment()
                         }
@@ -61,9 +61,12 @@ struct CommentsView: View {
                 }
             }
         }
-        .navigationTitle("Comments")
+        .navigationTitle("Public Notes")
         .navigationBarTitleDisplayMode(.inline)
         .task {
+            await load()
+        }
+        .refreshable {
             await load()
         }
     }
@@ -78,7 +81,7 @@ struct CommentsView: View {
 
         guard let serverURL = session.serverURL else {
             isLoading = false
-            errorMessage = "The server URL is invalid."
+            errorMessage = "Enter a valid service address."
             return
         }
 
@@ -117,7 +120,7 @@ struct CommentsView: View {
         }
 
         guard let serverURL = session.serverURL else {
-            errorMessage = "The server URL is invalid."
+            errorMessage = "Enter a valid service address."
             return
         }
         let content = composer.trimmingCharacters(in: .whitespacesAndNewlines)
