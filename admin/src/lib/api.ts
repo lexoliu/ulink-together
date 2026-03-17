@@ -2,6 +2,7 @@ import type {
   ActivityDetail,
   ActivitySummary,
   ActivityDraft,
+  ActivityTransitionAction,
   ApiMessage,
   AuthorityCheckResponse,
   AuthorityName,
@@ -134,7 +135,7 @@ export class AdminApiClient {
     })
   }
 
-  async transitionActivity(id: string, action: 'need_volunteer' | 'go' | 'end' | 'cancel'): Promise<void> {
+  async transitionActivity(id: string, action: ActivityTransitionAction): Promise<void> {
     await request<ApiMessage>(`/activity/${id}/${action}`, { method: 'POST' })
   }
 

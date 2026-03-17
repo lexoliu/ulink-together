@@ -48,11 +48,15 @@ import type {
   ActivityDraft,
   ActivitySummary,
   AuthorityName,
+  ActivityTransitionAction,
   ChannelMessage,
   ChannelResponse,
   ExportBatchResponse,
   RecordEntry,
   UserProfile,
+} from '@/lib/types'
+import {
+  activityTransitionActions,
 } from '@/lib/types'
 
 type PanelTab = 'overview' | 'records' | 'channel'
@@ -98,6 +102,31 @@ const emptyDraft: ActivityDraft = {
   description: '',
   duration: 120,
 }
+
+const activityTransitionMeta = {
+  need_volunteer: {
+    label: 'Recruiting',
+    variant: 'outline',
+  },
+  go: {
+    label: 'Start',
+    variant: 'outline',
+  },
+  end: {
+    label: 'Complete',
+    variant: 'outline',
+  },
+  cancel: {
+    label: 'Cancel',
+    variant: 'destructive',
+  },
+} as const satisfies Record<
+  ActivityTransitionAction,
+  {
+    label: string
+    variant: 'outline' | 'destructive'
+  }
+>
 
 function App() {
   const queryClient = useQueryClient()
@@ -367,7 +396,7 @@ function App() {
       action,
     }: {
       id: string
-      action: 'need_volunteer' | 'go' | 'end' | 'cancel'
+      action: ActivityTransitionAction
     }) => api.transitionActivity(id, action),
     onSuccess: async () => {
       toast.success('Activity status updated.')
@@ -980,10 +1009,14 @@ function ActivitiesPage({
   onEditActivity: () => void
   onOpenChat: () => void
   onGenerateExport: () => void
-  onTransition: (action: 'need_volunteer' | 'go' | 'end' | 'cancel') => void
+  onTransition: (action: ActivityTransitionAction) => void
   onPanelTabChange: (value: PanelTab) => void
   onRecordAction: (id: string, action: 'approve_apply' | 'done' | 'disapprove_apply') => void
 }) {
+  const availableTransitions: readonly ActivityTransitionAction[] = selectedDetail
+    ? activityTransitionActions(selectedDetail.state)
+    : []
+
   return (
     <>
       <div className="flex h-full min-h-0 flex-col gap-4">
@@ -1144,40 +1177,21 @@ function ActivitiesPage({
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          size="sm"
-                          variant={selectedDetail.state === 'need_volunteer' ? 'default' : 'outline'}
-                          disabled={!canManageSelectedActivity}
-                          onClick={() => onTransition('need_volunteer')}
-                        >
-                          Recruiting
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant={selectedDetail.state === 'going' ? 'default' : 'outline'}
-                          disabled={!canManageSelectedActivity}
-                          onClick={() => onTransition('go')}
-                        >
-                          Start
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant={selectedDetail.state === 'ended' ? 'default' : 'outline'}
-                          disabled={!canManageSelectedActivity}
-                          onClick={() => onTransition('end')}
-                        >
-                          Complete
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          disabled={!canManageSelectedActivity}
-                          onClick={() => onTransition('cancel')}
-                        >
-                          Cancel
-                        </Button>
-                      </div>
+                      {availableTransitions.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {availableTransitions.map((action) => (
+                            <Button
+                              key={action}
+                              size="sm"
+                              variant={activityTransitionMeta[action].variant}
+                              disabled={!canManageSelectedActivity}
+                              onClick={() => onTransition(action)}
+                            >
+                              {activityTransitionMeta[action].label}
+                            </Button>
+                          ))}
+                        </div>
+                      ) : null}
                     </CardHeader>
                   </Card>
 

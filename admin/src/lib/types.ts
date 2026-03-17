@@ -6,6 +6,7 @@ export type AuthorityName =
   | 'generate_export'
 
 export type ActivityState = 'need_volunteer' | 'going' | 'ended' | 'canceled'
+export type ActivityTransitionAction = 'need_volunteer' | 'go' | 'end' | 'cancel'
 
 export type RecordState = 'todo' | 'done' | 'canceled'
 
@@ -137,6 +138,17 @@ export interface ActivityDraft {
   briefDescription: string
   description: string
   duration: number
+}
+
+const activityTransitionsByState = {
+  need_volunteer: ['go', 'cancel'],
+  going: ['end', 'cancel'],
+  ended: [],
+  canceled: [],
+} as const satisfies Record<ActivityState, readonly ActivityTransitionAction[]>
+
+export function activityTransitionActions(state: ActivityState): readonly ActivityTransitionAction[] {
+  return activityTransitionsByState[state]
 }
 
 export function activityChannelIsReadOnly(state: ActivityState): boolean {
