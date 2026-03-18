@@ -14,6 +14,7 @@ import {
   Save,
   Search,
   Trash2,
+  Upload,
   Users,
 } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
@@ -58,6 +59,7 @@ import type {
   ExportBatchResponse,
   RecordEntry,
   UpdateUserForm,
+  UserClassSummary,
   UserProfile,
 } from '@/lib/types'
 import {
@@ -267,8 +269,14 @@ function App() {
       }),
     enabled: Boolean(currentUser) && authorities.view_user === true,
   })
+  const studentClassesQuery = useQuery({
+    queryKey: ['student-classes', currentUser?.id],
+    queryFn: () => api.userClasses({ group: 'student' }),
+    enabled: Boolean(currentUser) && authorities.view_user === true,
+  })
 
   const students = studentsQuery.data ?? emptyStudents
+  const studentClasses = studentClassesQuery.data ?? []
   const resolvedSelectedStudentId =
     selectedStudentId &&
     (studentsQuery.isLoading || students.some((student) => student.id === selectedStudentId))
@@ -501,6 +509,15 @@ function App() {
     onError: showMutationError,
   })
 
+  const invalidateStudentQueries = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['students'] }),
+      queryClient.invalidateQueries({ queryKey: ['student-classes'] }),
+      queryClient.invalidateQueries({ queryKey: ['participant-names'] }),
+      queryClient.invalidateQueries({ queryKey: ['chat-message-names'] }),
+    ])
+  }
+
   const updateStudentMutation = useMutation({
     mutationFn: async ({
       id,
@@ -514,11 +531,7 @@ function App() {
     },
     onSuccess: async (student) => {
       toast.success('Student profile updated.')
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['students'] }),
-        queryClient.invalidateQueries({ queryKey: ['participant-names'] }),
-        queryClient.invalidateQueries({ queryKey: ['chat-message-names'] }),
-      ])
+      await invalidateStudentQueries()
       if (currentUser?.id === student.id) {
         await queryClient.invalidateQueries({ queryKey: ['current-user'] })
       }
@@ -540,16 +553,42 @@ function App() {
       if (resolvedSelectedStudentId === deletedId) {
         navigateStudents()
       }
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['students'] }),
-        queryClient.invalidateQueries({ queryKey: ['participant-names'] }),
-        queryClient.invalidateQueries({ queryKey: ['chat-message-names'] }),
-      ])
+      await invalidateStudentQueries()
     },
     onError: showMutationError,
     onSettled: () => {
       setDeletingStudentId(null)
     },
+  })
+
+  const importStudentsMutation = useMutation({
+    mutationFn: ({ csvText, defaultPassword }: { csvText: string; defaultPassword: string }) =>
+      api.importUsersCsv(csvText, defaultPassword),
+    onSuccess: async (result) => {
+      toast.success(`Imported ${result.affected} students.`)
+      await invalidateStudentQueries()
+    },
+    onError: showMutationError,
+  })
+
+  const batchUpdateClassMutation = useMutation({
+    mutationFn: ({ fromClassname, toClassname }: { fromClassname: string; toClassname: string }) =>
+      api.batchUpdateClass(fromClassname, toClassname),
+    onSuccess: async (result) => {
+      toast.success(`Updated ${result.affected} students.`)
+      await invalidateStudentQueries()
+    },
+    onError: showMutationError,
+  })
+
+  const batchDeleteClassMutation = useMutation({
+    mutationFn: ({ classname }: { classname: string }) => api.batchDeleteClass(classname),
+    onSuccess: async (result) => {
+      toast.success(`Deleted ${result.affected} students.`)
+      navigateStudents()
+      await invalidateStudentQueries()
+    },
+    onError: showMutationError,
   })
 
   const participantNames = participantNamesQuery.data ?? {}
@@ -888,6 +927,8 @@ function App() {
                 search={studentSearch}
                 students={students}
                 studentsLoading={studentsQuery.isLoading}
+                classSummaries={studentClasses}
+                classSummariesLoading={studentClassesQuery.isLoading}
                 selectedStudentId={resolvedSelectedStudentId}
                 selectedStudent={selectedStudent}
                 selectedStudentPending={selectedStudentPending}
@@ -896,8 +937,20 @@ function App() {
                 canDeleteStudents={canDeleteStudents}
                 savingStudentId={savingStudentId}
                 deletingStudentId={deletingStudentId}
+                importingStudents={importStudentsMutation.isPending}
+                batchUpdatingClass={batchUpdateClassMutation.isPending}
+                batchDeletingClass={batchDeleteClassMutation.isPending}
                 onSearchChange={setStudentSearch}
                 onSelectStudent={(studentId) => navigateStudents(studentId)}
+                onImportStudents={async (csvText, defaultPassword) => {
+                  await importStudentsMutation.mutateAsync({ csvText, defaultPassword })
+                }}
+                onBatchUpdateClass={async (fromClassname, toClassname) => {
+                  await batchUpdateClassMutation.mutateAsync({ fromClassname, toClassname })
+                }}
+                onBatchDeleteClass={async (classname) => {
+                  await batchDeleteClassMutation.mutateAsync({ classname })
+                }}
                 onSaveStudent={async (studentId, draft) => {
                   await updateStudentMutation.mutateAsync({
                     id: studentId,
@@ -1473,6 +1526,8 @@ function StudentsPage({
   search,
   students,
   studentsLoading,
+  classSummaries,
+  classSummariesLoading,
   selectedStudentId,
   selectedStudent,
   selectedStudentPending,
@@ -1481,14 +1536,22 @@ function StudentsPage({
   canDeleteStudents,
   savingStudentId,
   deletingStudentId,
+  importingStudents,
+  batchUpdatingClass,
+  batchDeletingClass,
   onSearchChange,
   onSelectStudent,
+  onImportStudents,
+  onBatchUpdateClass,
+  onBatchDeleteClass,
   onSaveStudent,
   onDeleteStudent,
 }: {
   search: string
   students: UserProfile[]
   studentsLoading: boolean
+  classSummaries: UserClassSummary[]
+  classSummariesLoading: boolean
   selectedStudentId: string | null
   selectedStudent: UserProfile | null
   selectedStudentPending: boolean
@@ -1497,14 +1560,26 @@ function StudentsPage({
   canDeleteStudents: boolean
   savingStudentId: string | null
   deletingStudentId: string | null
+  importingStudents: boolean
+  batchUpdatingClass: boolean
+  batchDeletingClass: boolean
   onSearchChange: (value: string) => void
   onSelectStudent: (studentId: string) => void
+  onImportStudents: (csvText: string, defaultPassword: string) => Promise<void>
+  onBatchUpdateClass: (fromClassname: string, toClassname: string) => Promise<void>
+  onBatchDeleteClass: (classname: string) => Promise<void>
   onSaveStudent: (studentId: string, draft: UpdateUserForm) => Promise<void>
   onDeleteStudent: (studentId: string) => Promise<void>
 }) {
   const [draft, setDraft] = useState<StudentEditorDraft | null>(() =>
     selectedStudent ? studentToDraft(selectedStudent) : null,
   )
+  const [defaultImportPassword, setDefaultImportPassword] = useState('change-me-2026')
+  const [importInputKey, setImportInputKey] = useState(0)
+  const [pendingImportFile, setPendingImportFile] = useState<File | null>(null)
+  const [bulkClassFrom, setBulkClassFrom] = useState('')
+  const [bulkClassTo, setBulkClassTo] = useState('')
+  const [bulkDeleteClassArmed, setBulkDeleteClassArmed] = useState(false)
   const [deleteArmed, setDeleteArmed] = useState(false)
 
   if (!canViewStudents) {
@@ -1531,6 +1606,7 @@ function StudentsPage({
     selectedStudent !== null &&
     draft !== null &&
     !studentDraftMatchesProfile(draft, selectedStudent)
+  const bulkClassSource = bulkClassFrom || classSummaries[0]?.classname || ''
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-4">
@@ -1543,6 +1619,141 @@ function StudentsPage({
             </h2>
           </div>
         </div>
+      </div>
+
+      <div className="shrink-0 grid gap-4 xl:grid-cols-2">
+        <Card className="border-white/70 bg-white/88 shadow-lg shadow-slate-200/40">
+          <CardHeader className="p-5">
+            <CardTitle className="text-lg">Batch Import (CSV)</CardTitle>
+            <CardDescription>
+              Required headers: <code>email,realname,gender,classname</code>.
+              Optional headers: <code>description,avatar,password</code>.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3 px-5 pb-5 pt-0">
+            <Input
+              key={`student-import-${importInputKey}`}
+              type="file"
+              accept=".csv,text/csv"
+              disabled={importingStudents}
+              onChange={(event) => {
+                setPendingImportFile(event.target.files?.[0] ?? null)
+              }}
+            />
+            <Input
+              type="password"
+              value={defaultImportPassword}
+              disabled={importingStudents}
+              placeholder="Default password for rows without password column"
+              onChange={(event) => setDefaultImportPassword(event.target.value)}
+            />
+            <Button
+              disabled={importingStudents}
+              onClick={async () => {
+                if (!pendingImportFile) {
+                  toast.error('Please choose a CSV file first.')
+                  return
+                }
+                const defaultPassword = defaultImportPassword.trim()
+                if (!defaultPassword) {
+                  toast.error('Default password cannot be empty.')
+                  return
+                }
+                const csvText = await pendingImportFile.text()
+                await onImportStudents(csvText, defaultPassword)
+                setPendingImportFile(null)
+                setImportInputKey((value) => value + 1)
+              }}
+            >
+              <Upload className="mr-2 size-4" />
+              {importingStudents ? 'Importing…' : 'Import students'}
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="border-white/70 bg-white/88 shadow-lg shadow-slate-200/40">
+          <CardHeader className="p-5">
+            <CardTitle className="text-lg">Batch By Class</CardTitle>
+            <CardDescription>
+              Rename or delete all student accounts in one class.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3 px-5 pb-5 pt-0">
+            <Select
+              value={bulkClassSource || undefined}
+              onValueChange={(value) => {
+                setBulkClassFrom(value)
+                setBulkDeleteClassArmed(false)
+              }}
+              disabled={classSummariesLoading || classSummaries.length === 0}
+            >
+              <SelectTrigger className="rounded-2xl border-slate-200/80 bg-white/90">
+                <SelectValue placeholder="Choose source class" />
+              </SelectTrigger>
+              <SelectContent>
+                {classSummaries.map((entry) => (
+                  <SelectItem key={entry.classname} value={entry.classname}>
+                    {entry.classname} ({entry.count})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Input
+              value={bulkClassTo}
+              disabled={batchUpdatingClass || classSummaries.length === 0}
+              placeholder="Target class name"
+              onChange={(event) => setBulkClassTo(event.target.value)}
+            />
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Button
+                variant="outline"
+                disabled={batchUpdatingClass || batchDeletingClass || classSummaries.length === 0}
+                onClick={async () => {
+                  const fromClassname = bulkClassSource.trim()
+                  const toClassname = bulkClassTo.trim()
+                  if (!fromClassname || !toClassname) {
+                    toast.error('Both source and target classes are required.')
+                    return
+                  }
+                  if (fromClassname === toClassname) {
+                    toast.error('Source and target classes must be different.')
+                    return
+                  }
+                  await onBatchUpdateClass(fromClassname, toClassname)
+                  setBulkClassTo('')
+                }}
+              >
+                {batchUpdatingClass ? 'Updating…' : 'Rename class'}
+              </Button>
+
+              <Button
+                variant={bulkDeleteClassArmed ? 'destructive' : 'outline'}
+                disabled={batchUpdatingClass || batchDeletingClass || classSummaries.length === 0}
+                onClick={async () => {
+                  const classname = bulkClassSource.trim()
+                  if (!classname) {
+                    toast.error('Choose a class to delete.')
+                    return
+                  }
+                  if (!bulkDeleteClassArmed) {
+                    setBulkDeleteClassArmed(true)
+                    return
+                  }
+                  await onBatchDeleteClass(classname)
+                  setBulkDeleteClassArmed(false)
+                }}
+              >
+                {batchDeletingClass
+                  ? 'Deleting…'
+                  : bulkDeleteClassArmed
+                    ? 'Confirm delete class'
+                    : 'Delete class users'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="min-h-0 flex-1 rounded-[2.4rem] border border-white/70 bg-white/70 p-2 shadow-[0_34px_100px_-42px_rgba(15,23,42,0.3)] backdrop-blur-xl">

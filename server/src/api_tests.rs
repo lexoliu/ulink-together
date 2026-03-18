@@ -564,6 +564,259 @@ async fn user_list_defaults_to_students_and_supports_search() {
 }
 
 #[tokio::test]
+async fn user_classes_returns_student_counts_by_default() {
+    let database = build_test_database().await;
+    let admin = insert_user(&database, "admin", "admin-classes@example.com", "Admin").await;
+    let class_a = insert_user(
+        &database,
+        "student",
+        "class-a@example.com",
+        "Class A Student",
+    )
+    .await;
+    let class_b = insert_user(
+        &database,
+        "student",
+        "class-b@example.com",
+        "Class B Student",
+    )
+    .await;
+    insert_user(&database, "admin", "teacher@example.com", "Teacher").await;
+    sqlx::query(
+        database
+            .sql("UPDATE users SET classname = ?1 WHERE id = ?2")
+            .as_ref(),
+    )
+    .bind("Class A")
+    .bind(class_a.to_string())
+    .execute(database.sqlx())
+    .await
+    .expect("update class a");
+    sqlx::query(
+        database
+            .sql("UPDATE users SET classname = ?1 WHERE id = ?2")
+            .as_ref(),
+    )
+    .bind("Class B")
+    .bind(class_b.to_string())
+    .execute(database.sqlx())
+    .await
+    .expect("update class b");
+    let cookie = insert_session(&database, admin).await;
+    let client = test_client(database);
+
+    let response = client
+        .get("/api/v1/user/classes")
+        .header("Cookie", &cookie)
+        .send()
+        .await;
+    response.assert_status_success();
+    response.assert_json_path("0.classname", &json!("Class A"));
+    response.assert_json_path("0.count", &json!(1));
+}
+
+#[tokio::test]
+async fn batch_import_csv_requires_update_user_anyway_authority() {
+    let database = build_test_database().await;
+    let actor = insert_user(&database, "student", "actor-import@example.com", "Actor").await;
+    let cookie = insert_session(&database, actor).await;
+    let client = test_client(database);
+
+    let response = client
+        .post("/api/v1/user/batch/import_csv")
+        .header("Cookie", &cookie)
+        .json(&json!({
+            "csv_text": "email,realname,gender,classname\nimported@example.com,Imported Student,other,Class X",
+            "default_password": "change-me"
+        }))
+        .send()
+        .await;
+
+    response.assert_status(403);
+}
+
+#[tokio::test]
+async fn batch_import_csv_creates_students_with_default_and_row_password() {
+    let database = build_test_database().await;
+    let admin = insert_user(&database, "admin", "admin-import@example.com", "Admin").await;
+    let cookie = insert_session(&database, admin).await;
+    let client = test_client(database.clone());
+
+    let response = client
+        .post("/api/v1/user/batch/import_csv")
+        .header("Cookie", &cookie)
+        .json(&json!({
+            "csv_text": "email,realname,gender,classname,description,avatar,password\nstudent-one@example.com,Student One,female,Class 10A,First student,,\nstudent-two@example.com,Student Two,male,Class 10B,,/api/v1/resource/a.png,custom-pass",
+            "default_password": "default-pass"
+        }))
+        .send()
+        .await;
+
+    response.assert_status_success();
+    response.assert_json_path("affected", &json!(2));
+
+    let one = sqlx::query(
+        database
+            .sql("SELECT password_hash, salt, classname FROM users WHERE email = ?1")
+            .as_ref(),
+    )
+    .bind("student-one@example.com")
+    .fetch_one(database.sqlx())
+    .await
+    .expect("query student one");
+    let one_salt: String = one.get("salt");
+    assert_eq!(
+        one.get::<String, _>("password_hash"),
+        sha256(format!("{}{}", "default-pass", one_salt))
+    );
+    assert_eq!(one.get::<String, _>("classname"), "Class 10A");
+
+    let two = sqlx::query(
+        database
+            .sql("SELECT password_hash, salt, avatar_path FROM users WHERE email = ?1")
+            .as_ref(),
+    )
+    .bind("student-two@example.com")
+    .fetch_one(database.sqlx())
+    .await
+    .expect("query student two");
+    let two_salt: String = two.get("salt");
+    assert_eq!(
+        two.get::<String, _>("password_hash"),
+        sha256(format!("{}{}", "custom-pass", two_salt))
+    );
+    assert_eq!(
+        two.get::<Option<String>, _>("avatar_path"),
+        Some("/api/v1/resource/a.png".to_string())
+    );
+}
+
+#[tokio::test]
+async fn batch_update_class_renames_student_class_in_bulk() {
+    let database = build_test_database().await;
+    let admin = insert_user(
+        &database,
+        "admin",
+        "admin-class-update@example.com",
+        "Admin",
+    )
+    .await;
+    let s1 = insert_user(&database, "student", "c1@example.com", "Class One").await;
+    let s2 = insert_user(&database, "student", "c2@example.com", "Class Two").await;
+    let s3 = insert_user(&database, "student", "c3@example.com", "Class Three").await;
+    for student_id in [s1, s2] {
+        sqlx::query(
+            database
+                .sql("UPDATE users SET classname = ?1 WHERE id = ?2")
+                .as_ref(),
+        )
+        .bind("Class 11A")
+        .bind(student_id.to_string())
+        .execute(database.sqlx())
+        .await
+        .expect("assign class 11a");
+    }
+    sqlx::query(
+        database
+            .sql("UPDATE users SET classname = ?1 WHERE id = ?2")
+            .as_ref(),
+    )
+    .bind("Class 11B")
+    .bind(s3.to_string())
+    .execute(database.sqlx())
+    .await
+    .expect("assign class 11b");
+    let cookie = insert_session(&database, admin).await;
+    let client = test_client(database.clone());
+
+    let response = client
+        .post("/api/v1/user/batch/update_class")
+        .header("Cookie", &cookie)
+        .json(&json!({
+            "from_classname": "Class 11A",
+            "to_classname": "Class 12A"
+        }))
+        .send()
+        .await;
+
+    response.assert_status_success();
+    response.assert_json_path("affected", &json!(2));
+
+    let renamed_count = sqlx::query(
+        database
+            .sql("SELECT COUNT(*) AS c FROM users WHERE classname = ?1")
+            .as_ref(),
+    )
+    .bind("Class 12A")
+    .fetch_one(database.sqlx())
+    .await
+    .expect("count class 12a");
+    assert_eq!(renamed_count.get::<i64, _>("c"), 2);
+}
+
+#[tokio::test]
+async fn batch_delete_class_removes_only_target_student_class() {
+    let database = build_test_database().await;
+    let admin = insert_user(
+        &database,
+        "admin",
+        "admin-class-delete@example.com",
+        "Admin",
+    )
+    .await;
+    let keep = insert_user(&database, "student", "keep@example.com", "Keep Student").await;
+    let drop_one = insert_user(&database, "student", "drop1@example.com", "Drop One").await;
+    let drop_two = insert_user(&database, "student", "drop2@example.com", "Drop Two").await;
+    sqlx::query(
+        database
+            .sql("UPDATE users SET classname = ?1 WHERE id = ?2")
+            .as_ref(),
+    )
+    .bind("Class Keep")
+    .bind(keep.to_string())
+    .execute(database.sqlx())
+    .await
+    .expect("assign class keep");
+    for student_id in [drop_one, drop_two] {
+        sqlx::query(
+            database
+                .sql("UPDATE users SET classname = ?1 WHERE id = ?2")
+                .as_ref(),
+        )
+        .bind("Class Drop")
+        .bind(student_id.to_string())
+        .execute(database.sqlx())
+        .await
+        .expect("assign class drop");
+    }
+    let cookie = insert_session(&database, admin).await;
+    let client = test_client(database.clone());
+
+    let response = client
+        .post("/api/v1/user/batch/delete_class")
+        .header("Cookie", &cookie)
+        .json(&json!({
+            "classname": "Class Drop"
+        }))
+        .send()
+        .await;
+
+    response.assert_status_success();
+    response.assert_json_path("affected", &json!(2));
+
+    let remaining_drop = sqlx::query(
+        database
+            .sql("SELECT COUNT(*) AS c FROM users WHERE classname = ?1")
+            .as_ref(),
+    )
+    .bind("Class Drop")
+    .fetch_one(database.sqlx())
+    .await
+    .expect("count class drop");
+    assert_eq!(remaining_drop.get::<i64, _>("c"), 0);
+}
+
+#[tokio::test]
 async fn export_requires_authority_and_generates_csv() {
     let database = build_test_database().await;
     let admin = insert_user(&database, "admin", "admin@example.com", "Admin").await;

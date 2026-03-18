@@ -73,7 +73,12 @@ pub fn api() -> Route {
         "/auth/check/{authority}".at(check_authority),
         "/login".post(login::handler),
         "/logout".post(login::logout),
-        "/user".at(user::list).post(user::register),
+        "/user".at(user::list).post(user::register).route((
+            "/classes".at(user::list_classes),
+            "/batch/import_csv".post(user::import_csv),
+            "/batch/update_class".post(user::batch_update_class),
+            "/batch/delete_class".post(user::batch_delete_class),
+        )),
     ))
     .enable_api_doc()
 }

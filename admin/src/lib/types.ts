@@ -150,6 +150,15 @@ export interface UpdateUserForm {
   avatar?: string | null
 }
 
+export interface UserBatchResult {
+  affected: number
+}
+
+export interface UserClassSummary {
+  classname: string
+  count: number
+}
+
 const activityTransitionsByState = {
   need_volunteer: ['go', 'cancel'],
   going: ['end', 'cancel'],

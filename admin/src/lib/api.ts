@@ -14,6 +14,8 @@ import type {
   ExportBatchResponse,
   RecordEntry,
   UpdateUserForm,
+  UserBatchResult,
+  UserClassSummary,
   UserProfile,
 } from '@/lib/types'
 
@@ -244,6 +246,43 @@ export class AdminApiClient {
     return request<UserProfile>(this.client, `/user/${userId}`, {
       method: 'PUT',
       data: form,
+    })
+  }
+
+  async userClasses(params?: { group?: string }): Promise<UserClassSummary[]> {
+    return request<UserClassSummary[]>(this.client, '/user/classes', {
+      query: {
+        group: params?.group,
+      },
+    })
+  }
+
+  async importUsersCsv(csvText: string, defaultPassword: string): Promise<UserBatchResult> {
+    return request<UserBatchResult>(this.client, '/user/batch/import_csv', {
+      method: 'POST',
+      data: {
+        csv_text: csvText,
+        default_password: defaultPassword,
+      },
+    })
+  }
+
+  async batchUpdateClass(fromClassname: string, toClassname: string): Promise<UserBatchResult> {
+    return request<UserBatchResult>(this.client, '/user/batch/update_class', {
+      method: 'POST',
+      data: {
+        from_classname: fromClassname,
+        to_classname: toClassname,
+      },
+    })
+  }
+
+  async batchDeleteClass(classname: string): Promise<UserBatchResult> {
+    return request<UserBatchResult>(this.client, '/user/batch/delete_class', {
+      method: 'POST',
+      data: {
+        classname,
+      },
     })
   }
 
