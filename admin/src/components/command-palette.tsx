@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { Command as CommandPrimitive } from 'cmdk'
-import { Download, FolderKanban, House, MessageSquareMore, Plus } from 'lucide-react'
+import { Download, FolderKanban, House, MessageSquareMore, Plus, Users } from 'lucide-react'
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { activityStateLabel, formatDateOnly } from '@/lib/format'
@@ -11,6 +11,7 @@ interface CommandPaletteProps {
   onOpenChange: (open: boolean) => void
   activities: ActivitySummary[]
   onOpenHome: () => void
+  onOpenStudents?: () => void
   onOpenActivity: (activityId: string) => void
   onOpenChat: (activityId: string) => void
   onCreateActivity?: () => void
@@ -22,6 +23,7 @@ export function CommandPalette({
   onOpenChange,
   activities,
   onOpenHome,
+  onOpenStudents,
   onOpenActivity,
   onOpenChat,
   onCreateActivity,
@@ -80,6 +82,16 @@ export function CommandPalette({
                   onOpenHome()
                 }}
               />
+              {onOpenStudents ? (
+                <CommandItem
+                  icon={<Users className="size-4" />}
+                  title="Students"
+                  onSelect={() => {
+                    onOpenChange(false)
+                    onOpenStudents()
+                  }}
+                />
+              ) : null}
             </CommandGroup>
 
             {onCreateActivity || onGenerateExport ? (

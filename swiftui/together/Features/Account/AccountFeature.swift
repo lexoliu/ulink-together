@@ -1,4 +1,14 @@
+import PhotosUI
 import SwiftUI
+import UniformTypeIdentifiers
+
+#if canImport(AppKit)
+import AppKit
+#endif
+
+#if canImport(UIKit)
+import UIKit
+#endif
 
 struct AccountHomeView: View {
     @EnvironmentObject private var session: SessionStore
@@ -115,8 +125,10 @@ struct AccountHomeView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Account")
                     .font(.headline)
+                Text("Service address")
+                    .font(.subheadline.weight(.medium))
                 TextField(
-                    "Server URL",
+                    "https://volunteer.ulink.edu.cn",
                     text: Binding(
                         get: { session.serverURLText },
                         set: { session.updateServerURL($0) }
@@ -124,7 +136,17 @@ struct AccountHomeView: View {
                 )
                 .textInputAutocapitalization(.never)
                 .keyboardType(.URL)
-                .textFieldStyle(.roundedBorder)
+                .autocorrectionDisabled()
+                .padding(.horizontal, 16)
+                .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Color(uiColor: .systemBackground))
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(Color(uiColor: .separator).opacity(0.22), lineWidth: 1)
+                }
 
                 Button("Reconnect") {
                     Task {
@@ -161,8 +183,11 @@ struct ProfileEditorView: View {
     @State private var gender: String
     @State private var descriptionText: String
     @State private var classname: String
-    @State private var avatar: String
+    @State private var selectedAvatarItem: PhotosPickerItem?
+    @State private var pendingAvatarUpload: PendingAvatarUpload?
     @State private var errorMessage: String?
+    @State private var isLoadingAvatar = false
+    @State private var isSaving = false
 
     init(user: UserProfile) {
         self.user = user
@@ -170,18 +195,17 @@ struct ProfileEditorView: View {
         _gender = State(initialValue: user.gender)
         _descriptionText = State(initialValue: user.description)
         _classname = State(initialValue: user.classname)
-        _avatar = State(initialValue: user.avatar ?? "")
     }
 
     var body: some View {
         Form {
             Section("Profile") {
+                avatarEditor
                 TextField("Real name", text: $realname)
                 TextField("Gender", text: $gender)
                 TextField("Class name", text: $classname)
                 TextField("Description", text: $descriptionText, axis: .vertical)
                     .lineLimit(3 ... 6)
-                TextField("Avatar path", text: $avatar)
             }
 
             if let errorMessage {
@@ -193,6 +217,11 @@ struct ProfileEditorView: View {
         }
         .navigationTitle("Edit Profile")
         .navigationBarTitleDisplayMode(.inline)
+        .onChange(of: selectedAvatarItem) { _, newValue in
+            Task {
+                await loadAvatarSelection(from: newValue)
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button("Cancel") {
@@ -200,30 +229,243 @@ struct ProfileEditorView: View {
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Button("Save") {
+                Button(isSaving ? "Saving..." : "Save") {
                     Task {
                         await save()
                     }
                 }
+                .disabled(isSaving || isLoadingAvatar)
             }
         }
     }
 
-    private func save() async {
-        let request = UpdateUserRequest(
-            realname: realname.trimmingCharacters(in: .whitespacesAndNewlines),
-            gender: gender.trimmingCharacters(in: .whitespacesAndNewlines),
-            description: descriptionText.trimmingCharacters(in: .whitespacesAndNewlines),
-            classname: classname.trimmingCharacters(in: .whitespacesAndNewlines),
-            avatar: avatar.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : avatar.trimmingCharacters(in: .whitespacesAndNewlines)
-        )
-        let updated = await session.updateCurrentUser(request: request)
-        if updated {
-            dismiss()
+    private var avatarEditor: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 16) {
+                avatarPreview
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Profile photo")
+                        .font(.headline)
+
+                    if pendingAvatarUpload != nil {
+                        Text("Selected photo will upload when you save.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    } else if user.avatar == nil {
+                        Text("Add a photo after account creation.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("Choose a new photo to replace the current one.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Spacer()
+            }
+
+            PhotosPicker(selection: $selectedAvatarItem, matching: .images) {
+                Label(user.avatar == nil && pendingAvatarUpload == nil ? "Choose Photo" : "Replace Photo", systemImage: "photo.on.rectangle")
+            }
+            .buttonStyle(.bordered)
+
+            if isLoadingAvatar {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("Loading selected photo...")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private var avatarPreview: some View {
+        if let selectedAvatarPreviewImage {
+            selectedAvatarPreviewImage
+                .resizable()
+                .scaledToFill()
+                .frame(width: 84, height: 84)
+                .clipShape(Circle())
+                .overlay {
+                    Circle()
+                        .strokeBorder(.white.opacity(0.7), lineWidth: 1)
+                }
         } else {
-            errorMessage = session.lastError
+            AvatarBadge(
+                title: realname.isEmpty ? user.realname : realname,
+                imageURL: session.serverURL.flatMap { session.apiClient.avatarURL(baseURL: $0, path: user.avatar) },
+                size: 84
+            )
         }
     }
+
+    private var selectedAvatarPreviewImage: Image? {
+        guard let pendingAvatarUpload else {
+            return nil
+        }
+        #if canImport(UIKit)
+        guard let image = UIImage(data: pendingAvatarUpload.data) else {
+            return nil
+        }
+        return Image(uiImage: image)
+        #elseif canImport(AppKit)
+        guard let image = NSImage(data: pendingAvatarUpload.data) else {
+            return nil
+        }
+        return Image(nsImage: image)
+        #else
+        return nil
+        #endif
+    }
+
+    private func loadAvatarSelection(from item: PhotosPickerItem?) async {
+        guard let item else {
+            return
+        }
+
+        isLoadingAvatar = true
+        defer {
+            isLoadingAvatar = false
+        }
+
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self), !data.isEmpty else {
+                throw APIError.transport(code: nil, message: "The selected photo could not be loaded.")
+            }
+            let contentType = preferredImageType(from: item)
+            pendingAvatarUpload = PendingAvatarUpload(
+                data: data,
+                filename: "avatar.\(contentType.preferredFilenameExtension ?? "jpg")",
+                mimeType: contentType.preferredMIMEType
+            )
+            errorMessage = nil
+        } catch {
+            errorMessage = session.readableError(error)
+        }
+    }
+
+    private func preferredImageType(from item: PhotosPickerItem) -> UTType {
+        item.supportedContentTypes.first(where: { $0.conforms(to: .image) }) ?? .jpeg
+    }
+
+    private func save() async {
+        isSaving = true
+        defer {
+            isSaving = false
+        }
+
+        let previousAvatarPath = user.avatar
+        var uploadedAvatarPath: String?
+
+        do {
+            let profileRequest = UpdateUserRequest(
+                realname: realname.trimmingCharacters(in: .whitespacesAndNewlines),
+                gender: gender.trimmingCharacters(in: .whitespacesAndNewlines),
+                description: descriptionText.trimmingCharacters(in: .whitespacesAndNewlines),
+                classname: classname.trimmingCharacters(in: .whitespacesAndNewlines),
+                avatar: previousAvatarPath
+            )
+
+            let profileUpdated = await session.updateCurrentUser(request: profileRequest)
+            guard profileUpdated else {
+                errorMessage = session.lastError
+                return
+            }
+
+            guard pendingAvatarUpload != nil else {
+                dismiss()
+                return
+            }
+
+            uploadedAvatarPath = try await uploadAvatar()
+            let avatarUpdated = await session.updateCurrentUser(
+                request: UpdateUserRequest(
+                    realname: nil,
+                    gender: nil,
+                    description: nil,
+                    classname: nil,
+                    avatar: uploadedAvatarPath
+                )
+            )
+            if avatarUpdated {
+                await deleteManagedResourceIfNeeded(at: previousAvatarPath, preserving: uploadedAvatarPath)
+                dismiss()
+                return
+            }
+
+            await deleteManagedResourceIfNeeded(at: uploadedAvatarPath)
+            errorMessage = session.lastError
+        } catch {
+            await deleteManagedResourceIfNeeded(at: uploadedAvatarPath)
+            errorMessage = session.readableError(error)
+        }
+    }
+
+    private func uploadAvatar() async throws -> String {
+        guard let pendingAvatarUpload else {
+            throw APIError.transport(code: nil, message: "No avatar upload is pending.")
+        }
+        if session.demoData != nil {
+            throw APIError.transport(code: nil, message: "Avatar upload is unavailable in preview mode.")
+        }
+        guard let serverURL = session.serverURL else {
+            throw APIError.invalidBaseURL
+        }
+
+        let resource = try await session.apiClient.uploadResource(
+            baseURL: serverURL,
+            filename: pendingAvatarUpload.filename,
+            data: pendingAvatarUpload.data,
+            mimeType: pendingAvatarUpload.mimeType
+        )
+        return resource.path
+    }
+
+    private func deleteManagedResourceIfNeeded(at path: String?, preserving preservedPath: String? = nil) async {
+        guard path != preservedPath,
+              session.demoData == nil,
+              let serverURL = session.serverURL,
+              let filename = managedResourceFilename(from: path) else {
+            return
+        }
+
+        do {
+            try await session.apiClient.deleteResource(baseURL: serverURL, filename: filename)
+        } catch {
+            // Cleanup failure should not hide the main profile-save result.
+        }
+    }
+
+    private func managedResourceFilename(from path: String?) -> String? {
+        guard let path else {
+            return nil
+        }
+
+        let resourcePath: String
+        if let url = URL(string: path), let scheme = url.scheme, !scheme.isEmpty {
+            resourcePath = url.path
+        } else {
+            resourcePath = path
+        }
+
+        let marker = "/api/v1/resource/"
+        if let range = resourcePath.range(of: marker) {
+            let filename = String(resourcePath[range.upperBound...])
+            return filename.isEmpty ? nil : filename
+        }
+        return nil
+    }
+}
+
+private struct PendingAvatarUpload {
+    let data: Data
+    let filename: String
+    let mimeType: String?
 }
 
 #Preview("Account") {

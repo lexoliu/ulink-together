@@ -3,6 +3,13 @@ import Foundation
 
 @MainActor
 final class SessionStore: ObservableObject {
+    private enum LastErrorCategory {
+        case connectivity
+        case authentication
+        case validation
+        case general
+    }
+
     enum RuntimeMode: Equatable, Sendable {
         case live
         case demoSignedOut
@@ -27,6 +34,7 @@ final class SessionStore: ObservableObject {
     @Published var serverURLText: String
     @Published var isAuthenticating = false
     var demoData: AppDemoData?
+    private var lastErrorCategory: LastErrorCategory?
 
     init(defaultServerURL: String? = nil, runtimeMode: RuntimeMode? = nil) {
         let resolvedMode = runtimeMode ?? Self.runtimeModeFromProcessInfo()
@@ -53,6 +61,7 @@ final class SessionStore: ObservableObject {
             currentUser = demoData.currentUser
             authorityCache = demoData.authorities
             phase = demoData.currentUser == nil ? .signedOut : .signedIn
+            clearLastError()
         }
     }
 
@@ -97,33 +106,33 @@ final class SessionStore: ObservableObject {
             currentUser = demoData.currentUser
             authorityCache = demoData.authorities
             phase = demoData.currentUser == nil ? .signedOut : .signedIn
-            lastError = nil
+            clearLastError()
             return
         }
 
         guard let serverURL else {
             phase = .signedOut
-            lastError = "Enter a valid server URL to connect the app."
+            setLastError("Enter a valid service address to continue.", category: .validation)
             return
         }
 
         do {
             currentUser = try await apiClient.fetchCurrentUser(baseURL: serverURL)
             phase = .signedIn
-            lastError = nil
+            clearLastError()
             await refreshAuthorities()
         } catch let error as APIError {
             phase = .signedOut
             currentUser = nil
             authorityCache = [:]
             if !error.isAuthorizationFailure {
-                lastError = error.errorDescription
+                setLastError(error.errorDescription, category: .connectivity)
             }
         } catch {
             phase = .signedOut
             currentUser = nil
             authorityCache = [:]
-            lastError = error.localizedDescription
+            setLastError(error.localizedDescription, category: .general)
         }
     }
 
@@ -134,36 +143,50 @@ final class SessionStore: ObservableObject {
             currentUser = demoData.currentUser
             authorityCache = demoData.authorities
             phase = .signedIn
-            lastError = nil
+            clearLastError()
             return true
         }
         if let demoData {
             currentUser = demoData.currentUser
             authorityCache = demoData.authorities
             phase = demoData.currentUser == nil ? .signedOut : .signedIn
-            lastError = nil
+            clearLastError()
             return demoData.currentUser != nil
         }
 
         guard let serverURL else {
-            lastError = "Enter a valid server URL before signing in."
+            setLastError("Enter a valid service address before signing in.", category: .validation)
             return false
         }
 
+        clearLastError()
         isAuthenticating = true
         defer {
             isAuthenticating = false
         }
 
         do {
+            try await apiClient.healthCheck(baseURL: serverURL)
+        } catch {
+            setLastError(readableHealthCheckError(error), category: .connectivity)
+            return false
+        }
+
+        do {
             try await apiClient.login(baseURL: serverURL, email: email, password: password)
+        } catch {
+            setLastError(readableAuthenticationError(error), category: .authentication)
+            return false
+        }
+
+        do {
             currentUser = try await apiClient.fetchCurrentUser(baseURL: serverURL)
             phase = .signedIn
-            lastError = nil
+            clearLastError()
             await refreshAuthorities()
             return true
         } catch {
-            lastError = readableError(error)
+            setLastError(readableError(error), category: .general)
             return false
         }
     }
@@ -175,25 +198,33 @@ final class SessionStore: ObservableObject {
             currentUser = demoData.currentUser
             authorityCache = demoData.authorities
             phase = .signedIn
-            lastError = nil
+            clearLastError()
             return true
         }
         if let demoData {
             currentUser = demoData.currentUser
             authorityCache = demoData.authorities
             phase = demoData.currentUser == nil ? .signedOut : .signedIn
-            lastError = nil
+            clearLastError()
             return demoData.currentUser != nil
         }
 
         guard let serverURL else {
-            lastError = "Enter a valid server URL before creating an account."
+            setLastError("Enter a valid service address before creating an account.", category: .validation)
             return false
         }
 
+        clearLastError()
         isAuthenticating = true
         defer {
             isAuthenticating = false
+        }
+
+        do {
+            try await apiClient.healthCheck(baseURL: serverURL)
+        } catch {
+            setLastError(readableHealthCheckError(error), category: .connectivity)
+            return false
         }
 
         do {
@@ -201,11 +232,11 @@ final class SessionStore: ObservableObject {
             try await apiClient.login(baseURL: serverURL, email: request.email, password: request.password)
             currentUser = try await apiClient.fetchCurrentUser(baseURL: serverURL)
             phase = .signedIn
-            lastError = nil
+            clearLastError()
             await refreshAuthorities()
             return true
         } catch {
-            lastError = readableError(error)
+            setLastError(readableError(error), category: .general)
             return false
         }
     }
@@ -213,7 +244,7 @@ final class SessionStore: ObservableObject {
     func refreshCurrentUser() async {
         if let demoData {
             currentUser = demoData.currentUser
-            lastError = nil
+            clearLastError()
             return
         }
 
@@ -224,7 +255,7 @@ final class SessionStore: ObservableObject {
         do {
             currentUser = try await apiClient.fetchCurrentUser(baseURL: serverURL)
         } catch {
-            lastError = readableError(error)
+            setLastError(readableError(error), category: .general)
         }
     }
 
@@ -263,7 +294,7 @@ final class SessionStore: ObservableObject {
     func updateCurrentUser(request: UpdateUserRequest) async -> Bool {
         if demoData != nil {
             guard let existingUser = currentUser else {
-                lastError = "No current user exists in demo mode."
+                setLastError("No current user exists in demo mode.", category: .general)
                 return false
             }
             currentUser = UserProfile(
@@ -276,21 +307,21 @@ final class SessionStore: ObservableObject {
                 avatar: request.avatar ?? existingUser.avatar,
                 group: existingUser.group
             )
-            lastError = nil
+            clearLastError()
             return true
         }
 
         guard let serverURL else {
-            lastError = "Enter a valid server URL before updating your profile."
+            setLastError("Enter a valid service address before updating your profile.", category: .validation)
             return false
         }
 
         do {
             currentUser = try await apiClient.updateCurrentUser(baseURL: serverURL, request: request)
-            lastError = nil
+            clearLastError()
             return true
         } catch {
-            lastError = readableError(error)
+            setLastError(readableError(error), category: .general)
             return false
         }
     }
@@ -309,7 +340,7 @@ final class SessionStore: ObservableObject {
         do {
             try await apiClient.logout(baseURL: serverURL)
         } catch {
-            lastError = readableError(error)
+            setLastError(readableError(error), category: .general)
         }
         resetSession()
     }
@@ -317,10 +348,32 @@ final class SessionStore: ObservableObject {
     func updateServerURL(_ value: String) {
         guard runtimeMode == .live else {
             serverURLText = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            clearLastError()
             return
         }
         serverURLText = value.trimmingCharacters(in: .whitespacesAndNewlines)
         UserDefaults.standard.set(serverURLText, forKey: Self.serverURLDefaultsKey)
+        clearLastError()
+    }
+
+    func clearLastError() {
+        setLastError(nil)
+    }
+
+    func revalidateServiceAddressIfNeeded() async {
+        guard runtimeMode == .live,
+              phase == .signedOut,
+              lastErrorCategory == .connectivity,
+              let serverURL else {
+            return
+        }
+
+        do {
+            try await apiClient.healthCheck(baseURL: serverURL)
+            clearLastError()
+        } catch {
+            setLastError(readableHealthCheckError(error), category: .connectivity)
+        }
     }
 
     func reconnect() async {
@@ -336,6 +389,46 @@ final class SessionStore: ObservableObject {
             return description
         }
         return error.localizedDescription
+    }
+
+    private func readableHealthCheckError(_ error: Error) -> String {
+        if let apiError = error as? APIError {
+            switch apiError {
+            case let .http(statusCode, _):
+                if statusCode == 404 {
+                    return "The address responded, but it is not a Together server."
+                }
+                return readableError(apiError)
+            case .decoding, .invalidResponse:
+                return "The address responded, but it is not a Together server."
+            default:
+                return readableError(apiError)
+            }
+        }
+        return readableError(error)
+    }
+
+    private func readableAuthenticationError(_ error: Error) -> String {
+        if let apiError = error as? APIError {
+            switch apiError {
+            case let .http(statusCode, message):
+                let normalized = APIError.normalizeServerMessage(message)
+                if statusCode == 403 || statusCode == 404 {
+                    if normalized == "Wrong email or password" || normalized == "User not exists" {
+                        return "Wrong email or password."
+                    }
+                }
+                return normalized
+            default:
+                return readableError(apiError)
+            }
+        }
+        return readableError(error)
+    }
+
+    private func setLastError(_ message: String?, category: LastErrorCategory? = nil) {
+        lastError = message
+        lastErrorCategory = message == nil ? nil : category
     }
 
     func isCurrentUser(id: String) -> Bool {

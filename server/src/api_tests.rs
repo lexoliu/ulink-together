@@ -3,9 +3,10 @@ use crate::{
     database::{build_test_database, AppDatabase},
     push::PushHub,
     schema::ensure_group_authority_any,
-    utils::Id,
+    utils::{sha256, Id},
 };
-use models::{CreateActivityForm, RecordEntry};
+use async_std::fs;
+use models::{CreateActivityForm, RecordEntry, User};
 use serde_json::json;
 use skyzen_test::TestContext;
 use sqlx::Row;
@@ -41,6 +42,36 @@ async fn insert_user(database: &AppDatabase, group_code: &str, email: &str, real
     .execute(database.sqlx())
     .await
     .expect("insert user");
+    id
+}
+
+async fn insert_login_user(
+    database: &AppDatabase,
+    group_code: &str,
+    email: &str,
+    realname: &str,
+    password: &str,
+) -> Id {
+    let group = group_id(database, group_code).await;
+    let id = Id::new();
+    let salt = "test-salt";
+    let password_hash = sha256(format!("{password}{salt}"));
+    sqlx::query(
+        database
+            .sql(
+                "INSERT INTO users (id, email, realname, gender, description, classname, avatar_path, password_hash, salt, group_id) VALUES (?1, ?2, ?3, 'other', '', 'Class A', NULL, ?4, ?5, ?6)",
+            )
+            .as_ref(),
+    )
+    .bind(id.to_string())
+    .bind(email)
+    .bind(realname)
+    .bind(password_hash)
+    .bind(salt)
+    .bind(group.to_string())
+    .execute(database.sqlx())
+    .await
+    .expect("insert login user");
     id
 }
 
@@ -150,6 +181,31 @@ async fn insert_record(
     .await
     .expect("insert record");
     id
+}
+
+async fn insert_resource(database: &AppDatabase, creator: Id, name: &str) -> (Id, String) {
+    let id = Id::new();
+    let filename = format!("{id}.png");
+    fs::create_dir_all("./resource")
+        .await
+        .expect("create resource dir");
+    fs::write(format!("./resource/{filename}"), b"avatar")
+        .await
+        .expect("write resource file");
+    sqlx::query(
+        database
+            .sql("INSERT INTO resources (id, creator_id, name, extension, created_at) VALUES (?1, ?2, ?3, ?4, ?5)")
+            .as_ref(),
+    )
+    .bind(id.to_string())
+    .bind(creator.to_string())
+    .bind(name)
+    .bind("png")
+    .bind(OffsetDateTime::now_utc().to_string())
+    .execute(database.sqlx())
+    .await
+    .expect("insert resource");
+    (id, filename)
 }
 
 fn test_client(database: AppDatabase) -> skyzen_test::TestClient<skyzen::routing::Router> {
@@ -421,6 +477,93 @@ async fn leaderboard_returns_ranked_totals() {
 }
 
 #[tokio::test]
+async fn user_list_requires_view_user_authority() {
+    let database = build_test_database().await;
+    let viewer = insert_user(&database, "student", "viewer-noauth@example.com", "Viewer").await;
+    let cookie = insert_session(&database, viewer).await;
+    let client = test_client(database);
+
+    let response = client
+        .get("/api/v1/user")
+        .header("Cookie", &cookie)
+        .send()
+        .await;
+    response.assert_status(403);
+}
+
+#[tokio::test]
+async fn user_list_defaults_to_students_and_supports_search() {
+    let database = build_test_database().await;
+    let admin = insert_user(&database, "admin", "admin-users@example.com", "Admin").await;
+    insert_user(
+        &database,
+        "student",
+        "alice-student@example.com",
+        "Alice Student",
+    )
+    .await;
+    let bob = insert_user(
+        &database,
+        "student",
+        "bob-student@example.com",
+        "Bob Student",
+    )
+    .await;
+    insert_user(
+        &database,
+        "admin",
+        "teacher-admin@example.com",
+        "Teacher Admin",
+    )
+    .await;
+    sqlx::query(
+        database
+            .sql("UPDATE users SET classname = ?1 WHERE id = ?2")
+            .as_ref(),
+    )
+    .bind("Class B2")
+    .bind(bob.to_string())
+    .execute(database.sqlx())
+    .await
+    .expect("update classname");
+    let cookie = insert_session(&database, admin).await;
+    let client = test_client(database);
+
+    let response = client
+        .get("/api/v1/user")
+        .header("Cookie", &cookie)
+        .send()
+        .await;
+    response.assert_status_success();
+    let students: Vec<User> = response.assert_json();
+    let student_emails: Vec<_> = students.iter().map(|user| user.email.as_str()).collect();
+    assert!(student_emails.contains(&"alice-student@example.com"));
+    assert!(student_emails.contains(&"bob-student@example.com"));
+    assert!(!student_emails.contains(&"teacher-admin@example.com"));
+
+    let search_response = client
+        .get("/api/v1/user?search=class%20b2")
+        .header("Cookie", &cookie)
+        .send()
+        .await;
+    search_response.assert_status_success();
+    let searched: Vec<User> = search_response.assert_json();
+    assert_eq!(searched.len(), 1);
+    assert_eq!(searched[0].email, "bob-student@example.com");
+
+    let admin_group_response = client
+        .get("/api/v1/user?group=admin")
+        .header("Cookie", &cookie)
+        .send()
+        .await;
+    admin_group_response.assert_status_success();
+    let admins: Vec<User> = admin_group_response.assert_json();
+    let admin_emails: Vec<_> = admins.iter().map(|user| user.email.as_str()).collect();
+    assert!(admin_emails.contains(&"teacher-admin@example.com"));
+    assert!(!admin_emails.contains(&"alice-student@example.com"));
+}
+
+#[tokio::test]
 async fn export_requires_authority_and_generates_csv() {
     let database = build_test_database().await;
     let admin = insert_user(&database, "admin", "admin@example.com", "Admin").await;
@@ -472,4 +615,60 @@ async fn mark_done_requires_completed_activity() {
 
     response.assert_status(409);
     response.assert_body_contains("Activity must be completed before hours can be confirmed");
+}
+
+#[tokio::test]
+async fn login_errors_do_not_duplicate_endpoint_prefix() {
+    let database = build_test_database().await;
+    insert_login_user(
+        &database,
+        "student",
+        "login-review@example.com",
+        "Login Review",
+        "correct-password",
+    )
+    .await;
+    let client = test_client(database);
+
+    let response = client
+        .post("/api/v1/login")
+        .header("x-forwarded-for", "127.0.0.1")
+        .json(&json!({
+            "email": "login-review@example.com",
+            "password": "wrong-password"
+        }))
+        .send()
+        .await;
+
+    response.assert_status(403);
+    response.assert_json_path("message", &json!("Wrong email or password"));
+}
+
+#[tokio::test]
+async fn resource_delete_removes_owned_file_and_row() {
+    let database = build_test_database().await;
+    let owner = insert_user(&database, "student", "resource-owner@example.com", "Owner").await;
+    let cookie = insert_session(&database, owner).await;
+    let (resource_id, filename) = insert_resource(&database, owner, "avatar").await;
+    let client = test_client(database.clone());
+
+    let response = client
+        .delete(&format!("/api/v1/resource/{filename}"))
+        .header("Cookie", &cookie)
+        .send()
+        .await;
+
+    response.assert_status_success();
+
+    let resource = sqlx::query(
+        database
+            .sql("SELECT 1 FROM resources WHERE id = ?1")
+            .as_ref(),
+    )
+    .bind(resource_id.to_string())
+    .fetch_optional(database.sqlx())
+    .await
+    .expect("fetch resource");
+    assert!(resource.is_none());
+    assert!(!std::path::Path::new(&format!("./resource/{filename}")).exists());
 }

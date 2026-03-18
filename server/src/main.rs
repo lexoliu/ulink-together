@@ -22,12 +22,14 @@ use crate::auth::AuthError;
 use database::AppDatabase;
 use push::PushHub;
 use skyzen::{
-    middleware::ErrorHandlingMiddleware, routing::Router, utils::State, CreateRouteNode, Route,
+    middleware::ErrorHandlingMiddleware, routing::Router, utils::Json, utils::State,
+    CreateRouteNode, Route,
 };
 use std::env;
 
 pub fn api() -> Route {
     Route::new((
+        "/health".at(health),
         "/user".route("/{id}".at(user::get).put(user::update).delete(user::delete)),
         "/channel"
             .at(channel::find)
@@ -63,7 +65,7 @@ pub fn api() -> Route {
         "/export".post(export::generate),
         "/resource"
             .post(resource::create)
-            .route(("/{filename}".at(resource::access),)),
+            .route(("/{filename}".at(resource::access).delete(resource::delete),)),
         "/notification"
             .at(notification::list)
             .post(notification::create),
@@ -71,7 +73,7 @@ pub fn api() -> Route {
         "/auth/check/{authority}".at(check_authority),
         "/login".post(login::handler),
         "/logout".post(login::logout),
-        "/user".post(user::register),
+        "/user".at(user::list).post(user::register),
     ))
     .enable_api_doc()
 }
@@ -82,7 +84,10 @@ pub(crate) fn build_router(database: AppDatabase, push_hub: PushHub) -> Router {
         .middleware(State(database))
         .middleware(State(push_hub))
         .middleware(ErrorHandlingMiddleware::new(|error| async move {
-            crate::utils::ApiMessage::with_status(error.to_string(), error.status())
+            crate::utils::ApiMessage::with_status(
+                crate::utils::normalize_endpoint_error_message(&error.to_string()).into_owned(),
+                error.status(),
+            )
         }))
         .build()
 }
@@ -111,6 +116,16 @@ fn parse_database_url() -> Option<String> {
         }
     }
     None
+}
+
+#[derive(Debug, serde::Serialize, utoipa::ToSchema)]
+pub struct HealthResponse {
+    status: &'static str,
+}
+
+#[skyzen::openapi]
+pub async fn health() -> Json<HealthResponse> {
+    Json(HealthResponse { status: "ok" })
 }
 
 #[derive(Debug, serde::Serialize, utoipa::ToSchema)]

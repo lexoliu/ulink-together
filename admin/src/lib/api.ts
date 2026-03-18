@@ -1,7 +1,9 @@
+import axios, { type AxiosInstance } from 'axios'
+
 import type {
   ActivityDetail,
-  ActivitySummary,
   ActivityDraft,
+  ActivitySummary,
   ActivityTransitionAction,
   ApiMessage,
   AuthorityCheckResponse,
@@ -11,6 +13,7 @@ import type {
   ChannelResponse,
   ExportBatchResponse,
   RecordEntry,
+  UpdateUserForm,
   UserProfile,
 } from '@/lib/types'
 
@@ -30,10 +33,25 @@ const authorityNames: AuthorityName[] = [
   'manage_record_anyway',
   'view_user',
   'generate_export',
+  'update_user_anyway',
+  'delete_user',
 ]
 
 function apiOrigin(): string {
-  return import.meta.env.VITE_API_ORIGIN?.replace(/\/$/, '') ?? ''
+  return import.meta.env.VITE_BACKEND_ORIGIN?.replace(/\/$/, '') ?? ''
+}
+
+function normalizeApiMessage(message: string): string {
+  const prefix = 'Endpoint error: '
+  let normalized = message.trim()
+  while (normalized.startsWith(prefix)) {
+    normalized = normalized.slice(prefix.length).trimStart()
+  }
+  return normalized
+}
+
+function apiBaseURL(): string {
+  return new URL(`${apiOrigin()}/api/v1`, window.location.origin).toString().replace(/\/$/, '')
 }
 
 function apiURL(path: string, query?: Record<string, string | undefined | null>): string {
@@ -48,61 +66,83 @@ function apiURL(path: string, query?: Record<string, string | undefined | null>)
   return url.toString()
 }
 
-async function readErrorMessage(response: Response): Promise<string> {
-  try {
-    const body = (await response.json()) as ApiMessage
-    return body.message || response.statusText
-  } catch {
-    return response.statusText || 'Request failed'
+type QueryParams = Record<string, string | number | undefined | null>
+
+function createHttpClient(): AxiosInstance {
+  return axios.create({
+    baseURL: apiBaseURL(),
+    withCredentials: true,
+    headers: {
+      Accept: 'application/json',
+    },
+  })
+}
+
+function readAxiosErrorMessage(error: unknown): ApiError {
+  if (!axios.isAxiosError(error)) {
+    return new ApiError('Request failed')
   }
+
+  const status = error.response?.status ?? 500
+  const data = error.response?.data as ApiMessage | undefined
+  const rawMessage =
+    typeof data?.message === 'string' ? data.message : error.response?.statusText ?? error.message
+  return new ApiError(normalizeApiMessage(rawMessage || 'Request failed'), status)
 }
 
 async function request<T>(
+  client: AxiosInstance,
   path: string,
-  init?: RequestInit,
-  query?: Record<string, string | undefined | null>,
+  options?: {
+    method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
+    query?: QueryParams
+    data?: unknown
+  },
 ): Promise<T> {
-  const response = await fetch(apiURL(path, query), {
-    credentials: 'include',
-    headers: {
-      Accept: 'application/json',
-      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
-      ...init?.headers,
-    },
-    ...init,
-  })
+  try {
+    const response = await client.request<T>({
+      url: path,
+      method: options?.method ?? 'GET',
+      params: options?.query,
+      data: options?.data,
+    })
 
-  if (!response.ok) {
-    throw new ApiError(await readErrorMessage(response), response.status)
+    if (response.status === 204) {
+      return undefined as T
+    }
+
+    return response.data
+  } catch (error) {
+    throw readAxiosErrorMessage(error)
   }
-
-  if (response.status === 204) {
-    return undefined as T
-  }
-
-  return (await response.json()) as T
 }
 
 export class AdminApiClient {
+  private readonly client: AxiosInstance
+
+  constructor(client: AxiosInstance = createHttpClient()) {
+    this.client = client
+  }
+
   async login(email: string, password: string): Promise<void> {
-    await request<ApiMessage>('/login', {
+    await request<ApiMessage>(this.client, '/login', {
       method: 'POST',
-      body: JSON.stringify({ email, password }),
+      data: { email, password },
     })
   }
 
   async logout(): Promise<void> {
-    await request<ApiMessage>('/logout', { method: 'POST' })
+    await request<ApiMessage>(this.client, '/logout', { method: 'POST' })
   }
 
   async currentUser(): Promise<UserProfile> {
-    return request<UserProfile>('/user/me')
+    return request<UserProfile>(this.client, '/user/me')
   }
 
   async authorityMap(): Promise<Record<AuthorityName, boolean>> {
     const results = await Promise.all(
       authorityNames.map(async (authority) => {
-        const response = await request<AuthorityCheckResponse>(`/auth/check/${authority}`)
+        const response = await request<AuthorityCheckResponse>(this.client, `/auth/check/${authority}`)
         return [authority, response.result] as const
       }),
     )
@@ -111,71 +151,104 @@ export class AdminApiClient {
   }
 
   async activities(params?: { user?: string; displayAll?: boolean }): Promise<ActivitySummary[]> {
-    return request<ActivitySummary[]>('/activity', undefined, {
-      user: params?.user,
-      display_all: params?.displayAll ? '1' : undefined,
+    return request<ActivitySummary[]>(this.client, '/activity', {
+      query: {
+        user: params?.user,
+        display_all: params?.displayAll ? '1' : undefined,
+      },
     })
   }
 
   async activity(id: string): Promise<ActivityDetail> {
-    return request<ActivityDetail>(`/activity/${id}`)
+    return request<ActivityDetail>(this.client, `/activity/${id}`)
   }
 
   async createActivity(draft: ActivityDraft): Promise<ActivityDetail> {
-    return request<ActivityDetail>('/activity', {
+    return request<ActivityDetail>(this.client, '/activity', {
       method: 'POST',
-      body: JSON.stringify(serializeActivityDraft(draft)),
+      data: serializeActivityDraft(draft),
     })
   }
 
   async updateActivity(id: string, draft: ActivityDraft): Promise<ActivityDetail> {
-    return request<ActivityDetail>(`/activity/${id}`, {
+    return request<ActivityDetail>(this.client, `/activity/${id}`, {
       method: 'PUT',
-      body: JSON.stringify(serializeActivityDraft(draft)),
+      data: serializeActivityDraft(draft),
     })
   }
 
   async transitionActivity(id: string, action: ActivityTransitionAction): Promise<void> {
-    await request<ApiMessage>(`/activity/${id}/${action}`, { method: 'POST' })
+    await request<ApiMessage>(this.client, `/activity/${id}/${action}`, { method: 'POST' })
   }
 
   async records(activityId: string): Promise<RecordEntry[]> {
-    return request<RecordEntry[]>('/record', undefined, { activity: activityId })
+    return request<RecordEntry[]>(this.client, '/record', {
+      query: { activity: activityId },
+    })
   }
 
   async updateRecord(recordId: string, action: 'done' | 'approve_apply' | 'disapprove_apply'): Promise<void> {
-    await request<ApiMessage>(`/record/${recordId}/${action}`, { method: 'POST' })
+    await request<ApiMessage>(this.client, `/record/${recordId}/${action}`, { method: 'POST' })
   }
 
   async channels(activityId: string): Promise<ChannelResponse[]> {
-    return request<ChannelResponse[]>('/channel', undefined, { activity: activityId })
+    return request<ChannelResponse[]>(this.client, '/channel', {
+      query: { activity: activityId },
+    })
   }
 
   async createChannel(name: string, activityId: string): Promise<ChannelCreatedResponse> {
-    return request<ChannelCreatedResponse>('/channel', {
+    return request<ChannelCreatedResponse>(this.client, '/channel', {
       method: 'POST',
-      body: JSON.stringify({ name, activity: activityId }),
+      data: { name, activity: activityId },
     })
   }
 
   async messages(channelId: string): Promise<ChannelMessage[]> {
-    return request<ChannelMessage[]>('/message', undefined, { channel: channelId })
+    return request<ChannelMessage[]>(this.client, '/message', {
+      query: { channel: channelId },
+    })
   }
 
   async sendMessage(channelId: string, content: string): Promise<ChannelMessage> {
-    return request<ChannelMessage>(`/channel/${channelId}`, {
+    return request<ChannelMessage>(this.client, `/channel/${channelId}`, {
       method: 'POST',
-      body: JSON.stringify({ content }),
+      data: { content },
     })
   }
 
   async exportBatch(): Promise<ExportBatchResponse> {
-    return request<ExportBatchResponse>('/export', { method: 'POST' })
+    return request<ExportBatchResponse>(this.client, '/export', { method: 'POST' })
   }
 
   async userName(userId: string): Promise<string> {
-    const user = await request<UserProfile>(`/user/${userId}`)
+    const user = await request<UserProfile>(this.client, `/user/${userId}`)
     return user.realname
+  }
+
+  async users(params?: {
+    group?: string
+    search?: string
+    limit?: number
+  }): Promise<UserProfile[]> {
+    return request<UserProfile[]>(this.client, '/user', {
+      query: {
+        group: params?.group,
+        search: params?.search,
+        limit: params?.limit,
+      },
+    })
+  }
+
+  async updateUser(userId: string, form: UpdateUserForm): Promise<UserProfile> {
+    return request<UserProfile>(this.client, `/user/${userId}`, {
+      method: 'PUT',
+      data: form,
+    })
+  }
+
+  async deleteUser(userId: string): Promise<void> {
+    await request<ApiMessage>(this.client, `/user/${userId}`, { method: 'DELETE' })
   }
 
   pushURL(): string {

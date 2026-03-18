@@ -11,7 +11,10 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
+  Save,
   Search,
+  Trash2,
+  Users,
 } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -35,6 +38,7 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { AdminApiClient, ApiError } from '@/lib/api'
 import {
@@ -53,6 +57,7 @@ import type {
   ChannelResponse,
   ExportBatchResponse,
   RecordEntry,
+  UpdateUserForm,
   UserProfile,
 } from '@/lib/types'
 import {
@@ -62,7 +67,15 @@ import {
 type PanelTab = 'overview' | 'records' | 'channel'
 type ActivityScope = 'all' | 'mine'
 type ActivityFilter = 'all' | 'need_volunteer' | 'going' | 'ended' | 'canceled'
-type AdminView = 'home' | 'activities' | 'chats'
+type AdminView = 'home' | 'activities' | 'chats' | 'students'
+
+type StudentEditorDraft = {
+  realname: string
+  gender: string
+  classname: string
+  description: string
+  avatar: string
+}
 
 const api = new AdminApiClient()
 const ActivityFormDialog = lazy(async () =>
@@ -103,6 +116,8 @@ const emptyDraft: ActivityDraft = {
   duration: 120,
 }
 
+const emptyStudents: UserProfile[] = []
+
 const activityTransitionMeta = {
   need_volunteer: {
     label: 'Recruiting',
@@ -140,21 +155,26 @@ function App() {
   const [loginError, setLoginError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [chatSearch, setChatSearch] = useState('')
+  const [studentSearch, setStudentSearch] = useState('')
   const [scope, setScope] = useState<ActivityScope>('all')
   const [stateFilter, setStateFilter] = useState<ActivityFilter>('all')
   const [formOpen, setFormOpen] = useState(false)
   const [editingActivity, setEditingActivity] = useState<ActivityDetail | null>(null)
   const [exportBatch, setExportBatch] = useState<ExportBatchResponse | null>(null)
   const [recordActionId, setRecordActionId] = useState<string | null>(null)
+  const [savingStudentId, setSavingStudentId] = useState<string | null>(null)
+  const [deletingStudentId, setDeletingStudentId] = useState<string | null>(null)
   const [commandOpen, setCommandOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   const deferredSearch = useDeferredValue(search)
   const deferredChatSearch = useDeferredValue(chatSearch)
+  const deferredStudentSearch = useDeferredValue(studentSearch)
 
   const currentView = viewFromPath(location.pathname)
   const selectedActivityId = searchParams.get('activity')
   const selectedChatActivityId = searchParams.get('chat')
+  const selectedStudentId = searchParams.get('student')
   const panelTab = (searchParams.get('tab') as PanelTab | null) ?? 'overview'
 
   const currentUserQuery = useQuery({
@@ -236,6 +256,32 @@ function App() {
     (activitiesQuery.isLoading || chatActivities.some((activity) => activity.id === selectedChatActivityId))
       ? selectedChatActivityId
       : chatActivities[0]?.id ?? null
+
+  const studentsQuery = useQuery({
+    queryKey: ['students', currentUser?.id, deferredStudentSearch],
+    queryFn: () =>
+      api.users({
+        group: 'student',
+        search: deferredStudentSearch.trim() || undefined,
+        limit: 500,
+      }),
+    enabled: Boolean(currentUser) && authorities.view_user === true,
+  })
+
+  const students = studentsQuery.data ?? emptyStudents
+  const resolvedSelectedStudentId =
+    selectedStudentId &&
+    (studentsQuery.isLoading || students.some((student) => student.id === selectedStudentId))
+      ? selectedStudentId
+      : students[0]?.id ?? null
+  const selectedStudent = useMemo(
+    () => students.find((student) => student.id === resolvedSelectedStudentId) ?? null,
+    [resolvedSelectedStudentId, students],
+  )
+  const selectedStudentPending =
+    Boolean(resolvedSelectedStudentId) &&
+    selectedStudent === null &&
+    (studentsQuery.isLoading || studentsQuery.isFetching)
 
   const selectedDetailQuery = useQuery({
     queryKey: ['activity-detail', resolvedSelectedActivityId],
@@ -455,6 +501,57 @@ function App() {
     onError: showMutationError,
   })
 
+  const updateStudentMutation = useMutation({
+    mutationFn: async ({
+      id,
+      form,
+    }: {
+      id: string
+      form: UpdateUserForm
+    }) => {
+      setSavingStudentId(id)
+      return api.updateUser(id, form)
+    },
+    onSuccess: async (student) => {
+      toast.success('Student profile updated.')
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['students'] }),
+        queryClient.invalidateQueries({ queryKey: ['participant-names'] }),
+        queryClient.invalidateQueries({ queryKey: ['chat-message-names'] }),
+      ])
+      if (currentUser?.id === student.id) {
+        await queryClient.invalidateQueries({ queryKey: ['current-user'] })
+      }
+    },
+    onError: showMutationError,
+    onSettled: () => {
+      setSavingStudentId(null)
+    },
+  })
+
+  const deleteStudentMutation = useMutation({
+    mutationFn: async (id: string) => {
+      setDeletingStudentId(id)
+      await api.deleteUser(id)
+      return id
+    },
+    onSuccess: async (deletedId) => {
+      toast.success('Student deleted.')
+      if (resolvedSelectedStudentId === deletedId) {
+        navigateStudents()
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['students'] }),
+        queryClient.invalidateQueries({ queryKey: ['participant-names'] }),
+        queryClient.invalidateQueries({ queryKey: ['chat-message-names'] }),
+      ])
+    },
+    onError: showMutationError,
+    onSettled: () => {
+      setDeletingStudentId(null)
+    },
+  })
+
   const participantNames = participantNamesQuery.data ?? {}
   const chatSenderNames = {
     ...(chatMessageNamesQuery.data ?? {}),
@@ -491,6 +588,19 @@ function App() {
     startTransition(() => {
       navigate({
         pathname: '/chats',
+        search: params.toString(),
+      })
+    })
+  }
+
+  const navigateStudents = (studentId?: string) => {
+    const params = new URLSearchParams()
+    if (studentId) {
+      params.set('student', studentId)
+    }
+    startTransition(() => {
+      navigate({
+        pathname: '/students',
         search: params.toString(),
       })
     })
@@ -536,6 +646,9 @@ function App() {
 
   const canCreateActivity = authorities.create_activity === true
   const canGenerateExport = authorities.generate_export === true
+  const canViewStudents = authorities.view_user === true
+  const canEditStudents = authorities.update_user_anyway === true
+  const canDeleteStudents = authorities.delete_user === true
   const canManageSelectedActivity =
     selectedDetail !== null &&
     (selectedDetail.promoter === currentUser?.id || authorities.manage_record_anyway === true)
@@ -599,6 +712,15 @@ function App() {
                 collapsed={sidebarCollapsed}
                 onClick={() => navigateChats(selectedChatActivityId ?? undefined)}
               />
+              {canViewStudents ? (
+                <SidebarItem
+                  active={currentView === 'students'}
+                  icon={<Users className="size-4" />}
+                  label="Students"
+                  collapsed={sidebarCollapsed}
+                  onClick={() => navigateStudents(selectedStudentId ?? undefined)}
+                />
+              ) : null}
             </nav>
 
             <Button
@@ -685,6 +807,14 @@ function App() {
                   label="Chats"
                   onClick={() => navigateChats(selectedChatActivityId ?? undefined)}
                 />
+                {canViewStudents ? (
+                  <SidebarItem
+                    active={currentView === 'students'}
+                    icon={<Users className="size-4" />}
+                    label="Students"
+                    onClick={() => navigateStudents(selectedStudentId ?? undefined)}
+                  />
+                ) : null}
               </div>
 
               <Button
@@ -752,6 +882,32 @@ function App() {
                   />
                 </Suspense>
               </div>
+            ) : currentView === 'students' ? (
+              <StudentsPage
+                key={resolvedSelectedStudentId ?? 'no-student-selected'}
+                search={studentSearch}
+                students={students}
+                studentsLoading={studentsQuery.isLoading}
+                selectedStudentId={resolvedSelectedStudentId}
+                selectedStudent={selectedStudent}
+                selectedStudentPending={selectedStudentPending}
+                canViewStudents={canViewStudents}
+                canEditStudents={canEditStudents}
+                canDeleteStudents={canDeleteStudents}
+                savingStudentId={savingStudentId}
+                deletingStudentId={deletingStudentId}
+                onSearchChange={setStudentSearch}
+                onSelectStudent={(studentId) => navigateStudents(studentId)}
+                onSaveStudent={async (studentId, draft) => {
+                  await updateStudentMutation.mutateAsync({
+                    id: studentId,
+                    form: draft,
+                  })
+                }}
+                onDeleteStudent={async (studentId) => {
+                  await deleteStudentMutation.mutateAsync(studentId)
+                }}
+              />
             ) : (
               <ActivitiesPage
                 search={search}
@@ -810,6 +966,7 @@ function App() {
         onOpenChange={setCommandOpen}
         activities={activitiesQuery.data ?? []}
         onOpenHome={navigateHome}
+        onOpenStudents={canViewStudents ? () => navigateStudents(selectedStudentId ?? undefined) : undefined}
         onOpenActivity={(activityId) => navigateActivities(activityId)}
         onOpenChat={(activityId) => navigateChats(activityId)}
         onCreateActivity={
@@ -1312,6 +1469,370 @@ function ActivitiesPage({
   )
 }
 
+function StudentsPage({
+  search,
+  students,
+  studentsLoading,
+  selectedStudentId,
+  selectedStudent,
+  selectedStudentPending,
+  canViewStudents,
+  canEditStudents,
+  canDeleteStudents,
+  savingStudentId,
+  deletingStudentId,
+  onSearchChange,
+  onSelectStudent,
+  onSaveStudent,
+  onDeleteStudent,
+}: {
+  search: string
+  students: UserProfile[]
+  studentsLoading: boolean
+  selectedStudentId: string | null
+  selectedStudent: UserProfile | null
+  selectedStudentPending: boolean
+  canViewStudents: boolean
+  canEditStudents: boolean
+  canDeleteStudents: boolean
+  savingStudentId: string | null
+  deletingStudentId: string | null
+  onSearchChange: (value: string) => void
+  onSelectStudent: (studentId: string) => void
+  onSaveStudent: (studentId: string, draft: UpdateUserForm) => Promise<void>
+  onDeleteStudent: (studentId: string) => Promise<void>
+}) {
+  const [draft, setDraft] = useState<StudentEditorDraft | null>(() =>
+    selectedStudent ? studentToDraft(selectedStudent) : null,
+  )
+  const [deleteArmed, setDeleteArmed] = useState(false)
+
+  if (!canViewStudents) {
+    return (
+      <Card className="h-full border-white/70 bg-white/92 shadow-lg shadow-slate-200/40">
+        <CardContent className="flex min-h-[520px] items-center justify-center">
+          <p className="text-sm text-slate-600">
+            You do not have permission to view student profiles.
+          </p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const savingCurrentStudent =
+    selectedStudent !== null &&
+    savingStudentId !== null &&
+    savingStudentId === selectedStudent.id
+  const deletingCurrentStudent =
+    selectedStudent !== null &&
+    deletingStudentId !== null &&
+    deletingStudentId === selectedStudent.id
+  const draftChanged =
+    selectedStudent !== null &&
+    draft !== null &&
+    !studentDraftMatchesProfile(draft, selectedStudent)
+
+  return (
+    <div className="flex h-full min-h-0 flex-col gap-4">
+      <div className="shrink-0 rounded-[2.3rem] border border-white/75 bg-white/76 px-7 py-6 shadow-[0_28px_80px_-34px_rgba(15,23,42,0.24)] backdrop-blur-xl">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Students</p>
+            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">
+              Review and manage volunteer accounts
+            </h2>
+          </div>
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 rounded-[2.4rem] border border-white/70 bg-white/70 p-2 shadow-[0_34px_100px_-42px_rgba(15,23,42,0.3)] backdrop-blur-xl">
+        <div className="grid h-full min-h-0 gap-2 xl:grid-cols-[340px_minmax(0,1fr)]">
+          <aside className="flex min-h-0 flex-col rounded-[2rem] bg-[linear-gradient(180deg,rgba(240,245,250,0.98),rgba(234,240,246,0.84))] p-5">
+            <div className="shrink-0">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Student rail</p>
+              <h3 className="mt-2 text-lg font-semibold text-slate-950">Find and select a student.</h3>
+            </div>
+
+            <div className="mt-5 shrink-0">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  className="rounded-2xl border-slate-200/80 bg-white/90 pl-9"
+                  placeholder="Search student by name, class, or email"
+                  value={search}
+                  onChange={(event) => onSearchChange(event.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="mt-5 min-h-0 flex-1 rounded-[1.8rem] bg-white/72 p-2 ring-1 ring-white/80">
+              <ScrollArea className="h-full pr-2">
+                <div className="grid gap-4 pb-4">
+                  {studentsLoading ? (
+                    <>
+                      <Skeleton className="h-28 rounded-2xl" />
+                      <Skeleton className="h-28 rounded-2xl" />
+                    </>
+                  ) : students.length > 0 ? (
+                    students.map((student) => (
+                      <button
+                        key={student.id}
+                        type="button"
+                        onClick={() => onSelectStudent(student.id)}
+                        className={`rounded-[1.6rem] border px-4 py-4 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-slate-300/80 focus-visible:ring-offset-2 ${
+                          student.id === selectedStudentId
+                            ? 'border-white bg-white shadow-[0_18px_40px_-26px_rgba(15,23,42,0.28)] ring-1 ring-slate-200/90'
+                            : 'border-transparent bg-transparent hover:bg-white/85'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <h3 className="truncate text-[15px] font-semibold leading-6 text-slate-950">
+                              {student.realname}
+                            </h3>
+                            <p className="mt-1 truncate text-sm text-slate-500">{student.email}</p>
+                          </div>
+                          <Badge variant="secondary">{student.classname}</Badge>
+                        </div>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="rounded-[1.5rem] border border-dashed border-slate-200 bg-white/80 p-6 text-sm text-slate-500">
+                      No students match the current filters.
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+          </aside>
+
+          <div className="min-h-0 rounded-[2rem] bg-white px-5 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
+            {selectedStudent && draft ? (
+              <div className="flex h-full min-h-0 flex-col gap-4">
+                <Card className="shrink-0 border-slate-200/70 bg-[linear-gradient(180deg,rgba(255,255,255,1),rgba(248,251,255,0.96))] shadow-none">
+                  <CardHeader className="gap-4 p-5">
+                    <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                      <div className="space-y-3">
+                        <Badge variant="secondary">{selectedStudent.classname}</Badge>
+                        <CardTitle className="text-3xl font-semibold tracking-tight text-slate-950">
+                          {selectedStudent.realname}
+                        </CardTitle>
+                        <p className="text-sm text-slate-600">{selectedStudent.email}</p>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          disabled={
+                            !canEditStudents ||
+                            !draftChanged ||
+                            savingCurrentStudent ||
+                            deletingCurrentStudent
+                          }
+                          onClick={async () => {
+                            if (!selectedStudent || !draft) {
+                              throw new Error('Selected student and draft are required before saving.')
+                            }
+                            const normalized = normalizeStudentDraft(draft)
+                            if (
+                              !normalized.realname ||
+                              !normalized.gender ||
+                              !normalized.classname
+                            ) {
+                              toast.error('Name, gender, and class are required.')
+                              return
+                            }
+                            await onSaveStudent(selectedStudent.id, normalized)
+                          }}
+                        >
+                          <Save className="mr-2 size-4" />
+                          {savingCurrentStudent ? 'Saving…' : 'Save changes'}
+                        </Button>
+
+                        {canDeleteStudents ? (
+                          <Button
+                            size="sm"
+                            variant={deleteArmed ? 'destructive' : 'outline'}
+                            disabled={savingCurrentStudent || deletingCurrentStudent}
+                            onClick={async () => {
+                              if (!selectedStudent) {
+                                throw new Error('Selected student is required before deletion.')
+                              }
+                              if (!deleteArmed) {
+                                setDeleteArmed(true)
+                                return
+                              }
+                              await onDeleteStudent(selectedStudent.id)
+                              setDeleteArmed(false)
+                            }}
+                          >
+                            <Trash2 className="mr-2 size-4" />
+                            {deletingCurrentStudent
+                              ? 'Deleting…'
+                              : deleteArmed
+                                ? 'Confirm delete'
+                                : 'Delete student'}
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                  </CardHeader>
+                </Card>
+
+                <ScrollArea className="min-h-0 flex-1 pr-2">
+                  <div className="grid gap-4 pb-4 md:grid-cols-2">
+                    <Card className="border-slate-200/70 bg-slate-50/65 shadow-none">
+                      <CardHeader className="p-5">
+                        <CardTitle>Identity</CardTitle>
+                      </CardHeader>
+                      <CardContent className="grid gap-4 px-5 pb-5 pt-0">
+                        <LabeledField label="Real name">
+                          <Input
+                            value={draft.realname}
+                            disabled={!canEditStudents || deletingCurrentStudent}
+                            onChange={(event) =>
+                              setDraft((current) => {
+                                if (!current) {
+                                  return current
+                                }
+                                return {
+                                  ...current,
+                                  realname: event.target.value,
+                                }
+                              })
+                            }
+                          />
+                        </LabeledField>
+
+                        <LabeledField label="Gender">
+                          <Input
+                            value={draft.gender}
+                            disabled={!canEditStudents || deletingCurrentStudent}
+                            onChange={(event) =>
+                              setDraft((current) => {
+                                if (!current) {
+                                  return current
+                                }
+                                return {
+                                  ...current,
+                                  gender: event.target.value,
+                                }
+                              })
+                            }
+                          />
+                        </LabeledField>
+
+                        <LabeledField label="Class">
+                          <Input
+                            value={draft.classname}
+                            disabled={!canEditStudents || deletingCurrentStudent}
+                            onChange={(event) =>
+                              setDraft((current) => {
+                                if (!current) {
+                                  return current
+                                }
+                                return {
+                                  ...current,
+                                  classname: event.target.value,
+                                }
+                              })
+                            }
+                          />
+                        </LabeledField>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="border-slate-200/70 bg-slate-50/65 shadow-none">
+                      <CardHeader className="p-5">
+                        <CardTitle>Profile</CardTitle>
+                      </CardHeader>
+                      <CardContent className="grid gap-4 px-5 pb-5 pt-0">
+                        <LabeledField label="Avatar URL">
+                          <Input
+                            value={draft.avatar}
+                            disabled={!canEditStudents || deletingCurrentStudent}
+                            placeholder="/api/v1/resource/..."
+                            onChange={(event) =>
+                              setDraft((current) => {
+                                if (!current) {
+                                  return current
+                                }
+                                return {
+                                  ...current,
+                                  avatar: event.target.value,
+                                }
+                              })
+                            }
+                          />
+                        </LabeledField>
+
+                        <LabeledField label="Description">
+                          <Textarea
+                            value={draft.description}
+                            disabled={!canEditStudents || deletingCurrentStudent}
+                            rows={8}
+                            onChange={(event) =>
+                              setDraft((current) => {
+                                if (!current) {
+                                  return current
+                                }
+                                return {
+                                  ...current,
+                                  description: event.target.value,
+                                }
+                              })
+                            }
+                          />
+                        </LabeledField>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </ScrollArea>
+              </div>
+            ) : selectedStudentPending ? (
+              <Card className="h-full border-slate-200/70 bg-slate-50/65 shadow-none">
+                <CardContent className="flex h-full min-h-[480px] flex-col gap-4 p-6">
+                  <Skeleton className="h-28 rounded-3xl" />
+                  <Skeleton className="h-full rounded-3xl" />
+                </CardContent>
+              </Card>
+            ) : (
+              <Card className="h-full border-slate-200/70 bg-slate-50/65 shadow-none">
+                <CardContent className="flex h-full min-h-[480px] flex-col items-center justify-center gap-4 text-center">
+                  <div className="flex size-14 items-center justify-center rounded-2xl bg-slate-950 text-white">
+                    <Users className="size-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-semibold text-slate-950">Choose a student</h2>
+                    <p className="mt-2 max-w-md text-sm leading-6 text-slate-600">
+                      Profile details and account controls appear here.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function LabeledField({
+  label,
+  children,
+}: {
+  label: string
+  children: React.ReactNode
+}) {
+  return (
+    <label className="grid gap-2">
+      <span className="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">{label}</span>
+      {children}
+    </label>
+  )
+}
+
 function SidebarItem({
   active,
   icon,
@@ -1363,6 +1884,38 @@ function CompactMeta({ label, value }: { label: string; value: string }) {
       <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">{label}</p>
       <p className="mt-1 text-sm font-medium text-slate-900">{value}</p>
     </div>
+  )
+}
+
+function studentToDraft(student: UserProfile): StudentEditorDraft {
+  return {
+    realname: student.realname,
+    gender: student.gender,
+    classname: student.classname,
+    description: student.description,
+    avatar: student.avatar ?? '',
+  }
+}
+
+function normalizeStudentDraft(draft: StudentEditorDraft): UpdateUserForm {
+  const normalizedAvatar = draft.avatar.trim()
+  return {
+    realname: draft.realname.trim(),
+    gender: draft.gender.trim(),
+    classname: draft.classname.trim(),
+    description: draft.description.trim(),
+    avatar: normalizedAvatar ? normalizedAvatar : null,
+  }
+}
+
+function studentDraftMatchesProfile(draft: StudentEditorDraft, student: UserProfile): boolean {
+  const normalized = normalizeStudentDraft(draft)
+  return (
+    normalized.realname === student.realname.trim() &&
+    normalized.gender === student.gender.trim() &&
+    normalized.classname === student.classname.trim() &&
+    normalized.description === student.description.trim() &&
+    normalized.avatar === (student.avatar?.trim() || null)
   )
 }
 
@@ -1453,6 +2006,9 @@ function viewFromPath(pathname: string): AdminView {
   }
   if (pathname.startsWith('/chats')) {
     return 'chats'
+  }
+  if (pathname.startsWith('/students')) {
+    return 'students'
   }
   return 'home'
 }

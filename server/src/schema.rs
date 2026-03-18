@@ -166,6 +166,26 @@ pub fn schema_statements() -> &'static [&'static str] {
     ]
 }
 
+pub fn reset_schema_statements() -> &'static [&'static str] {
+    &[
+        "DROP TABLE IF EXISTS export_items",
+        "DROP TABLE IF EXISTS export_batches",
+        "DROP TABLE IF EXISTS resources",
+        "DROP TABLE IF EXISTS records",
+        "DROP TABLE IF EXISTS notifications",
+        "DROP TABLE IF EXISTS messages",
+        "DROP TABLE IF EXISTS channel_members",
+        "DROP TABLE IF EXISTS channels",
+        "DROP TABLE IF EXISTS activity_comments",
+        "DROP TABLE IF EXISTS activities",
+        "DROP TABLE IF EXISTS sessions",
+        "DROP TABLE IF EXISTS users",
+        "DROP TABLE IF EXISTS check_mails",
+        "DROP TABLE IF EXISTS group_authorities",
+        "DROP TABLE IF EXISTS groups",
+    ]
+}
+
 pub async fn apply_schema_sqlite(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     for statement in schema_statements() {
         sqlx::query(statement).execute(pool).await?;
@@ -182,6 +202,13 @@ pub async fn apply_schema_postgres(pool: &PgPool) -> Result<(), sqlx::Error> {
 
 pub async fn apply_schema_any(pool: &Pool<Any>) -> Result<(), sqlx::Error> {
     for statement in schema_statements() {
+        sqlx::query(statement).execute(pool).await?;
+    }
+    Ok(())
+}
+
+pub async fn reset_schema_any(pool: &Pool<Any>) -> Result<(), sqlx::Error> {
+    for statement in reset_schema_statements() {
         sqlx::query(statement).execute(pool).await?;
     }
     Ok(())

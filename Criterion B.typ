@@ -1,5 +1,3 @@
-#import "@preview/pintorita:0.1.4"
-
 #set document(title: "Criterion B: Solution Overview")
 #set page(paper: "a4", margin: (x: 1.5cm, y: 1.45cm))
 #set text(font: "New Computer Modern", size: 10pt, fill: rgb("#1b2430"))
@@ -108,22 +106,22 @@
     [*Task No.*], [*Planned Action*], [*Planned Outcome*], [*Time Estimated*], [*Target Completion Date*], [*Criterion*]
   ),
 
-  [1], [Meet the client and clarify the real workflow problems around volunteering, communication, and hour reporting.], [A clear problem definition and a set of client-backed priorities for the product.], [4 hours], [Week 1], [A],
-  [2], [Translate the consultation notes into measurable success criteria that can later be tested.], [A criterion set that can be observed and verified rather than described vaguely.], [3 hours], [Week 1], [A],
-  [3], [Compare development approaches and choose a native iPad solution with a client-server architecture.], [A justified platform and architecture decision aligned with the client environment.], [4 hours], [Week 2], [B],
-  [4], [Map volunteer and organiser journeys to design the information architecture of the app.], [A role-aware navigation structure that supports the main tasks of both user groups.], [5 hours], [Week 2], [B],
-  [5], [Design the relational data structure for users, activities, participation, comments, channels, messages, and exports.], [A data model that supports history, permissions, ranking, and reporting without duplication.], [6 hours], [Week 3], [B],
-  [6], [Define the lifecycle states for activities and participation records.], [Consistent state transitions for publishing, joining, cancelling, confirming, and ranking.], [3 hours], [Week 3], [B],
-  [7], [Design the major request-response and push-update flows used by the app.], [A clear explanation of how core user actions move through the system.], [4 hours], [Week 4], [B],
-  [8], [Produce low-fidelity wireframes for the feed, detail, organiser, leaderboard, and account screens.], [A layout foundation for the SwiftUI interface with strong iPad readability.], [5 hours], [Week 4], [B],
-  [9], [Implement registration, login, avatar handling, and session continuity.], [A usable account system that supports the first success criterion.], [8 hours], [Week 5], [C],
-  [10], [Implement activity publication, editing, cancellation, and protected joining.], [Core activity management with safe participant counting and correct visibility.], [10 hours], [Week 6], [C],
-  [11], [Implement activity-linked communication with history and live updates.], [A channel system that supports sending, receiving, and retaining activity messages.], [8 hours], [Week 7], [C],
-  [12], [Implement confirmed-hour aggregation and leaderboard ranking.], [A ranking view driven by verified participation data rather than manual totals.], [6 hours], [Week 8], [C],
-  [13], [Research school import workflows and design a configurable export adapter for ISMAS-related reporting.], [An export design that can match the school-provided template when it is available.], [4 hours], [Week 9], [B],
-  [14], [Prepare criterion-linked tests covering normal use, edge cases, timing, and layout.], [A test plan that maps directly to the success criteria from Criterion A.], [5 hours], [Week 10], [B],
-  [15], [Test the solution on target iPads in portrait and landscape and gather user feedback.], [Evidence that the interface works well in the client's actual usage context.], [6 hours], [Week 11], [D/E],
-  [16], [Review pilot feedback and refine the product before final submission.], [A more reliable and client-aligned final solution.], [4 hours], [Week 12], [E],
+  [1], [Meet the client and figure out what's actually going wrong with how they handle volunteering, communication, and hour logging.], [A clear problem definition backed by what the client told me, with priorities I can design around.], [4 hours], [Week 1], [A],
+  [2], [Turn the consultation notes into success criteria that I can actually test later.], [A set of criteria I can observe and verify, not vague goals.], [3 hours], [Week 1], [A],
+  [3], [Look at different development approaches and decide on a native iPad app with a server backend.], [A justified platform choice that fits the client's environment.], [4 hours], [Week 2], [B],
+  [4], [Map out how volunteers and organisers would actually use the app, and build the navigation around that.], [A navigation structure that makes sense for both roles.], [5 hours], [Week 2], [B],
+  [5], [Design the database for users, activities, participation, comments, channels, messages, and exports.], [A data model that handles history, permissions, ranking, and reporting without duplicating data.], [6 hours], [Week 3], [B],
+  [6], [Define what states an activity can be in and how participation records change over time.], [Clear state transitions for publishing, joining, cancelling, confirming, and ranking.], [3 hours], [Week 3], [B],
+  [7], [Work out the main request-response and push-update flows the app uses.], [Documentation of how the core user actions move through the system.], [4 hours], [Week 4], [B],
+  [8], [Sketch low-fidelity wireframes for the feed, detail, organiser, leaderboard, and account screens.], [A layout foundation for the SwiftUI interface that works well on iPad.], [5 hours], [Week 4], [B],
+  [9], [Build registration, login, avatar handling, and session continuity.], [A working account system that covers success criterion 1.], [8 hours], [Week 5], [C],
+  [10], [Build activity publication, editing, cancellation, and the join flow with capacity protection.], [Core activity management with safe participant counting.], [10 hours], [Week 6], [C],
+  [11], [Build activity-linked messaging with history and live updates.], [A channel system for sending, receiving, and keeping activity messages.], [8 hours], [Week 7], [C],
+  [12], [Build confirmed-hour aggregation and leaderboard ranking.], [A ranking view driven by verified participation data, not manual totals.], [6 hours], [Week 8], [C],
+  [13], [Research the school's import workflow and design a configurable export adapter for ISMAS reporting.], [An export design that can match the school template once it's available.], [4 hours], [Week 9], [B],
+  [14], [Write criterion-linked tests covering normal use, edge cases, timing, and layout.], [A test plan mapped to the success criteria from Criterion A.], [5 hours], [Week 10], [B],
+  [15], [Test on the target iPads in both orientations and collect user feedback.], [Evidence that the app works in the client's actual environment.], [6 hours], [Week 11], [D/E],
+  [16], [Review pilot feedback and fix issues before final submission.], [A more reliable product that reflects what the client actually needs.], [4 hours], [Week 12], [E],
 )
 #set text(size: 10pt)
 
@@ -131,28 +129,24 @@
 
 == Architectural Rationale
 
-Following consultation with the client, the solution was developed as a *client-server structure*. The iPad client handles presentation, form entry, local view state, and user feedback. The service layer is responsible for validation, permissions, persistence, ranking logic, and real-time updates. This separation keeps the SwiftUI interface responsive while ensuring that shared data remains consistent for every user.
+After talking with the client, I decided on a *client-server structure*. The iPad app handles the UI, form entry, and local state. The server handles validation, permissions, persistence, ranking, and real-time updates. I went with this split mainly because volunteer data needs to be shared across users -- if two people join the same activity at the same time, a local-only approach would have no way to enforce the capacity limit. The server acts as the single authority on what the current state is.
+
+I also considered a peer-to-peer approach where iPads sync directly, but that gets complicated fast with conflict resolution, and the school's WiFi setup doesn't guarantee devices can discover each other. A central server is simpler and more reliable here.
 
 #grid(
-  columns: (1fr, 1fr, 1fr),
+  columns: (1fr, 1fr),
   gutter: 8pt,
   stat-box(
-    [Volunteer View],
-    [Browse activities, join events, send messages, review records, and check rankings.],
+    [Volunteer Side],
+    [Browse activities, join events, send messages, check personal records, view the leaderboard.],
     blue-soft,
     sky,
   ),
   stat-box(
-    [Organiser View],
-    [Publish activities, edit or cancel them, confirm participation, and supervise communication.],
+    [Organiser Side],
+    [Publish activities, edit or cancel them, confirm participation, supervise communication, trigger exports.],
     mint-soft,
     rgb("#2d8f66"),
-  ),
-  stat-box(
-    [Shared Data Core],
-    [A single source of truth for users, activities, participation, messages, and export data.],
-    amber-soft,
-    rgb("#b37a00"),
   ),
 )
 
@@ -227,67 +221,76 @@ Following consultation with the client, the solution was developed as a *client-
 
 === Component Responsibilities
 
+I split the system into five components. Here's what each one does and why I put it there:
+
 #table(
-  columns: (1fr, 1.35fr, 1.85fr),
-  table.header([*Component*], [*Main responsibility*], [*Why it belongs there*]),
-  [*SwiftUI presentation layer*], [Screens, navigation, forms, feedback, accessibility], [View logic should remain separate from data rules and permission checks.],
-  [*Client state layer*], [Session, selected filters, pending request state, recent cached content], [The app needs fast feedback without duplicating core business rules.],
-  [*Service layer*], [Validation, permissions, activity lifecycles, ranking logic, export preparation], [Shared rules should execute once in a consistent place.],
-  [*Database*], [Persistent storage for users, activities, messages, participation, and exports], [Volunteer hours and communication history require durable records.],
-  [*Export adapter*], [Converts confirmed participation data into school-required import format], [External format changes should not force redesign of core activity logic.],
+  columns: (1fr, 1.3fr, 1.8fr),
+  table.header([*Component*], [*What it does*], [*Why it sits here*]),
+  [*SwiftUI layer*], [Screens, navigation, forms, feedback, accessibility], [View logic shouldn't be mixed with data rules or permission checks. Keeping it separate also makes it easier to test the UI independently.],
+  [*Client state*], [Session token, selected filters, pending request state, recently fetched content], [The app needs to feel fast, so I cache some things locally. But I don't duplicate business rules here.],
+  [*Service layer*], [Validation, permissions, activity lifecycles, ranking logic, export prep], [These rules need to run in one place so all clients see the same result.],
+  [*Database*], [Persistent storage for users, activities, messages, participation, and exports], [Volunteer hours and message history can't live in memory -- they need durable storage.],
+  [*Export adapter*], [Converts confirmed participation data into the format the school needs], [If the school changes their import format, I only need to update this one layer.],
 )
 
 == Information Architecture
 
-The product structure was organized around the repeated tasks identified during consultation. Volunteers mostly browse, join, message, and review records. Organisers mostly publish, manage, confirm, and communicate. The navigation therefore places the activity feed first, then context screens, then role-specific management.
+I organized the app around the tasks that came up most in my consultation. Volunteers spend most of their time browsing, joining, messaging, and reviewing what they've done. Organisers mostly publish, manage, confirm, and communicate. So the navigation puts the activity feed front and center, then branches into context screens and role-specific tools.
 
 #figure(
   box(fill: white, stroke: 1pt + border, radius: 12pt, inset: 12pt)[
     #set text(size: 8.7pt)
     #grid(
       columns: (1fr, 1fr, 1fr),
-      rows: (auto, auto, auto),
       gutter: 8pt,
 
       box(fill: blue-soft, stroke: 1pt + sky, radius: 9pt, inset: 8pt)[
         #text(weight: "bold", fill: sky)[Launch / Session Check] \
-        #text(size: 8pt, fill: ink-soft)[Open app and restore last valid session]
+        #text(size: 8pt, fill: ink-soft)[Open the app; restore the last valid session if one exists]
       ],
       box(fill: white, stroke: 1pt + border, radius: 9pt, inset: 8pt)[
         #text(weight: "bold", fill: navy)[Authentication] \
-        #text(size: 8pt, fill: ink-soft)[Login and registration for school users]
+        #text(size: 8pt, fill: ink-soft)[Login or register with school credentials]
       ],
       box(fill: mint-soft, stroke: 1pt + mint-ink, radius: 9pt, inset: 8pt)[
         #text(weight: "bold", fill: mint-ink)[Activity Feed] \
-        #text(size: 8pt, fill: ink-soft)[Default landing page for browsing and filtering]
+        #text(size: 8pt, fill: ink-soft)[Default landing screen for browsing and filtering activities]
       ],
+    )
+    #v(8pt)
+    #grid(
+      columns: (1fr, 1fr),
+      gutter: 8pt,
 
       box(fill: white, stroke: 1pt + border, radius: 9pt, inset: 8pt)[
         #text(weight: "bold", fill: navy)[Activity Detail] \
-        #text(size: 8pt, fill: ink-soft)[Join, comment, enter channel, inspect event information]
+        #text(size: 8pt, fill: ink-soft)[Join, comment, open the channel, see full event info]
       ],
       box(fill: white, stroke: 1pt + border, radius: 9pt, inset: 8pt)[
         #text(weight: "bold", fill: navy)[My Records] \
-        #text(size: 8pt, fill: ink-soft)[Personal participation history and status]
+        #text(size: 8pt, fill: ink-soft)[Personal participation history and current status]
       ],
+    )
+    #v(8pt)
+    #grid(
+      columns: (1fr, 1fr, 1fr),
+      gutter: 8pt,
+
       box(fill: white, stroke: 1pt + border, radius: 9pt, inset: 8pt)[
         #text(weight: "bold", fill: navy)[Leaderboard] \
-        #text(size: 8pt, fill: ink-soft)[Ranked total hours after confirmation]
+        #text(size: 8pt, fill: ink-soft)[Ranked total hours from confirmed participation]
       ],
-
       box(fill: amber-soft, stroke: 1pt + amber-ink, radius: 9pt, inset: 8pt)[
         #text(weight: "bold", fill: amber-ink)[Organiser Tools] \
-        #text(size: 8pt, fill: ink-soft)[Create activity, edit activity, cancel activity, confirm completion]
+        #text(size: 8pt, fill: ink-soft)[Create, edit, cancel activities; confirm completion]
       ],
       box(fill: rose-soft, stroke: 1pt + rose-ink, radius: 9pt, inset: 8pt)[
         #text(weight: "bold", fill: rose-ink)[Account] \
-        #text(size: 8pt, fill: ink-soft)[Avatar, class data, logout, personal settings]
-      ],
-      box(fill: panel, stroke: 1pt + border, radius: 9pt, inset: 8pt)[
-        #text(weight: "bold", fill: navy)[Linked context] \
-        #text(size: 8pt, fill: ink-soft)[Activity Detail leads to comments and the activity channel.]
+        #text(size: 8pt, fill: ink-soft)[Avatar, class info, logout, settings]
       ],
     )
+    #v(6pt)
+    #text(size: 8pt, fill: ink-soft)[_Activity Detail also links to the comment section and the activity's messaging channel._]
   ],
   caption: [Information architecture and main screen groups]
 )
@@ -295,103 +298,82 @@ The product structure was organized around the repeated tasks identified during 
 === Navigation Summary
 
 #table(
-  columns: (1fr, 1fr, 2fr),
+  columns: (0.8fr, 0.7fr, 2fr),
   table.header([*Area*], [*Primary user*], [*Purpose*]),
-  [Activity Feed], [Volunteer], [Compare opportunities quickly and enter the relevant detail screen.],
-  [Activity Detail], [Both], [Show event information, join status, comments, and channel entry.],
-  [My Records], [Volunteer], [Review joined activities, completion state, and accumulated history.],
-  [Organiser Tools], [Organiser], [Create, revise, cancel, and confirm activity participation.],
-  [Leaderboard], [Both], [Display confirmed volunteering totals in ranked order.],
-  [Account], [Both], [Store identity details, avatar, and session settings.],
+  [Activity Feed], [Volunteer], [Compare opportunities and tap into the detail screen.],
+  [Activity Detail], [Both], [Full event info, join status, comments, and channel entry.],
+  [My Records], [Volunteer], [See what I've joined, what's completed, and my history.],
+  [Organiser Tools], [Organiser], [Create, revise, cancel activities and confirm who participated.],
+  [Leaderboard], [Both], [See confirmed volunteering totals ranked.],
+  [Account], [Both], [Identity details, avatar, session management.],
 )
 
 == Core User Flows
 
+I mapped out the four most important user interactions as step-by-step flows. These cover registration, activity publication, joining with capacity protection, and messaging.
+
 === Flow 1: Registration
 
-The registration flow should be short and predictable. It collects school identity details and an avatar, validates obvious problems locally, and only sends a request once the form is complete.
+Registration needs to be quick. It collects school identity details and an avatar, validates the obvious stuff locally, and only hits the server once the form is ready.
 
 #figure(
-  pintorita.render(
-```
-sequenceDiagram
-  participant User
-  participant App
-  participant Service
-  participant DB
-
-  User ->> App: Enter school email, name, class, password, avatar
-  App ->> App: Validate required fields
-  App ->> Service: Submit registration request
-  Service ->> Service: Check uniqueness and hash password
-  Service ->> DB: Create user record
-  DB -->> Service: Success
-  Service -->> App: Registration confirmed
-  App -->> User: Show success and route to login
-```.text
+  table(
+    columns: (auto, auto, auto, 1fr),
+    table.header([*Step*], [*From*], [*To*], [*Action*]),
+    [1], [User], [App], [Fill in school email, name, class, password, and pick an avatar.],
+    [2], [App], [App], [Validate that required fields are filled and formats look right.],
+    [3], [App], [Service], [Send the registration request.],
+    [4], [Service], [Service], [Check that the email isn't already taken; hash the password.],
+    [5], [Service], [DB], [Create the user record.],
+    [6], [DB], [Service], [Confirm storage.],
+    [7], [Service], [App], [Return success.],
+    [8], [App], [User], [Show confirmation and redirect to login.],
   ),
   caption: [Registration flow]
 )
 
 === Flow 2: Activity Publication
 
-The publication flow must balance speed and completeness. An organiser should be able to create an activity without excessive friction, while volunteers must still receive enough information to decide whether to join.
+An organiser needs to publish activities without too much friction, but the activity also needs enough information for volunteers to decide if they want to join. I tried to find a middle ground -- the form asks for title, date, location, capacity, duration, and description. Nothing optional except description.
 
 #figure(
-  pintorita.render(
-```
-sequenceDiagram
-  participant Organiser
-  participant App
-  participant Service
-  participant DB
-
-  Organiser ->> App: Enter title, date, location, capacity, duration, description
-  App ->> Service: Create activity
-  Service ->> Service: Verify organiser permission
-  Service ->> DB: Insert activity in recruiting state
-  DB -->> Service: Activity stored
-  Service -->> App: Activity created
-  App -->> Organiser: Show result
-```.text
+  table(
+    columns: (auto, auto, auto, 1fr),
+    table.header([*Step*], [*From*], [*To*], [*Action*]),
+    [1], [Organiser], [App], [Fill in title, date, location, capacity, duration, and description.],
+    [2], [App], [Service], [Submit the new activity.],
+    [3], [Service], [Service], [Verify the user has organiser permission.],
+    [4], [Service], [DB], [Insert the activity in `recruiting` state.],
+    [5], [DB], [Service], [Confirm storage.],
+    [6], [Service], [App], [Return the created activity.],
+    [7], [App], [Organiser], [Show the result in the feed.],
   ),
   caption: [Activity publication flow]
 )
 
 === Flow 3: Joining with Capacity Protection
 
-This flow combines user feedback, data integrity, and concurrency control. It therefore deserves explicit treatment in Criterion B.
+This is the flow I spent the most time thinking about, because it combines user feedback, data integrity, and concurrency. If two volunteers tap "Join" at the same time on an activity with one slot left, only one should succeed. The server uses a database transaction with row-level locking to handle this.
 
 #figure(
-  pintorita.render(
-```
-sequenceDiagram
-  participant Volunteer
-  participant App
-  participant Service
-  participant DB
-
-  Volunteer ->> App: Tap Join
-  App ->> Service: Request join
-  Service ->> DB: Start transaction
-  Service ->> DB: Read current capacity
-  Service ->> DB: Check existing participation
-  alt full or duplicate
-    Service ->> DB: Roll back
-    Service -->> App: Reject with clear reason
-  else valid join
-    Service ->> DB: Create participation record
-    Service ->> DB: Increment participant count
-    Service ->> DB: Commit
-    Service -->> App: Join confirmed
-  end
-  App -->> Volunteer: Refresh local state
-```.text
+  table(
+    columns: (auto, auto, auto, 1fr),
+    table.header([*Step*], [*From*], [*To*], [*Action*]),
+    [1], [Volunteer], [App], [Tap the Join button.],
+    [2], [App], [Service], [Send a join request.],
+    [3], [Service], [DB], [Start a transaction and lock the activity row.],
+    [4], [Service], [DB], [Read current participant count.],
+    [5], [Service], [DB], [Check if this user already has a participation record.],
+    [6a], [Service], [App], [_If full or duplicate:_ roll back and return a clear rejection reason.],
+    [6b], [Service], [DB], [_If valid:_ create participation record and increment the count.],
+    [7], [Service], [DB], [Commit the transaction.],
+    [8], [Service], [App], [Confirm the join.],
+    [9], [App], [Volunteer], [Refresh the local state to show the new status.],
   ),
   caption: [Protected join flow]
 )
 
-*Critical logic*:
+The critical logic in pseudocode:
 ```text
 BEGIN TRANSACTION
   lock current activity row
@@ -406,190 +388,173 @@ COMMIT
 
 === Flow 4: Messaging Inside an Activity
 
-Messaging belongs to an activity context rather than existing as a separate social space. This keeps discussion relevant to preparation and coordination.
+I decided to tie messaging to activities rather than having a separate social space. This was a deliberate choice -- the client mentioned that past attempts at group chats got off-topic quickly. By scoping each channel to one activity, the conversation stays relevant to preparation and coordination.
 
 #figure(
-  pintorita.render(
-```
-sequenceDiagram
-  participant Sender
-  participant App
-  participant Service
-  participant Push
-  participant Receiver
-
-  Sender ->> App: Send message
-  App ->> Service: Post message
-  Service ->> Service: Verify channel membership
-  Service ->> Push: Publish update to members
-  Push -->> Receiver: Deliver new-message event
-  Service -->> App: Confirm storage
-```.text
+  table(
+    columns: (auto, auto, auto, 1fr),
+    table.header([*Step*], [*From*], [*To*], [*Action*]),
+    [1], [Sender], [App], [Type and send a message in the activity channel.],
+    [2], [App], [Service], [Post the message.],
+    [3], [Service], [Service], [Verify the sender is a channel member.],
+    [4], [Service], [DB], [Store the message.],
+    [5], [Service], [Push], [Publish an update event to other channel members.],
+    [6], [Push], [Receiver], [Deliver the new-message event in real time.],
+    [7], [Service], [App], [Confirm storage to the sender.],
   ),
   caption: [Activity messaging flow]
 )
 
 == Data Design
 
-The data model uses a relational structure because ownership, history, and ranking all depend on consistent links between records. A user joins many activities over time, each activity may have a related channel, and confirmed participation data may later be exported to a school-defined template.
+I used a relational database because most of the data in this system is about relationships -- a user _joins_ an activity, an activity _has_ a channel, a channel _contains_ messages. A document database could work, but I'd lose the ability to enforce foreign keys and unique constraints at the database level, which matters for things like preventing duplicate joins.
+
+=== Entity Definitions
+
+The tables below show every entity in the system. I'll explain the less obvious design choices after the definitions.
 
 #figure(
-  scale(x: 80%, y: 80%, reflow: true,
-    pintorita.render(
-```
-erDiagram
+  table(
+    columns: (1fr, 1fr, auto),
+    table.header([*Field*], [*Type*], [*Notes*]),
 
-users {
-  uuid id PK
-  string school_email
-  string real_name
-  string class_name
-  string avatar_path
-  string password_hash
-  string role
-}
+    table.cell(colspan: 3, fill: blue-soft)[#text(weight: "bold", fill: sky)[users]],
+    [id], [UUID], [Primary key],
+    [school_email], [string], [Unique; used for login],
+    [real_name], [string], [],
+    [class_name], [string], [],
+    [avatar_path], [string], [Path to uploaded image],
+    [password_hash], [string], [bcrypt hash],
+    [role], [string], [volunteer or organiser],
 
-sessions {
-  uuid id PK
-  uuid user_id FK
-  datetime issued_at
-}
+    table.cell(colspan: 3, fill: blue-soft)[#text(weight: "bold", fill: sky)[sessions]],
+    [id], [UUID], [Primary key],
+    [user_id], [UUID], [FK #sym.arrow.r users],
+    [issued_at], [datetime], [],
 
-activities {
-  uuid id PK
-  uuid organiser_id FK
-  string title
-  datetime start_at
-  string location
-  int max_participants
-  int current_participants
-  int duration_minutes
-  string state
-}
+    table.cell(colspan: 3, fill: mint-soft)[#text(weight: "bold", fill: mint-ink)[activities]],
+    [id], [UUID], [Primary key],
+    [organiser_id], [UUID], [FK #sym.arrow.r users],
+    [title], [string], [],
+    [start_at], [datetime], [],
+    [location], [string], [],
+    [max_participants], [int], [],
+    [current_participants], [int], [Denormalized counter],
+    [duration_minutes], [int], [],
+    [state], [string], [See state machine below],
 
-records {
-  uuid id PK
-  uuid activity_id FK
-  uuid user_id FK
-  string state
-  datetime updated_at
-}
+    table.cell(colspan: 3, fill: mint-soft)[#text(weight: "bold", fill: mint-ink)[records] _(participation)_],
+    [id], [UUID], [Primary key],
+    [activity_id], [UUID], [FK #sym.arrow.r activities],
+    [user_id], [UUID], [FK #sym.arrow.r users],
+    [state], [string], [joined, completed, cancelled],
+    [updated_at], [datetime], [],
 
-comments {
-  uuid id PK
-  uuid activity_id FK
-  uuid author_id FK
-  string content
-  datetime created_at
-}
+    table.cell(colspan: 3, fill: amber-soft)[#text(weight: "bold", fill: amber-ink)[comments]],
+    [id], [UUID], [Primary key],
+    [activity_id], [UUID], [FK #sym.arrow.r activities],
+    [author_id], [UUID], [FK #sym.arrow.r users],
+    [content], [string], [],
+    [created_at], [datetime], [],
 
-channels {
-  uuid id PK
-  uuid activity_id FK
-  string name
-}
+    table.cell(colspan: 3, fill: amber-soft)[#text(weight: "bold", fill: amber-ink)[channels]],
+    [id], [UUID], [Primary key],
+    [activity_id], [UUID], [FK #sym.arrow.r activities; one channel per activity],
+    [name], [string], [],
 
-channel_members {
-  uuid channel_id FK
-  uuid user_id FK
-}
+    table.cell(colspan: 3, fill: amber-soft)[#text(weight: "bold", fill: amber-ink)[channel_members]],
+    [channel_id], [UUID], [FK #sym.arrow.r channels],
+    [user_id], [UUID], [FK #sym.arrow.r users],
 
-messages {
-  uuid id PK
-  uuid channel_id FK
-  uuid sender_id FK
-  string content
-  datetime sent_at
-}
+    table.cell(colspan: 3, fill: rose-soft)[#text(weight: "bold", fill: rose-ink)[messages]],
+    [id], [UUID], [Primary key],
+    [channel_id], [UUID], [FK #sym.arrow.r channels],
+    [sender_id], [UUID], [FK #sym.arrow.r users],
+    [content], [string], [],
+    [sent_at], [datetime], [],
 
-export_batches {
-  uuid id PK
-  datetime generated_at
-  string target_format
-  string status
-}
+    table.cell(colspan: 3, fill: rose-soft)[#text(weight: "bold", fill: rose-ink)[export_batches]],
+    [id], [UUID], [Primary key],
+    [generated_at], [datetime], [],
+    [target_format], [string], [e.g. "ismas_csv"],
+    [status], [string], [pending, completed, failed],
 
-export_items {
-  uuid id PK
-  uuid batch_id FK
-  uuid user_id FK
-  uuid activity_id FK
-  int confirmed_minutes
-}
-
-users ||--o{ sessions : owns
-users ||--o{ activities : publishes
-users ||--o{ records : holds
-users ||--o{ comments : writes
-users ||--o{ messages : sends
-activities ||--o{ records : includes
-activities ||--o{ comments : includes
-activities ||--o| channels : has
-channels ||--o{ channel_members : contains
-channels ||--o{ messages : stores
-export_batches ||--o{ export_items : contains
-users ||--o{ export_items : references
-activities ||--o{ export_items : references
-```.text
-    )
+    table.cell(colspan: 3, fill: rose-soft)[#text(weight: "bold", fill: rose-ink)[export_items]],
+    [id], [UUID], [Primary key],
+    [batch_id], [UUID], [FK #sym.arrow.r export_batches],
+    [user_id], [UUID], [FK #sym.arrow.r users],
+    [activity_id], [UUID], [FK #sym.arrow.r activities],
+    [confirmed_minutes], [int], [],
   ),
-  caption: [Entity-relationship diagram]
+  caption: [Entity definitions]
+)
+
+=== Relationships
+
+#figure(
+  table(
+    columns: (1.2fr, auto, 1.2fr, 1.8fr),
+    table.header([*Entity A*], [*Relation*], [*Entity B*], [*Explanation*]),
+    [users], [1 #sym.arrow.r #sym.ast], [sessions], [A user can have multiple sessions over time.],
+    [users], [1 #sym.arrow.r #sym.ast], [activities], [An organiser publishes zero or more activities.],
+    [users], [1 #sym.arrow.r #sym.ast], [records], [A volunteer accumulates participation records.],
+    [users], [1 #sym.arrow.r #sym.ast], [comments], [A user writes comments on activities.],
+    [users], [1 #sym.arrow.r #sym.ast], [messages], [A user sends messages in channels.],
+    [activities], [1 #sym.arrow.r #sym.ast], [records], [Each activity tracks who joined and their status.],
+    [activities], [1 #sym.arrow.r #sym.ast], [comments], [Activities can have discussion comments.],
+    [activities], [1 #sym.arrow.r 0..1], [channels], [An activity may have one messaging channel.],
+    [channels], [1 #sym.arrow.r #sym.ast], [channel_members], [Tracks who has access to the channel.],
+    [channels], [1 #sym.arrow.r #sym.ast], [messages], [Messages belong to a specific channel.],
+    [export_batches], [1 #sym.arrow.r #sym.ast], [export_items], [A batch contains individual export rows.],
+  ),
+  caption: [Entity relationships]
 )
 
 === Key Data Rules
 
 #table(
-  columns: (1.1fr, 1.9fr),
-  table.header([*Rule*], [*Design decision*]),
-  [A user must not join the same activity twice.], [Enforce uniqueness on the participation pair of `activity_id` and `user_id`.],
-  [Capacity must never drift away from participation records.], [Update participant count and create the record inside a single transaction.],
-  [Only confirmed participation should affect rankings.], [Aggregate leaderboard totals from records marked as completed.],
-  [Messages should remain private to activity members.], [Require channel membership for both reading and posting.],
-  [Export should adapt to school requirements without rewriting core logic.], [Generate export batches from confirmed records through a dedicated adapter layer.],
+  columns: (1.2fr, 2fr),
+  table.header([*Rule*], [*How I enforce it*]),
+  [No duplicate joins], [Unique constraint on `(activity_id, user_id)` in the records table.],
+  [Capacity count stays accurate], [The participant count update and record creation happen inside a single database transaction.],
+  [Only confirmed hours count for rankings], [The leaderboard query filters on `records.state = 'completed'` before aggregating.],
+  [Channel messages are private], [The service checks channel membership before allowing reads or writes.],
+  [Export format is separate from core logic], [A dedicated adapter layer transforms confirmed records into whatever format the school needs.],
 )
 
 == Internal Structures and Algorithms
 
 === Activity State Machine
 
-The system uses explicit activity states so that visibility, joining, and hour confirmation all behave consistently.
+Activities go through a set of defined states. I chose to make these explicit rather than using boolean flags (like `is_active`, `is_cancelled`) because flags get confusing fast -- what does it mean if `is_active` is true but `is_cancelled` is also true? A single `state` field avoids that ambiguity.
 
 #figure(
-  pintorita.render(
-```
-activityDiagram
-start
-:Draft;
-:Recruiting;
-if (Start activity?) then (yes)
-  :In Progress;
-  if (Confirm finish?) then (yes)
-    :Completed;
-  else (cancel)
-    :Cancelled;
-  endif
-else (cancel)
-  :Cancelled;
-endif
-stop
-```.text
+  table(
+    columns: (1fr, 1fr, 1fr),
+    table.header([*Current State*], [*Event*], [*Next State*]),
+    [_(new)_], [Organiser creates activity], [Draft],
+    [Draft], [Organiser publishes], [Recruiting],
+    [Recruiting], [Organiser starts the activity], [InProgress],
+    [Recruiting], [Organiser cancels], [Cancelled],
+    [InProgress], [Organiser confirms finish], [Completed],
+    [InProgress], [Organiser cancels], [Cancelled],
   ),
-  caption: [Activity state machine]
+  caption: [Activity state transitions]
 )
 
 #table(
-  columns: (1fr, 1.25fr, 1fr),
-  table.header([*State*], [*Meaning*], [*Visible to volunteers*]),
-  [Draft], [Prepared by the organiser but not yet published], [No],
-  [Recruiting], [Published and open for sign-up], [Yes],
-  [InProgress], [Activity has started], [Yes],
-  [Completed], [Finished and eligible for confirmed hours], [Yes, as history],
-  [Cancelled], [No longer taking place], [Yes, as cancelled history],
+  columns: (0.7fr, 1.5fr, 0.8fr),
+  table.header([*State*], [*What it means*], [*Volunteers see it?*]),
+  [Draft], [The organiser is still preparing this. Not visible to volunteers yet.], [No],
+  [Recruiting], [Published and open for sign-up.], [Yes],
+  [InProgress], [The activity has started. No more joining.], [Yes],
+  [Completed], [Finished. Hours are now eligible for confirmation.], [Yes (as history)],
+  [Cancelled], [Called off. Existing records are marked cancelled too.], [Yes (as cancelled)],
 )
 
 === Join Algorithm
 
-The join process is a good example of algorithmic thinking because it combines validation, locking, and business rules.
+The join process is the most algorithmically interesting part of the system because it mixes validation, concurrency control, and business rules in one transaction. Here's the pseudocode:
 
 ```text
 FUNCTION joinActivity(userId, activityId):
@@ -619,9 +584,11 @@ FUNCTION joinActivity(userId, activityId):
     RETURN "Joined successfully"
 ```
 
+I want to call out `getActivityForUpdate` specifically -- this is a SELECT ... FOR UPDATE query that locks the activity row until the transaction finishes. Without it, two concurrent join requests could both read "4/5 participants" and both succeed, overfilling the activity.
+
 === Leaderboard Query Design
 
-The leaderboard should not store static totals on the user profile. It should be derived from confirmed participation records to avoid contradictions.
+I considered storing running totals on each user's profile, but that creates a risk of the total drifting out of sync with the actual records. Instead, the leaderboard is computed fresh from confirmed participation data:
 
 ```sql
 SELECT
@@ -638,34 +605,33 @@ ORDER BY total_minutes DESC, u.real_name ASC
 LIMIT :limit;
 ```
 
-This ordering also keeps tied totals stable by falling back to the volunteer name rather than showing a different order each time.
+The secondary sort on `real_name` is there so that tied volunteers always appear in the same order, rather than shuffling randomly each time the page loads.
 
 === Export Strategy for School Reporting
 
-Public web research did not reveal a confirmed ISMAS import specification. However, publicly documented school-information workflows commonly rely on template-based CSV or spreadsheet imports. The safest design choice is therefore to treat export as a dedicated adapter layer. The core system records and confirms volunteer hours; the adapter transforms that confirmed data into the format required by the school’s ISMAS import process once the official template is available.
+I looked into the school's ISMAS system but couldn't find a published import specification. From what I could gather from publicly available documentation about similar school-information systems, they typically use template-based CSV or spreadsheet imports. My approach is to treat export as a separate adapter layer: the core system records and confirms volunteer hours, and the adapter converts that data into whatever format the school's import process actually requires. Once the school provides the official template, I just need to update the adapter.
 
-*Planned export fields*:
-- student identifier
-- student name
+The fields I plan to export:
+- student identifier and name
 - class name
-- activity title
-- activity date
-- confirmed duration
+- activity title and date
+- confirmed duration in minutes
 - organiser confirmation timestamp
 
-This approach keeps Criterion A intact while avoiding a brittle assumption about an external format that is not publicly documented.
+This way, if the school changes their template, I don't have to touch the core activity or participation logic at all.
 
 == UI / UX Design
 
-The interface should feel calm, clear, and academic rather than playful. Students are likely to use the app in short sessions, so the feed must support rapid scanning and obvious actions.
+I want the interface to feel calm and functional -- more like a school tool than a social media app. Students will probably use it in short bursts (checking what activities are available, sending a quick message), so the feed needs to be easy to scan and the main actions need to be obvious.
 
 === Interface Principles
 
-- The activity feed must expose title, time, location, capacity, and join state without forcing users into the detail page.
-- Volunteer and organiser actions should be visually separated so that role-specific controls do not cause accidental taps.
-- Status should use text, color, and shape together rather than relying on color alone.
-- Error messages should tell the user what to do next, not just that something failed.
-- Message history and participation records should always show which activity they belong to.
+These are the guidelines I set for myself when designing the screens:
+
+- The activity feed should show title, time, location, capacity, and join state *without* forcing the user to tap into a detail page. Most of the time, the card alone should be enough to decide.
+- Volunteer actions and organiser actions need to be visually separated. The client specifically mentioned that in a previous system, students accidentally triggered admin functions.
+- Status indicators should combine text, color, and shape. I don't want to rely on color alone because that fails for colorblind users.
+- Error messages should say what to do next, not just what went wrong.
 
 === Activity Feed Wireframe
 
@@ -742,44 +708,44 @@ The interface should feel calm, clear, and academic rather than playful. Student
 === Layout Decisions
 
 #table(
-  columns: (1.15fr, 1.35fr, 1.7fr),
-  table.header([*Element*], [*Planned behavior*], [*Reason*]),
-  [Capacity indicator], [Progress bar plus exact numeric count], [A bar alone looks elegant but hides actual availability.],
-  [Join button], [Changes from `Join` to `Joined` and becomes disabled], [Prevents duplicate taps and makes status immediately obvious.],
-  [Organiser action area], [Grouped in a separate card on the detail screen], [Reduces confusion between volunteer and organiser controls.],
-  [Leaderboard row], [Avatar, name, rank, and total hours in one line], [The ranking should be understandable at a glance.],
-  [Record status chip], [Plain labels such as `Joined`, `Completed`, and `Cancelled`], [Simple language is easier to test and easier for users to interpret.],
+  columns: (1fr, 1.4fr, 1.8fr),
+  table.header([*Element*], [*What I planned*], [*Why*]),
+  [Capacity indicator], [Progress bar plus exact count (e.g. "5 / 20")], [A bar alone looks nice but hides how many spots are actually left.],
+  [Join button], [Changes to "Joined" and becomes disabled after tapping], [Stops accidental double taps and makes the current status clear.],
+  [Organiser controls], [Grouped in a separate card on the detail screen], [Keeps volunteer UI clean. The client was worried about accidental admin actions.],
+  [Leaderboard row], [Avatar, name, rank, and total hours in one line], [Ranking should be understandable at a glance.],
+  [Record status chip], [Plain text labels like "Joined", "Completed", "Cancelled"], [Simple language is easier for everyone and easier to test.],
 )
 
 === Validation and Feedback
 
 #table(
-  columns: (1fr, 1.4fr, 1.6fr),
-  table.header([*Input*], [*Validation rule*], [*User-facing response*]),
-  [School email], [Must match school format and be unique], [Inline error before submission where possible],
-  [Password], [Minimum length and confirmation match], [Field-level guidance rather than a generic alert],
-  [Activity title], [Required and limited to a sensible length], [Keep focus on the field until corrected],
-  [Capacity], [Positive whole number], [Explain the allowed range clearly],
-  [Duration], [Positive number of minutes], [Prevent invalid scheduling and ranking errors],
-  [Avatar], [Optional upload or placeholder selection], [Should not interrupt registration unless the final criterion requires it],
+  columns: (0.8fr, 1.3fr, 1.5fr),
+  table.header([*Input*], [*Rule*], [*What the user sees*]),
+  [School email], [Must match school format and not already exist], [Inline error under the field, shown before form submission],
+  [Password], [Minimum length; confirmation must match], [Field-level hint rather than a generic alert popup],
+  [Activity title], [Required; max length], [Keep focus on the field until corrected],
+  [Capacity], [Positive whole number], [Show the allowed range],
+  [Duration], [Positive number of minutes], [Prevents invalid scheduling],
+  [Avatar], [Optional upload or placeholder], [Shouldn't block registration],
 )
 
 = Outline Test Plan
 
-The following test plan is mapped directly to the success criteria from Criterion A. The purpose is to show how each major design promise will later be verified.
+I wrote this test plan to map directly to the success criteria from Criterion A. Every major design promise should have at least one test that can verify it.
 
 == Test Coverage Map
 
 #table(
-  columns: (1.1fr, 1.4fr, 1.8fr),
-  table.header([*Success criterion*], [*Main tests*], [*Evidence sought*]),
-  [1. Account registration], [Valid registration, duplicate registration, invalid input, avatar upload], [Secure storage, correct validation, successful account creation],
-  [2. Task publication], [Publish with valid data, publish without permission, visibility timing], [Correct fields and feed visibility within five seconds],
-  [3. Task management], [Edit activity, cancel activity, compare volunteer view before and after], [Immediate and correct updates for volunteers],
-  [4. Communication], [Send message, receive message, reopen history], [Stored messages and visible live updates],
-  [5. Leaderboard], [Rank ordering, tie behavior, recalculation after confirmation], [Accurate totals and stable ranking order],
-  [6. Hour tracking and export], [Confirm participation, accumulate hours, generate export batch], [Correct confirmed minutes and school-ready export structure],
-  [7. Platform compatibility], [Run on iPad, rotate device, test keyboard and long content], [Stable layout and usable touch targets on iPadOS 17.5+],
+  columns: (1fr, 1.4fr, 1.6fr),
+  table.header([*Success criterion*], [*Tests I plan to run*], [*What I'm looking for*]),
+  [1. Account registration], [Valid registration, duplicate email, bad input, avatar upload], [Secure password storage, correct validation messages, account actually works after creation],
+  [2. Task publication], [Publish with valid data, try publishing without organiser role, check feed timing], [Correct fields show up; new activity visible in the feed quickly],
+  [3. Task management], [Edit an activity, cancel one, check what volunteers see before and after], [Changes propagate immediately; cancelled activities stop appearing as joinable],
+  [4. Communication], [Send a message, check if another user receives it live, reopen the channel later], [Messages persist and show up in real time],
+  [5. Leaderboard], [Check rank ordering, test ties, confirm that adding hours changes the ranking], [Accurate totals, stable ordering for ties],
+  [6. Hour tracking and export], [Confirm participation, check accumulated hours, generate an export batch], [Correct confirmed minutes; export contains the expected fields],
+  [7. Platform compatibility], [Run on iPad, rotate the device, test with long content and keyboard visible], [No crashes, no broken layout, usable touch targets on iPadOS 17.5+],
 )
 
 == Representative Test Cases
@@ -788,87 +754,74 @@ The following test plan is mapped directly to the success criteria from Criterio
 
 #table(
   columns: (1fr, 3fr),
-  [*Related success criterion*], [\#1],
-  [*Test data*], [A new school email, valid password, class name, and avatar],
-  [*Expected result*], [The account is created, the password is stored securely, profile data is retrievable, and the avatar appears in the account view.],
+  [*Success criterion*], [\#1],
+  [*Test data*], [A fresh school email, valid password, class name, and an avatar image],
+  [*What should happen*], [Account gets created. Password is stored as a hash (not plaintext). Profile data is retrievable. Avatar shows up in the account view.],
 )
 
 === T2. Activity Publication Visibility
 
 #table(
   columns: (1fr, 3fr),
-  [*Related success criterion*], [\#2],
-  [*Test method*], [Create an activity from an organiser account while another account is already viewing the feed.],
-  [*Expected result*], [The new activity appears within five seconds and displays the correct date, capacity, description, and duration.],
+  [*Success criterion*], [\#2],
+  [*How I'll test it*], [Create an activity from one account while a second account is already on the feed screen.],
+  [*What should happen*], [The new activity shows up within a few seconds with the right date, capacity, description, and duration.],
 )
 
 === T3. Edit and Cancel Propagation
 
 #table(
   columns: (1fr, 3fr),
-  [*Related success criterion*], [\#3],
-  [*Test method*], [Change one published activity and cancel another, then refresh the volunteer view.],
-  [*Expected result*], [Updated details appear without stale data, and cancelled activities no longer appear as recruitable.],
+  [*Success criterion*], [\#3],
+  [*How I'll test it*], [Change a published activity's details and cancel a different one. Then check the volunteer feed.],
+  [*What should happen*], [Updated details appear without stale data. Cancelled activity no longer shows as joinable.],
 )
 
 === T4. Messaging Persistence and Push
 
 #table(
   columns: (1fr, 3fr),
-  [*Related success criterion*], [\#4],
-  [*Test method*], [Two users enter the same activity channel; one sends a message while the other remains on the screen.],
-  [*Expected result*], [The receiver sees the message without manual refresh, and the message remains after reopening the screen.],
+  [*Success criterion*], [\#4],
+  [*How I'll test it*], [Two users open the same activity channel. One sends a message. The other stays on the screen.],
+  [*What should happen*], [The receiver sees the message without refreshing. The message is still there after closing and reopening the channel.],
 )
 
 === T5. Leaderboard Recalculation
 
 #table(
   columns: (1fr, 3fr),
-  [*Related success criterion*], [\#5],
-  [*Test method*], [Confirm participation for a volunteer whose rank should change after the update.],
-  [*Expected result*], [The total hours and relative position change correctly after completion is recorded.],
+  [*Success criterion*], [\#5],
+  [*How I'll test it*], [Confirm participation for a volunteer who should move up in rank.],
+  [*What should happen*], [Their total hours and rank position update correctly after the confirmation goes through.],
 )
 
 === T6. Hour Tracking and Export
 
 #table(
   columns: (1fr, 3fr),
-  [*Related success criterion*], [\#6],
-  [*Test method*], [Mark participation as completed, then generate an export batch from confirmed records.],
-  [*Expected result*], [The user gains the correct number of minutes, the export batch contains the required fields, and the output matches the school-provided import template once available.],
+  [*Success criterion*], [\#6],
+  [*How I'll test it*], [Mark a participation as completed, then generate an export batch.],
+  [*What should happen*], [The volunteer gains the correct number of minutes. The export contains all the planned fields.],
 )
 
 === T7. iPad Compatibility and Layout
 
 #table(
   columns: (1fr, 3fr),
-  [*Related success criterion*], [\#7],
-  [*Test method*], [Run the app on target iPads in portrait and landscape with both short and long content.],
-  [*Expected result*], [No crashes, no blocked controls, no severe overflow, and comfortable touch targets on the primary screens.],
+  [*Success criterion*], [\#7],
+  [*How I'll test it*], [Run the app on the target iPads in portrait and landscape with both short and very long content.],
+  [*What should happen*], [No crashes, no blocked controls, no text overflow. Touch targets should be comfortable on a 10.9" screen.],
 )
 
 == Boundary and Risk-Focused Tests
 
 #table(
-  columns: (1fr, 1.3fr, 1.7fr),
-  table.header([*Risk area*], [*Why it matters*], [*Planned test*]),
-  [Duplicate join attempts], [Can corrupt participation counts], [Submit repeated join requests and verify that only one record is created.],
-  [Full activity], [Must not allow overbooking], [Attempt to join when one place remains and when no places remain.],
-  [Network interruption], [Likely in a school environment], [Interrupt network during key actions and confirm useful recovery messaging.],
-  [Long titles and descriptions], [Can break iPad layouts], [Use extreme but valid text lengths in feed and detail screens.],
-  [Concurrent confirmation updates], [Affects leaderboard accuracy], [Confirm multiple records in quick succession and compare totals.],
-  [Export format uncertainty], [Depends on an external requirement], [Validate export through a configurable schema and a school-approved sample file.],
+  columns: (1fr, 1.2fr, 1.8fr),
+  table.header([*Risk*], [*Why it matters*], [*How I'll test it*]),
+  [Duplicate join attempts], [Could corrupt the participant count], [Send repeated join requests quickly and check that only one record exists.],
+  [Full activity], [Must not overbook], [Try to join when exactly one place remains, and again when none remain.],
+  [Network interruption], [Likely in the school WiFi environment], [Kill the network during a join or message send and see if the app recovers gracefully.],
+  [Long titles and descriptions], [Can break the iPad layout], [Enter extreme but technically valid text lengths and check the feed and detail screens.],
+  [Concurrent confirmation], [Affects leaderboard accuracy], [Confirm multiple records in quick succession and verify the totals add up.],
+  [Export format unknown], [Depends on the school providing their template], [Test the adapter with a mock template and verify the output matches.],
 )
-
-== What This Test Plan Demonstrates
-
-If the tests above pass, the application will have shown that it can:
-
-- register users securely
-- publish and manage volunteer opportunities quickly
-- support activity-specific communication
-- calculate confirmed volunteer hours correctly
-- prepare structured data for school reporting
-- run reliably on the school’s target iPads
-
-That is the level of evidence this Criterion B document is designed to support.

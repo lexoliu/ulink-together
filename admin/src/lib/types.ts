@@ -4,6 +4,8 @@ export type AuthorityName =
   | 'manage_record_anyway'
   | 'view_user'
   | 'generate_export'
+  | 'update_user_anyway'
+  | 'delete_user'
 
 export type ActivityState = 'need_volunteer' | 'going' | 'ended' | 'canceled'
 export type ActivityTransitionAction = 'need_volunteer' | 'go' | 'end' | 'cancel'
@@ -138,6 +140,14 @@ export interface ActivityDraft {
   briefDescription: string
   description: string
   duration: number
+}
+
+export interface UpdateUserForm {
+  realname?: string
+  gender?: string
+  description?: string
+  classname?: string
+  avatar?: string | null
 }
 
 const activityTransitionsByState = {

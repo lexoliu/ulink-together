@@ -4,6 +4,7 @@ use models::User;
 use rand::{distributions::Uniform, prelude::Distribution};
 use serde::{Deserialize, Serialize};
 use skyzen::{
+    extract::Query,
     routing::Params,
     utils::{Json, State},
 };
@@ -11,7 +12,7 @@ use sqlx::Row;
 use utoipa::ToSchema;
 
 use crate::{
-    auth::{get_group_id, AuthSession},
+    auth::{get_group_id, AuthError, AuthSession},
     database::AppDatabase,
     utils::{sha256, ApiMessage, Id},
 };
@@ -33,6 +34,119 @@ pub struct UpdateUserForm {
     pub description: Option<String>,
     pub classname: Option<String>,
     pub avatar: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Default, ToSchema)]
+pub struct ListUsersQuery {
+    pub group: Option<String>,
+    pub search: Option<String>,
+    pub limit: Option<u32>,
+}
+
+#[skyzen::error]
+pub enum ListUsersError {
+    #[error("Session expired", status = FORBIDDEN)]
+    SessionExpired,
+
+    #[error("Forbidden", status = FORBIDDEN)]
+    Forbidden,
+
+    #[error("Group filter cannot be empty", status = BAD_REQUEST)]
+    InvalidGroup,
+
+    #[error("Limit must be between 1 and 1000", status = BAD_REQUEST)]
+    InvalidLimit,
+
+    #[error("Corrupted user data", status = INTERNAL_SERVER_ERROR)]
+    CorruptedData,
+}
+
+/// List users with group and text filters
+#[skyzen::openapi]
+pub async fn list(
+    database: State<AppDatabase>,
+    query: Query<ListUsersQuery>,
+    session: AuthSession,
+) -> Result<Json<Vec<User>>, ListUsersError> {
+    let auth = session.into_auth().await.map_err(|err| match err {
+        AuthError::SessionExpired => ListUsersError::SessionExpired,
+        _ => ListUsersError::Forbidden,
+    })?;
+    auth.ensure_authority("view_user")
+        .await
+        .map_err(|_| ListUsersError::Forbidden)?;
+
+    let Query(ListUsersQuery {
+        group,
+        search,
+        limit,
+    }) = query;
+    let group = group.unwrap_or_else(|| "student".to_string());
+    if group.trim().is_empty() {
+        return Err(ListUsersError::InvalidGroup);
+    }
+    let search_pattern = search
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| format!("%{}%", value.to_ascii_lowercase()))
+        .unwrap_or_default();
+    let limit = limit.unwrap_or(200);
+    if limit == 0 || limit > 1000 {
+        return Err(ListUsersError::InvalidLimit);
+    }
+
+    let rows = sqlx::query(
+        database
+            .sql("SELECT users.id, users.email, users.realname, users.gender, users.description, users.classname, users.avatar_path, users.group_id FROM users JOIN groups ON groups.id = users.group_id WHERE groups.code = ?1 AND (?2 = '' OR LOWER(users.realname) LIKE ?2 OR LOWER(users.email) LIKE ?2 OR LOWER(users.classname) LIKE ?2) ORDER BY users.realname ASC, users.email ASC LIMIT ?3")
+            .as_ref(),
+    )
+    .bind(group)
+    .bind(search_pattern)
+    .bind(i64::from(limit))
+    .fetch_all(database.sqlx())
+    .await
+    .expect("Database error");
+
+    let users = rows
+        .into_iter()
+        .map(|row| {
+            let id = row
+                .try_get::<String, _>("id")
+                .map_err(|_| ListUsersError::CorruptedData)?
+                .parse()
+                .map_err(|_| ListUsersError::CorruptedData)?;
+            let group = row
+                .try_get::<String, _>("group_id")
+                .map_err(|_| ListUsersError::CorruptedData)?
+                .parse()
+                .map_err(|_| ListUsersError::CorruptedData)?;
+            Ok(User {
+                id,
+                email: row
+                    .try_get("email")
+                    .map_err(|_| ListUsersError::CorruptedData)?,
+                realname: row
+                    .try_get("realname")
+                    .map_err(|_| ListUsersError::CorruptedData)?,
+                gender: row
+                    .try_get("gender")
+                    .map_err(|_| ListUsersError::CorruptedData)?,
+                description: row
+                    .try_get("description")
+                    .map_err(|_| ListUsersError::CorruptedData)?,
+                classname: row
+                    .try_get("classname")
+                    .map_err(|_| ListUsersError::CorruptedData)?,
+                avatar: row
+                    .try_get("avatar_path")
+                    .map_err(|_| ListUsersError::CorruptedData)?,
+                group,
+            })
+        })
+        .collect::<Result<Vec<_>, ListUsersError>>()?;
+
+    Ok(Json(users))
 }
 
 #[skyzen::error]

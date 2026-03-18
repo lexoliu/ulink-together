@@ -18,9 +18,9 @@ private enum AuthMode: String, CaseIterable, Identifiable {
     var subtitle: String {
         switch self {
         case .login:
-            "Use your school account to continue."
+            "Use your school email and password."
         case .register:
-            "Create a volunteer profile in a few steps."
+            "Set up your volunteer profile."
         }
     }
 
@@ -36,6 +36,7 @@ private enum AuthMode: String, CaseIterable, Identifiable {
 
 struct AuthFlowView: View {
     @EnvironmentObject private var session: SessionStore
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var mode: AuthMode = .login
     @State private var loginEmail = ""
@@ -47,11 +48,11 @@ struct AuthFlowView: View {
     @State private var registerClassname = ""
     @State private var registerPassword = ""
     @State private var registerConfirmPassword = ""
-    @State private var registerAvatar = ""
     @State private var localError: String?
     @FocusState private var focusedField: Field?
 
     private enum Field: Hashable {
+        case serviceAddress
         case loginEmail
         case loginPassword
         case registerEmail
@@ -59,7 +60,6 @@ struct AuthFlowView: View {
         case registerClassname
         case registerPassword
         case registerConfirmPassword
-        case registerAvatar
     }
 
     private let genders = [
@@ -72,55 +72,74 @@ struct AuthFlowView: View {
         NavigationStack {
             PageWidthReader {
                 ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: 18) {
-                        introPanel
-                            .frame(maxWidth: 360, alignment: .leading)
+                    HStack(alignment: .top, spacing: 24) {
+                        guidancePanel
+                            .frame(maxWidth: 312, alignment: .leading)
                         formPanel
+                            .frame(maxWidth: 560, alignment: .leading)
                     }
 
                     VStack(spacing: 18) {
-                        introPanel
+                        guidancePanel
                         formPanel
                     }
                 }
             }
-            .navigationTitle("Welcome")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationTitle("Student Access")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.visible, for: .navigationBar)
         }
         .scrollDismissesKeyboard(.interactively)
+        .onChange(of: mode) { _, _ in
+            localError = nil
+            session.clearLastError()
+        }
+        .onChange(of: scenePhase) { _, newValue in
+            guard newValue == .active else {
+                return
+            }
+            Task {
+                await session.revalidateServiceAddressIfNeeded()
+            }
+        }
     }
 
-    private var introPanel: some View {
+    private var guidancePanel: some View {
         CardPanel {
-            VStack(alignment: .leading, spacing: 20) {
-                Label("Volunteer Hours", systemImage: "person.3.sequence.fill")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(AppTheme.accentTint)
-
+            VStack(alignment: .leading, spacing: 24) {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Volunteer work, organised like a system app.")
-                        .font(.system(.largeTitle, design: .rounded).weight(.bold))
-                    Text("Join activities, follow organiser updates, and keep your school service record in one place.")
-                        .font(.title3)
+                    Text("For Students")
+                        .font(.footnote.weight(.semibold))
                         .foregroundStyle(.secondary)
+                        .textCase(.uppercase)
+
+                    Text("Sign in with your school account")
+                        .font(.system(size: 34, weight: .bold))
+                        .foregroundStyle(.primary)
+
+                    Text("Join activities and check confirmed service hours in one place.")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
-                VStack(spacing: 12) {
-                    AuthFeatureRow(
-                        systemImage: "sparkles",
-                        title: "Clean activity browsing",
-                        detail: "See what is open now, what is already underway, and what you joined."
+                Divider()
+
+                VStack(spacing: 16) {
+                    AuthGuidanceRow(
+                        systemImage: "envelope",
+                        title: "School email",
+                        detail: "Use the email address provided by your school."
                     )
-                    AuthFeatureRow(
-                        systemImage: "message.badge.waveform",
-                        title: "Per-activity rooms",
-                        detail: "Stay inside the discussion thread for each event without switching tools."
+                    AuthGuidanceRow(
+                        systemImage: "link",
+                        title: "Service address",
+                        detail: "Enter the address your teacher or school office gave you."
                     )
-                    AuthFeatureRow(
-                        systemImage: "checklist.checked",
-                        title: "Records that stay ready",
-                        detail: "Completed hours and organiser confirmations stay easy to review."
+                    AuthGuidanceRow(
+                        systemImage: "arrow.trianglehead.clockwise",
+                        title: "Change it later",
+                        detail: "You can update the address again from Account if it changes."
                     )
                 }
             }
@@ -129,8 +148,8 @@ struct AuthFlowView: View {
 
     private var formPanel: some View {
         CardPanel {
-            VStack(alignment: .leading, spacing: 18) {
-                serverPanel
+            VStack(alignment: .leading, spacing: 20) {
+                serviceAddressPanel
 
                 Picker("Authentication", selection: $mode) {
                     ForEach(AuthMode.allCases) { authMode in
@@ -138,8 +157,13 @@ struct AuthFlowView: View {
                     }
                 }
                 .pickerStyle(.segmented)
+                .padding(4)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Color(uiColor: .tertiarySystemGroupedBackground))
+                )
 
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(mode.title)
                         .font(.title2.weight(.semibold))
                     Text(mode.subtitle)
@@ -161,14 +185,12 @@ struct AuthFlowView: View {
         }
     }
 
-    private var serverPanel: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Server URL")
-                .font(.headline)
-            Text("Enter the Together server used by your school before signing in.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
+    private var serviceAddressPanel: some View {
+        AuthFieldShell(
+            title: "School service address",
+            detail: "Only needed the first time you sign in on this iPad.",
+            isFocused: focusedField == .serviceAddress
+        ) {
             TextField(
                 "https://volunteer.ulink.edu.cn",
                 text: Binding(
@@ -178,23 +200,27 @@ struct AuthFlowView: View {
             )
             .textInputAutocapitalization(.never)
             .keyboardType(.URL)
-            .textFieldStyle(.roundedBorder)
+            .autocorrectionDisabled()
+            .focused($focusedField, equals: .serviceAddress)
         }
     }
 
     private var loginForm: some View {
         VStack(alignment: .leading, spacing: 14) {
-            TextField("School email", text: $loginEmail)
-                .textInputAutocapitalization(.never)
-                .textContentType(.username)
-                .keyboardType(.emailAddress)
-                .textFieldStyle(.roundedBorder)
-                .focused($focusedField, equals: .loginEmail)
+            AuthFieldShell(title: "School email", isFocused: focusedField == .loginEmail) {
+                TextField("Enter your school email", text: $loginEmail)
+                    .textInputAutocapitalization(.never)
+                    .textContentType(.emailAddress)
+                    .keyboardType(.emailAddress)
+                    .autocorrectionDisabled()
+                    .focused($focusedField, equals: .loginEmail)
+            }
 
-            SecureField("Password", text: $loginPassword)
-                .textContentType(.password)
-                .textFieldStyle(.roundedBorder)
-                .focused($focusedField, equals: .loginPassword)
+            AuthFieldShell(title: "Password", isFocused: focusedField == .loginPassword) {
+                SecureField("Enter password", text: $loginPassword)
+                    .textContentType(.password)
+                    .focused($focusedField, equals: .loginPassword)
+            }
 
             Button {
                 localError = validateLogin()
@@ -207,47 +233,66 @@ struct AuthFlowView: View {
             } label: {
                 submitLabel(title: AuthMode.login.actionTitle)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .tint(AppTheme.accentTint)
+            .buttonStyle(AuthPrimaryButtonStyle())
             .disabled(session.isAuthenticating)
         }
     }
 
     private var registerForm: some View {
         VStack(alignment: .leading, spacing: 14) {
-            TextField("School email", text: $registerEmail)
-                .textInputAutocapitalization(.never)
-                .keyboardType(.emailAddress)
-                .textFieldStyle(.roundedBorder)
-                .focused($focusedField, equals: .registerEmail)
-
-            TextField("Real name", text: $registerRealname)
-                .textFieldStyle(.roundedBorder)
-                .focused($focusedField, equals: .registerRealname)
-
-            Picker("Gender", selection: $registerGender) {
-                ForEach(genders, id: \.self) { gender in
-                    Text(gender).tag(gender)
+            pairedFields {
+                AuthFieldShell(title: "School email", isFocused: focusedField == .registerEmail) {
+                    TextField("Enter your school email", text: $registerEmail)
+                        .textInputAutocapitalization(.never)
+                        .textContentType(.emailAddress)
+                        .keyboardType(.emailAddress)
+                        .autocorrectionDisabled()
+                        .focused($focusedField, equals: .registerEmail)
+                }
+            } second: {
+                AuthFieldShell(title: "Real name", isFocused: focusedField == .registerRealname) {
+                    TextField("Enter your name", text: $registerRealname)
+                        .focused($focusedField, equals: .registerRealname)
                 }
             }
-            .pickerStyle(.segmented)
 
-            TextField("Class name", text: $registerClassname)
-                .textFieldStyle(.roundedBorder)
-                .focused($focusedField, equals: .registerClassname)
+            AuthFieldShell(title: "Class name", isFocused: focusedField == .registerClassname) {
+                TextField("For example: G11-2", text: $registerClassname)
+                    .focused($focusedField, equals: .registerClassname)
+            }
 
-            SecureField("Password", text: $registerPassword)
-                .textFieldStyle(.roundedBorder)
-                .focused($focusedField, equals: .registerPassword)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Gender")
+                    .font(.subheadline.weight(.medium))
 
-            SecureField("Confirm password", text: $registerConfirmPassword)
-                .textFieldStyle(.roundedBorder)
-                .focused($focusedField, equals: .registerConfirmPassword)
+                Picker("Gender", selection: $registerGender) {
+                    ForEach(genders, id: \.self) { gender in
+                        Text(gender).tag(gender)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .padding(4)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Color(uiColor: .tertiarySystemGroupedBackground))
+                )
+            }
 
-            TextField("Profile photo link (optional)", text: $registerAvatar)
-                .textFieldStyle(.roundedBorder)
-                .focused($focusedField, equals: .registerAvatar)
+            pairedFields {
+                AuthFieldShell(title: "Password", isFocused: focusedField == .registerPassword) {
+                    SecureField("At least 6 characters", text: $registerPassword)
+                        .focused($focusedField, equals: .registerPassword)
+                }
+            } second: {
+                AuthFieldShell(title: "Confirm password", isFocused: focusedField == .registerConfirmPassword) {
+                    SecureField("Enter password again", text: $registerConfirmPassword)
+                        .focused($focusedField, equals: .registerConfirmPassword)
+                }
+            }
+
+            Text("You can add a profile photo after signing in.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
 
             Button {
                 localError = validateRegistration()
@@ -262,16 +307,14 @@ struct AuthFlowView: View {
                         password: registerPassword,
                         gender: registerGender,
                         classname: registerClassname,
-                        avatar: registerAvatar.trimmedNilIfEmpty
+                        avatar: nil
                     )
                     _ = await session.registerAndSignIn(request: request)
                 }
             } label: {
                 submitLabel(title: AuthMode.register.actionTitle)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .tint(AppTheme.accentTint)
+            .buttonStyle(AuthPrimaryButtonStyle())
             .disabled(session.isAuthenticating)
         }
     }
@@ -280,6 +323,7 @@ struct AuthFlowView: View {
     private func submitLabel(title: String) -> some View {
         if session.isAuthenticating {
             ProgressView()
+                .tint(.white)
                 .frame(maxWidth: .infinity)
         } else {
             Text(title)
@@ -287,9 +331,29 @@ struct AuthFlowView: View {
         }
     }
 
+    @ViewBuilder
+    private func pairedFields<First: View, Second: View>(
+        @ViewBuilder first: () -> First,
+        @ViewBuilder second: () -> Second
+    ) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 14) {
+                first()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                second()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            VStack(spacing: 14) {
+                first()
+                second()
+            }
+        }
+    }
+
     private func validateLogin() -> String? {
         if session.hasConfiguredServerURL == false {
-            return "Server URL is required."
+            return "Service address is required."
         }
         if loginEmail.isEmpty || loginPassword.isEmpty {
             return "Email and password are required."
@@ -299,7 +363,7 @@ struct AuthFlowView: View {
 
     private func validateRegistration() -> String? {
         if session.hasConfiguredServerURL == false {
-            return "Server URL is required."
+            return "Service address is required."
         }
         if registerEmail.isEmpty || registerRealname.isEmpty || registerClassname.isEmpty {
             return "Email, real name, and class name are required."
@@ -314,18 +378,21 @@ struct AuthFlowView: View {
     }
 }
 
-private struct AuthFeatureRow: View {
+private struct AuthGuidanceRow: View {
     let systemImage: String
     let title: String
     let detail: String
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: 14) {
             Image(systemName: systemImage)
                 .font(.body.weight(.semibold))
                 .foregroundStyle(AppTheme.accentTint)
-                .frame(width: 28, height: 28)
-                .background(AppTheme.accentTint.opacity(0.10), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .frame(width: 34, height: 34)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color(uiColor: .systemBackground))
+                )
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
@@ -333,8 +400,78 @@ private struct AuthFeatureRow: View {
                 Text(detail)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+        }
+    }
+}
+
+private struct AuthFieldShell<Content: View>: View {
+    let title: String
+    let detail: String?
+    let isFocused: Bool
+    @ViewBuilder let content: Content
+
+    init(
+        title: String,
+        detail: String? = nil,
+        isFocused: Bool = false,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.title = title
+        self.detail = detail
+        self.isFocused = isFocused
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.subheadline.weight(.medium))
+
+            content
+                .font(.body)
+                .padding(.horizontal, 16)
+                .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Color(uiColor: .systemBackground))
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(
+                            isFocused ? AppTheme.accentTint.opacity(0.55) : Color(uiColor: .separator).opacity(0.22),
+                            lineWidth: isFocused ? 1.5 : 1
+                        )
+                }
+
+            if let detail {
+                Text(detail)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
+    }
+}
+
+private struct AuthPrimaryButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.headline.weight(.semibold))
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .frame(height: 52)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(AppTheme.accentTint.opacity(isEnabled ? 1 : 0.45))
+            )
+            .scaleEffect(configuration.isPressed ? 0.985 : 1)
+            .animation(.easeOut(duration: 0.14), value: configuration.isPressed)
     }
 }
 

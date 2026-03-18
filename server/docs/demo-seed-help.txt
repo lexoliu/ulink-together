@@ -1,0 +1,30 @@
+together-server demo_seed
+
+USAGE:
+  cargo run -p together-server --bin demo_seed -- \
+    [--database-url <DATABASE_URL>] \
+    [--teacher-count <COUNT>] \
+    [--student-count <COUNT>] \
+    [--activities-per-teacher <COUNT>] \
+    [--comments-per-activity <COUNT>] \
+    [--messages-per-activity <COUNT>] \
+    [--teacher-password <PASSWORD>] \
+    [--student-password <PASSWORD>] \
+    [--seed <SEED>] \
+    [--reset]
+
+DEFAULTS:
+  database-url            sqlite://./together-demo.db
+  teacher-count           4
+  student-count           72
+  activities-per-teacher  6
+  comments-per-activity   4
+  messages-per-activity   8
+  teacher-password        DemoTeacher123!
+  student-password        DemoStudent123!
+  seed                    20260317
+
+NOTES:
+  --reset drops existing application tables before seeding.
+  Teachers are created in a dedicated teacher group with organiser authorities.
+  Students and teachers use predictable demo emails for easy login.

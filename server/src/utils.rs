@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use skyzen::{
     utils::{json::JsonEncodingError, Json},
     StatusCode,
@@ -10,6 +12,21 @@ pub use models::Id;
 pub fn sha256(v: impl AsRef<[u8]>) -> String {
     use ring::digest::{digest, SHA256};
     hex::encode(digest(&SHA256, v.as_ref()))
+}
+
+pub fn normalize_endpoint_error_message(message: &str) -> Cow<'_, str> {
+    const PREFIX: &str = "Endpoint error: ";
+
+    let mut normalized = message.trim();
+    while let Some(stripped) = normalized.strip_prefix(PREFIX) {
+        normalized = stripped.trim_start();
+    }
+
+    if normalized == message {
+        Cow::Borrowed(message)
+    } else {
+        Cow::Owned(normalized.to_string())
+    }
 }
 
 #[derive(Debug, serde::Serialize, ToSchema)]
@@ -76,6 +93,16 @@ pub fn parse_oid(value: &str) -> ParseIdResult<Id> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn normalize_endpoint_error_message_strips_nested_prefixes() {
+        assert_eq!(
+            super::normalize_endpoint_error_message(
+                "Endpoint error: Endpoint error: Wrong email or password"
+            ),
+            "Wrong email or password"
+        );
+    }
+
     #[test]
     fn debug_id_schema() {
         let schema = <super::Id as utoipa::PartialSchema>::schema();

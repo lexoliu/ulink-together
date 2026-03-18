@@ -1,0 +1,765 @@
+use std::env;
+use std::error::Error;
+use std::io::{self, Write};
+use std::num::NonZeroUsize;
+
+#[path = "../bootstrap.rs"]
+mod bootstrap;
+#[path = "../database.rs"]
+mod database;
+#[path = "../schema.rs"]
+mod schema;
+
+use bootstrap::{
+    SeedActivity, SeedChannel, SeedComment, SeedGroup, SeedMessage, SeedRecord, SeedUser,
+};
+use models::{ActivityState, Id, RecordState};
+use rand::{rngs::StdRng, seq::SliceRandom, Rng, SeedableRng};
+use sqlx::Any;
+use time::{format_description::well_known::Rfc3339, Duration, OffsetDateTime};
+use tracing::info;
+
+const TEACHER_AUTHORITIES: &[&str] = &["create_activity", "create_channel", "generate_export"];
+const FIRST_NAMES: &[&str] = &[
+    "Alex", "Jamie", "Taylor", "Jordan", "Casey", "Morgan", "Avery", "Riley", "Cameron", "Harper",
+    "Logan", "Quinn",
+];
+const LAST_NAMES: &[&str] = &[
+    "Chen", "Wang", "Zhang", "Liu", "Xu", "Sun", "Lin", "Zhao", "Wu", "Hu", "Guo", "Lu",
+];
+const TEACHER_TITLES: &[&str] = &["Ms.", "Mr.", "Dr.", "Coach"];
+const CLASSROOMS: &[&str] = &["10A", "10B", "10C", "11A", "11B", "11C", "12A", "12B"];
+const ACTIVITY_TOPICS: &[&str] = &[
+    "Community Library Support",
+    "Senior Center Digital Help",
+    "Campus Sustainability Workshop",
+    "Primary School Reading Buddy",
+    "Weekend Food Bank Packing",
+    "Museum Visitor Guide",
+    "Sports Day Logistics",
+    "Career Fair Reception",
+    "Science Outreach Lab",
+    "Neighborhood Park Cleanup",
+    "Student Wellbeing Campaign",
+    "Charity Art Showcase",
+];
+const ACTIVITY_LOCATIONS: &[&str] = &[
+    "Learning Commons",
+    "Innovation Lab",
+    "North Courtyard",
+    "Performing Arts Hall",
+    "Service Office",
+    "Shanghai Community Center",
+    "Sports Dome",
+    "Garden Terrace",
+];
+const COMMENT_TEMPLATES: &[&str] = &[
+    "Will transport details be posted here?",
+    "Can we arrive ten minutes early for setup?",
+    "I can help with check-in if extra hands are useful.",
+    "Please confirm whether tablets are needed for this activity.",
+    "Thank you for sharing the run sheet in advance.",
+    "Could organisers note the meeting point on the day?",
+];
+const TEACHER_MESSAGES: &[&str] = &[
+    "Please check the latest run sheet before arrival.",
+    "Remember to sign in with the organiser when you arrive.",
+    "We will split everyone into small teams after briefing.",
+    "If you are delayed, post in this channel instead of messaging privately.",
+];
+const STUDENT_MESSAGES: &[&str] = &[
+    "Received, I can help with setup.",
+    "I will bring my iPad for registration notes.",
+    "Thanks, I can cover the first check-in shift.",
+    "Understood, I will meet everyone at the main entrance.",
+];
+
+#[derive(Debug)]
+struct Config {
+    database_url: String,
+    teacher_count: NonZeroUsize,
+    student_count: NonZeroUsize,
+    activities_per_teacher: NonZeroUsize,
+    comments_per_activity: NonZeroUsize,
+    messages_per_activity: NonZeroUsize,
+    teacher_password: String,
+    student_password: String,
+    seed: u64,
+    reset: bool,
+}
+
+#[derive(Clone)]
+struct Account {
+    id: Id,
+    email: String,
+    realname: String,
+}
+
+struct DemoSummary {
+    teachers: usize,
+    students: usize,
+    activities: usize,
+    comments: usize,
+    messages: usize,
+    records: usize,
+    recruiting_activities: usize,
+    going_activities: usize,
+    ended_activities: usize,
+    canceled_activities: usize,
+    sample_teacher_email: String,
+    sample_student_email: String,
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    bootstrap::init_cli_logging();
+    let config = parse_config()?;
+    let connected = bootstrap::connect_database(&config.database_url).await?;
+
+    if connected.database_url != config.database_url {
+        info!("Using normalized database URL {}", connected.database_url);
+    }
+
+    bootstrap::prepare_database(&connected.database, config.reset).await?;
+
+    if !config.reset {
+        let existing_users = bootstrap::user_count(&connected.database).await?;
+        if existing_users > 0 {
+            return Err(format!(
+                "database already contains {existing_users} users; rerun with --reset or point to an empty database"
+            )
+            .into());
+        }
+    }
+
+    let teacher_group = bootstrap::ensure_group(
+        &connected.database,
+        &SeedGroup {
+            code: "teacher",
+            allow_all_authorities: false,
+            authorities: TEACHER_AUTHORITIES,
+        },
+    )
+    .await?;
+    let student_group = bootstrap::ensure_group(
+        &connected.database,
+        &SeedGroup {
+            code: "student",
+            allow_all_authorities: false,
+            authorities: &[],
+        },
+    )
+    .await?;
+
+    let mut rng = StdRng::seed_from_u64(config.seed);
+    let mut transaction = connected.database.sqlx().begin().await?;
+
+    let teachers = seed_teachers(
+        &connected.database,
+        &mut transaction,
+        &mut rng,
+        teacher_group,
+        &config,
+    )
+    .await?;
+    let students = seed_students(
+        &connected.database,
+        &mut transaction,
+        &mut rng,
+        student_group,
+        &config,
+    )
+    .await?;
+    let summary = seed_activities(
+        &connected.database,
+        &mut transaction,
+        &mut rng,
+        &teachers,
+        &students,
+        &config,
+    )
+    .await?;
+
+    transaction.commit().await?;
+
+    info!("Demo database initialized");
+    info!(
+        "Teachers: {}, students: {}, activities: {}, records: {}, comments: {}, messages: {}",
+        summary.teachers,
+        summary.students,
+        summary.activities,
+        summary.records,
+        summary.comments,
+        summary.messages
+    );
+    info!(
+        "Activity states -> recruiting: {}, going: {}, ended: {}, canceled: {}",
+        summary.recruiting_activities,
+        summary.going_activities,
+        summary.ended_activities,
+        summary.canceled_activities
+    );
+    info!(
+        "Teacher login: {} / {}",
+        summary.sample_teacher_email, config.teacher_password
+    );
+    info!(
+        "Student login: {} / {}",
+        summary.sample_student_email, config.student_password
+    );
+
+    Ok(())
+}
+
+async fn seed_teachers(
+    database: &database::AppDatabase,
+    transaction: &mut sqlx::Transaction<'_, Any>,
+    rng: &mut StdRng,
+    teacher_group: Id,
+    config: &Config,
+) -> Result<Vec<Account>, sqlx::Error> {
+    let mut teachers = Vec::with_capacity(config.teacher_count.get());
+    for index in 0..config.teacher_count.get() {
+        let realname = teacher_name(index);
+        let email = format!("teacher{:02}@demo.ulink.local", index + 1);
+        let description = format!(
+            "Faculty organiser responsible for customer demo lane {:02}.",
+            index + 1
+        );
+        let classname = "Faculty".to_string();
+        let teacher_id = bootstrap::insert_user(
+            database,
+            &mut **transaction,
+            rng,
+            &SeedUser {
+                email: &email,
+                realname: &realname,
+                gender: gender_for(index),
+                description: &description,
+                classname: &classname,
+                avatar_path: None,
+                password: &config.teacher_password,
+                group_id: teacher_group,
+            },
+        )
+        .await?;
+        teachers.push(Account {
+            id: teacher_id,
+            email,
+            realname,
+        });
+    }
+    Ok(teachers)
+}
+
+async fn seed_students(
+    database: &database::AppDatabase,
+    transaction: &mut sqlx::Transaction<'_, Any>,
+    rng: &mut StdRng,
+    student_group: Id,
+    config: &Config,
+) -> Result<Vec<Account>, sqlx::Error> {
+    let mut students = Vec::with_capacity(config.student_count.get());
+    for index in 0..config.student_count.get() {
+        let realname = person_name(index + 11);
+        let email = format!("student{:03}@demo.ulink.local", index + 1);
+        let classname = CLASSROOMS[index % CLASSROOMS.len()].to_string();
+        let description = format!("Student volunteer profile for demo cohort {}.", classname);
+        let student_id = bootstrap::insert_user(
+            database,
+            &mut **transaction,
+            rng,
+            &SeedUser {
+                email: &email,
+                realname: &realname,
+                gender: gender_for(index + 3),
+                description: &description,
+                classname: &classname,
+                avatar_path: None,
+                password: &config.student_password,
+                group_id: student_group,
+            },
+        )
+        .await?;
+        students.push(Account {
+            id: student_id,
+            email,
+            realname,
+        });
+    }
+    Ok(students)
+}
+
+async fn seed_activities(
+    database: &database::AppDatabase,
+    transaction: &mut sqlx::Transaction<'_, Any>,
+    rng: &mut StdRng,
+    teachers: &[Account],
+    students: &[Account],
+    config: &Config,
+) -> Result<DemoSummary, sqlx::Error> {
+    let now = OffsetDateTime::now_utc();
+    let total_activities = teachers.len() * config.activities_per_teacher.get();
+    let mut summary = DemoSummary {
+        teachers: teachers.len(),
+        students: students.len(),
+        activities: total_activities,
+        comments: 0,
+        messages: 0,
+        records: 0,
+        recruiting_activities: 0,
+        going_activities: 0,
+        ended_activities: 0,
+        canceled_activities: 0,
+        sample_teacher_email: teachers
+            .first()
+            .expect("teachers must not be empty")
+            .email
+            .clone(),
+        sample_student_email: students
+            .first()
+            .expect("students must not be empty")
+            .email
+            .clone(),
+    };
+
+    for (teacher_index, teacher) in teachers.iter().enumerate() {
+        for lane in 0..config.activities_per_teacher.get() {
+            let activity_index = teacher_index * config.activities_per_teacher.get() + lane;
+            let state = activity_state_for(activity_index);
+            match state {
+                ActivityState::NeedVolunteer => summary.recruiting_activities += 1,
+                ActivityState::Going => summary.going_activities += 1,
+                ActivityState::Ended => summary.ended_activities += 1,
+                ActivityState::Canceled => summary.canceled_activities += 1,
+            }
+
+            let capacity = activity_capacity(rng, activity_index);
+            let scheduled_at = schedule_for_activity(now, state, activity_index);
+            let scheduled_at_text = format_rfc3339(scheduled_at);
+            let topic = ACTIVITY_TOPICS[activity_index % ACTIVITY_TOPICS.len()];
+            let location = ACTIVITY_LOCATIONS[activity_index % ACTIVITY_LOCATIONS.len()];
+            let title = format!("{topic} Session {:02}", activity_index + 1);
+            let brief_description = format!(
+                "{} led by {} for a visible demo workload.",
+                topic, teacher.realname
+            );
+            let description = format!(
+                "{} at {} with organiser {}. This activity is seeded for customer demos and includes realistic participation, comments, and channel traffic.",
+                topic, location, teacher.realname
+            );
+            let duration_minutes = activity_duration(activity_index);
+            let activity_id = bootstrap::insert_activity(
+                database,
+                &mut **transaction,
+                &SeedActivity {
+                    promoter_id: teacher.id,
+                    name: &title,
+                    location,
+                    state,
+                    volunteer_num: 0,
+                    max_volunteer_num: Some(capacity as u16),
+                    date: Some(&scheduled_at_text),
+                    brief_description: &brief_description,
+                    description: &description,
+                    duration_minutes: duration_minutes as u16,
+                },
+            )
+            .await?;
+
+            let channel_created_at = format_rfc3339(scheduled_at - Duration::days(5));
+            let channel_name = format!("{title} Channel");
+            let channel_id = bootstrap::insert_channel(
+                database,
+                &mut **transaction,
+                &SeedChannel {
+                    name: &channel_name,
+                    owner_id: teacher.id,
+                    activity_id: Some(activity_id),
+                    created_at: &channel_created_at,
+                },
+            )
+            .await?;
+            bootstrap::insert_channel_member(database, &mut **transaction, channel_id, teacher.id)
+                .await?;
+
+            let participant_count =
+                participant_target(rng, activity_index, state, capacity).min(students.len());
+            let selected_students = choose_students(rng, students, participant_count);
+            let active_students = seed_records_for_activity(
+                database,
+                transaction,
+                rng,
+                teacher,
+                activity_id,
+                state,
+                duration_minutes as u16,
+                scheduled_at,
+                &selected_students,
+                &mut summary,
+            )
+            .await?;
+
+            bootstrap::set_activity_volunteer_num(
+                database,
+                &mut **transaction,
+                activity_id,
+                active_students.len() as u16,
+            )
+            .await?;
+
+            for student in &active_students {
+                bootstrap::insert_channel_member(
+                    database,
+                    &mut **transaction,
+                    channel_id,
+                    student.id,
+                )
+                .await?;
+            }
+
+            seed_comments_for_activity(
+                database,
+                transaction,
+                activity_id,
+                teacher,
+                &selected_students,
+                scheduled_at,
+                config.comments_per_activity.get(),
+                &mut summary,
+            )
+            .await?;
+
+            seed_messages_for_channel(
+                database,
+                transaction,
+                channel_id,
+                teacher,
+                &active_students,
+                scheduled_at,
+                config.messages_per_activity.get(),
+                &mut summary,
+            )
+            .await?;
+        }
+    }
+
+    Ok(summary)
+}
+
+async fn seed_records_for_activity(
+    database: &database::AppDatabase,
+    transaction: &mut sqlx::Transaction<'_, Any>,
+    _rng: &mut StdRng,
+    teacher: &Account,
+    activity_id: Id,
+    state: ActivityState,
+    duration_minutes: u16,
+    scheduled_at: OffsetDateTime,
+    selected_students: &[Account],
+    summary: &mut DemoSummary,
+) -> Result<Vec<Account>, sqlx::Error> {
+    let mut active_students = Vec::new();
+    let done_count = match state {
+        ActivityState::Ended => selected_students
+            .len()
+            .saturating_sub(selected_students.len() / 3),
+        _ => 0,
+    };
+
+    for (index, student) in selected_students.iter().enumerate() {
+        let record_state = match state {
+            ActivityState::NeedVolunteer | ActivityState::Going => RecordState::Todo,
+            ActivityState::Ended if index < done_count => RecordState::Done,
+            ActivityState::Ended => RecordState::Todo,
+            ActivityState::Canceled => RecordState::Canceled,
+        };
+        let updated_at =
+            format_rfc3339(scheduled_at - Duration::days(2) + Duration::hours(index as i64));
+        let confirmed_at = if record_state == RecordState::Done {
+            Some(format_rfc3339(
+                scheduled_at
+                    + Duration::minutes(i64::from(duration_minutes))
+                    + Duration::minutes(index as i64),
+            ))
+        } else {
+            None
+        };
+        bootstrap::insert_record(
+            database,
+            &mut **transaction,
+            &SeedRecord {
+                activity_id,
+                user_id: student.id,
+                state: record_state,
+                confirmed_minutes: if record_state == RecordState::Done {
+                    duration_minutes
+                } else {
+                    0
+                },
+                confirmed_at: confirmed_at.as_deref(),
+                confirmed_by: if record_state == RecordState::Done {
+                    Some(teacher.id)
+                } else {
+                    None
+                },
+                updated_at: &updated_at,
+            },
+        )
+        .await?;
+        summary.records += 1;
+        if record_state != RecordState::Canceled {
+            active_students.push(student.clone());
+        }
+    }
+
+    Ok(active_students)
+}
+
+async fn seed_comments_for_activity(
+    database: &database::AppDatabase,
+    transaction: &mut sqlx::Transaction<'_, Any>,
+    activity_id: Id,
+    teacher: &Account,
+    selected_students: &[Account],
+    scheduled_at: OffsetDateTime,
+    count: usize,
+    summary: &mut DemoSummary,
+) -> Result<(), sqlx::Error> {
+    for index in 0..count {
+        let author_id = if index % 2 == 0 || selected_students.is_empty() {
+            teacher.id
+        } else {
+            selected_students[index % selected_students.len()].id
+        };
+        let created_at =
+            format_rfc3339(scheduled_at - Duration::days(4) + Duration::hours(index as i64 * 3));
+        let content = COMMENT_TEMPLATES[index % COMMENT_TEMPLATES.len()];
+        bootstrap::insert_comment(
+            database,
+            &mut **transaction,
+            &SeedComment {
+                activity_id,
+                author_id,
+                content,
+                created_at: &created_at,
+            },
+        )
+        .await?;
+        summary.comments += 1;
+    }
+    Ok(())
+}
+
+async fn seed_messages_for_channel(
+    database: &database::AppDatabase,
+    transaction: &mut sqlx::Transaction<'_, Any>,
+    channel_id: Id,
+    teacher: &Account,
+    active_students: &[Account],
+    scheduled_at: OffsetDateTime,
+    count: usize,
+    summary: &mut DemoSummary,
+) -> Result<(), sqlx::Error> {
+    for index in 0..count {
+        let (sender_id, content) = if index % 2 == 0 || active_students.is_empty() {
+            (teacher.id, TEACHER_MESSAGES[index % TEACHER_MESSAGES.len()])
+        } else {
+            (
+                active_students[index % active_students.len()].id,
+                STUDENT_MESSAGES[index % STUDENT_MESSAGES.len()],
+            )
+        };
+        let sent_at =
+            format_rfc3339(scheduled_at - Duration::days(3) + Duration::hours(index as i64 * 2));
+        bootstrap::insert_message(
+            database,
+            &mut **transaction,
+            &SeedMessage {
+                channel_id,
+                sender_id,
+                content,
+                sent_at: &sent_at,
+            },
+        )
+        .await?;
+        summary.messages += 1;
+    }
+    Ok(())
+}
+
+fn parse_config() -> Result<Config, String> {
+    let mut database_url = Some("sqlite://./together-demo.db".to_string());
+    let mut teacher_count = Some(NonZeroUsize::new(4).expect("non-zero teacher default"));
+    let mut student_count = Some(NonZeroUsize::new(72).expect("non-zero student default"));
+    let mut activities_per_teacher = Some(NonZeroUsize::new(6).expect("non-zero activity default"));
+    let mut comments_per_activity = Some(NonZeroUsize::new(4).expect("non-zero comment default"));
+    let mut messages_per_activity = Some(NonZeroUsize::new(8).expect("non-zero message default"));
+    let mut teacher_password = Some("DemoTeacher123!".to_string());
+    let mut student_password = Some("DemoStudent123!".to_string());
+    let mut seed = Some(20_260_317_u64);
+    let mut reset = false;
+
+    let mut args = env::args().skip(1);
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--database-url" | "--db" => database_url = args.next(),
+            "--teacher-count" => {
+                teacher_count = Some(parse_non_zero_usize("--teacher-count", args.next())?)
+            }
+            "--student-count" => {
+                student_count = Some(parse_non_zero_usize("--student-count", args.next())?)
+            }
+            "--activities-per-teacher" => {
+                activities_per_teacher = Some(parse_non_zero_usize(
+                    "--activities-per-teacher",
+                    args.next(),
+                )?)
+            }
+            "--comments-per-activity" => {
+                comments_per_activity = Some(parse_non_zero_usize(
+                    "--comments-per-activity",
+                    args.next(),
+                )?)
+            }
+            "--messages-per-activity" => {
+                messages_per_activity = Some(parse_non_zero_usize(
+                    "--messages-per-activity",
+                    args.next(),
+                )?)
+            }
+            "--teacher-password" => teacher_password = args.next(),
+            "--student-password" => student_password = args.next(),
+            "--seed" => seed = Some(parse_seed(args.next())?),
+            "--reset" => reset = true,
+            "--help" | "-h" => {
+                print_help();
+                std::process::exit(0);
+            }
+            _ => return Err(format!("Unknown argument: {arg}")),
+        }
+    }
+
+    Ok(Config {
+        database_url: database_url.ok_or_else(|| "--database-url requires a value".to_string())?,
+        teacher_count: teacher_count.expect("teacher count default must exist"),
+        student_count: student_count.expect("student count default must exist"),
+        activities_per_teacher: activities_per_teacher
+            .expect("activities per teacher default must exist"),
+        comments_per_activity: comments_per_activity
+            .expect("comments per activity default must exist"),
+        messages_per_activity: messages_per_activity
+            .expect("messages per activity default must exist"),
+        teacher_password: teacher_password
+            .ok_or_else(|| "--teacher-password requires a value".to_string())?,
+        student_password: student_password
+            .ok_or_else(|| "--student-password requires a value".to_string())?,
+        seed: seed.expect("seed default must exist"),
+        reset,
+    })
+}
+
+fn parse_non_zero_usize(flag: &str, value: Option<String>) -> Result<NonZeroUsize, String> {
+    let raw = value.ok_or_else(|| format!("{flag} requires a value"))?;
+    let parsed = raw
+        .parse::<usize>()
+        .map_err(|error| format!("{flag} expects a positive integer: {error}"))?;
+    NonZeroUsize::new(parsed).ok_or_else(|| format!("{flag} must be greater than zero"))
+}
+
+fn parse_seed(value: Option<String>) -> Result<u64, String> {
+    let raw = value.ok_or_else(|| "--seed requires a value".to_string())?;
+    raw.parse::<u64>()
+        .map_err(|error| format!("--seed expects an unsigned integer: {error}"))
+}
+
+fn print_help() {
+    let mut stdout = io::stdout();
+    stdout
+        .write_all(include_str!("../../docs/demo-seed-help.txt").as_bytes())
+        .expect("write demo seed help");
+}
+
+fn choose_students(rng: &mut StdRng, students: &[Account], count: usize) -> Vec<Account> {
+    let mut pool = students.to_vec();
+    pool.shuffle(rng);
+    pool.truncate(count);
+    pool
+}
+
+fn teacher_name(index: usize) -> String {
+    let title = TEACHER_TITLES[index % TEACHER_TITLES.len()];
+    format!("{title} {}", person_name(index + 97))
+}
+
+fn person_name(index: usize) -> String {
+    let first = FIRST_NAMES[index % FIRST_NAMES.len()];
+    let last = LAST_NAMES[(index / FIRST_NAMES.len()) % LAST_NAMES.len()];
+    format!("{first} {last}")
+}
+
+fn gender_for(index: usize) -> &'static str {
+    match index % 3 {
+        0 => "female",
+        1 => "male",
+        _ => "other",
+    }
+}
+
+fn activity_state_for(index: usize) -> ActivityState {
+    match index % 6 {
+        0 | 1 => ActivityState::NeedVolunteer,
+        2 => ActivityState::Going,
+        3 | 4 => ActivityState::Ended,
+        _ => ActivityState::Canceled,
+    }
+}
+
+fn activity_capacity(rng: &mut StdRng, index: usize) -> usize {
+    let base = 12 + (index % 5) * 2;
+    base + rng.gen_range(0..=4)
+}
+
+fn activity_duration(index: usize) -> usize {
+    match index % 5 {
+        0 => 60,
+        1 => 90,
+        2 => 120,
+        3 => 150,
+        _ => 180,
+    }
+}
+
+fn participant_target(
+    rng: &mut StdRng,
+    index: usize,
+    state: ActivityState,
+    capacity: usize,
+) -> usize {
+    let base = match state {
+        ActivityState::NeedVolunteer => capacity / 3,
+        ActivityState::Going => capacity / 2,
+        ActivityState::Ended => capacity.saturating_mul(2) / 3,
+        ActivityState::Canceled => capacity / 4,
+    };
+    let adjustment = rng.gen_range(0..=usize::min(3, index % 4 + 1));
+    usize::max(1, usize::min(capacity, base + adjustment))
+}
+
+fn schedule_for_activity(
+    now: OffsetDateTime,
+    state: ActivityState,
+    index: usize,
+) -> OffsetDateTime {
+    let day_offset = match state {
+        ActivityState::NeedVolunteer => 5 + index as i64,
+        ActivityState::Going => 1 + (index % 3) as i64,
+        ActivityState::Ended => -2 - index as i64,
+        ActivityState::Canceled => 3 + index as i64,
+    };
+    now + Duration::days(day_offset) + Duration::hours((index % 6) as i64 + 8)
+}
+
+fn format_rfc3339(value: OffsetDateTime) -> String {
+    value.format(&Rfc3339).expect("format rfc3339 timestamp")
+}

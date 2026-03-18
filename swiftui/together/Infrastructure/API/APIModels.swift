@@ -4,6 +4,16 @@ struct APIMessageResponse: Decodable, Sendable {
     let message: String
 }
 
+struct ServiceHealthResponse: Decodable, Sendable {
+    let status: String
+}
+
+struct ResourceCreatedResponse: Decodable, Sendable {
+    let id: String
+    let filename: String
+    let path: String
+}
+
 struct AuthorityCheckResponse: Decodable, Sendable {
     let result: Bool
 }

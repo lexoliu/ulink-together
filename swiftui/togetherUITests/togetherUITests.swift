@@ -11,8 +11,8 @@ final class togetherUITests: XCTestCase {
         app.launchArguments = ["-demo-signed-out"]
         app.launch()
 
-        XCTAssertTrue(app.navigationBars["Welcome"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["Volunteer coordination that feels built in."].exists)
+        XCTAssertTrue(app.navigationBars["Student Access"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Sign in with your school account"].exists)
         XCTAssertTrue(app.buttons["Sign In"].exists)
     }
 
