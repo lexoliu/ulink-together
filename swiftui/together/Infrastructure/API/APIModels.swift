@@ -183,6 +183,24 @@ struct ChannelMessage: Codable, Identifiable, Hashable, Sendable {
     let datetime: String
 }
 
+struct NotificationEntry: Codable, Identifiable, Hashable, Sendable {
+    let id: String
+    let user: String
+    let title: String
+    let content: String
+    let createdAt: String
+    let readAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case user
+        case title
+        case content
+        case createdAt = "created_at"
+        case readAt = "read_at"
+    }
+}
+
 struct RecordEntry: Codable, Identifiable, Hashable, Sendable {
     let recordID: String
     let user: String
@@ -372,4 +390,34 @@ struct UpdateUserRequest: Encodable, Sendable {
     let description: String?
     let classname: String?
     let avatar: String?
+}
+
+struct ChangePasswordRequest: Encodable, Sendable {
+    let currentPassword: String
+    let newPassword: String
+
+    enum CodingKeys: String, CodingKey {
+        case currentPassword = "current_password"
+        case newPassword = "new_password"
+    }
+}
+
+struct ResetPasswordRequestPayload: Encodable, Sendable {
+    let email: String
+}
+
+struct ResetPasswordRequestResult: Decodable, Sendable {
+    let code: String
+}
+
+struct ResetPasswordConfirmRequest: Encodable, Sendable {
+    let email: String
+    let code: String
+    let newPassword: String
+
+    enum CodingKeys: String, CodingKey {
+        case email
+        case code
+        case newPassword = "new_password"
+    }
 }

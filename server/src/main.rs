@@ -30,7 +30,6 @@ use std::env;
 pub fn api() -> Route {
     Route::new((
         "/health".at(health),
-        "/user".route("/{id}".at(user::get).put(user::update).delete(user::delete)),
         "/channel"
             .at(channel::find)
             .post(channel::create)
@@ -44,7 +43,9 @@ pub fn api() -> Route {
                 .delete(activity::delete)
                 .route((
                     "/apply".post(activity::join),
+                    "/leave".post(activity::leave),
                     "/comment".at(comment::list).post(comment::post),
+                    "/comment/{comment_id}".delete(comment::delete),
                     "/need_volunteer".post(activity::turn_need_volunteer),
                     "/go".post(activity::turn_going),
                     "/end".post(activity::turn_ended),
@@ -55,6 +56,7 @@ pub fn api() -> Route {
             .post(record::find)
             .route(("/{id}".route((
                 "/done".post(record::mark_done),
+                "/done_custom".post(record::mark_done_custom),
                 "/approve_apply".post(record::approve_apply),
                 "/disapprove_apply".post(record::disapprove_apply),
             )),)),
@@ -68,12 +70,29 @@ pub fn api() -> Route {
             .route(("/{filename}".at(resource::access).delete(resource::delete),)),
         "/notification"
             .at(notification::list)
-            .post(notification::create),
+            .post(notification::create)
+            .route((
+                "/{id}/read".post(notification::mark_read),
+                "/read_all".post(notification::mark_all_read),
+                "/class".post(notification::create_for_class),
+                "/activity".post(notification::create_for_activity),
+            )),
         "/push".at(push::handler),
-        "/auth/check/{authority}".at(check_authority),
+        "/auth".route((
+            "/check/{authority}".at(check_authority),
+            "/groups"
+                .at(auth::list_groups)
+                .route(("/{code}".put(auth::update_group),)),
+        )),
         "/login".post(login::handler),
         "/logout".post(login::logout),
+        "/password".route((
+            "/change".post(login::change_password),
+            "/reset/request".post(login::request_password_reset),
+            "/reset/confirm".post(login::confirm_password_reset),
+        )),
         "/user".at(user::list).post(user::register).route((
+            "/{id}".at(user::get).put(user::update).delete(user::delete),
             "/classes".at(user::list_classes),
             "/batch/import_csv".post(user::import_csv),
             "/batch/update_class".post(user::batch_update_class),

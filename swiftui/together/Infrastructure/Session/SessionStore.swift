@@ -1,6 +1,12 @@
 import Combine
 import Foundation
 
+struct RegistrationAvatarUpload: Sendable {
+    let filename: String
+    let data: Data
+    let mimeType: String?
+}
+
 @MainActor
 final class SessionStore: ObservableObject {
     private enum LastErrorCategory {
@@ -191,7 +197,10 @@ final class SessionStore: ObservableObject {
         }
     }
 
-    func registerAndSignIn(request: RegisterRequest) async -> Bool {
+    func registerAndSignIn(
+        request: RegisterRequest,
+        avatarUpload: RegistrationAvatarUpload? = nil
+    ) async -> Bool {
         if runtimeMode == .demoSignedOut {
             let demoData = AppDemoData.volunteer()
             self.demoData = demoData
@@ -230,6 +239,24 @@ final class SessionStore: ObservableObject {
         do {
             try await apiClient.register(baseURL: serverURL, request: request)
             try await apiClient.login(baseURL: serverURL, email: request.email, password: request.password)
+            if let avatarUpload {
+                let uploaded = try await apiClient.uploadResource(
+                    baseURL: serverURL,
+                    filename: avatarUpload.filename,
+                    data: avatarUpload.data,
+                    mimeType: avatarUpload.mimeType
+                )
+                _ = try await apiClient.updateCurrentUser(
+                    baseURL: serverURL,
+                    request: UpdateUserRequest(
+                        realname: nil,
+                        gender: nil,
+                        description: nil,
+                        classname: nil,
+                        avatar: uploaded.path
+                    )
+                )
+            }
             currentUser = try await apiClient.fetchCurrentUser(baseURL: serverURL)
             phase = .signedIn
             clearLastError()

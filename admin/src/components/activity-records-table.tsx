@@ -21,6 +21,7 @@ interface ActivityRecordsTableProps {
   onRecordAction: (
     recordId: string,
     action: 'approve_apply' | 'done' | 'disapprove_apply',
+    options?: { confirmedMinutes?: number },
   ) => void
 }
 
@@ -90,7 +91,32 @@ export function ActivityRecordsTable({
                         <Button
                           size="sm"
                           disabled={pendingActionId === record.id || !canConfirmHours}
-                          onClick={() => onRecordAction(record.id, 'done')}
+                          onClick={() => {
+                            const input = window.prompt(
+                              'Confirmed minutes (leave empty to use activity duration).',
+                              '',
+                            )
+                            if (input === null) {
+                              return
+                            }
+                            const trimmed = input.trim()
+                            if (!trimmed) {
+                              onRecordAction(record.id, 'done')
+                              return
+                            }
+                            const parsedMinutes = Number.parseInt(trimmed, 10)
+                            if (
+                              Number.isFinite(parsedMinutes) === false
+                              || Number.isNaN(parsedMinutes)
+                              || parsedMinutes < 0
+                            ) {
+                              window.alert('Please enter a non-negative integer minute value.')
+                              return
+                            }
+                            onRecordAction(record.id, 'done', {
+                              confirmedMinutes: parsedMinutes,
+                            })
+                          }}
                         >
                           {canConfirmHours ? 'Mark done' : `${activityStateLabel(activityState)} first`}
                         </Button>

@@ -14,6 +14,7 @@ struct AccountHomeView: View {
     @EnvironmentObject private var session: SessionStore
 
     @State private var showingProfileEditor = false
+    @State private var showingChangePassword = false
 
     var body: some View {
         PageWidthReader {
@@ -41,6 +42,12 @@ struct AccountHomeView: View {
                     ProfileEditorView(user: currentUser)
                 }
             }
+        }
+        .sheet(isPresented: $showingChangePassword) {
+            NavigationStack {
+                ChangePasswordView()
+            }
+            .environmentObject(session)
         }
     }
 
@@ -162,6 +169,11 @@ struct AccountHomeView: View {
                 }
                 .buttonStyle(.bordered)
 
+                Button("Change Password") {
+                    showingChangePassword = true
+                }
+                .buttonStyle(.bordered)
+
                 Button("Sign Out", role: .destructive) {
                     Task {
                         await session.logout()
@@ -169,6 +181,93 @@ struct AccountHomeView: View {
                 }
                 .buttonStyle(.borderedProminent)
             }
+        }
+    }
+}
+
+private struct ChangePasswordView: View {
+    @EnvironmentObject private var session: SessionStore
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var currentPassword = ""
+    @State private var newPassword = ""
+    @State private var confirmPassword = ""
+    @State private var errorMessage: String?
+    @State private var isSubmitting = false
+
+    var body: some View {
+        Form {
+            Section("Current password") {
+                SecureField("Current password", text: $currentPassword)
+            }
+
+            Section("New password") {
+                SecureField("New password", text: $newPassword)
+                SecureField("Confirm new password", text: $confirmPassword)
+            }
+
+            Section {
+                Button(isSubmitting ? "Updating..." : "Update Password") {
+                    Task {
+                        await submit()
+                    }
+                }
+                .disabled(isSubmitting)
+            }
+
+            if let errorMessage {
+                Section {
+                    InlineErrorBanner(message: errorMessage)
+                        .listRowInsets(EdgeInsets())
+                }
+            }
+        }
+        .navigationTitle("Change Password")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Done") {
+                    dismiss()
+                }
+            }
+        }
+    }
+
+    private func submit() async {
+        guard let serverURL = session.serverURL else {
+            errorMessage = "Enter a valid service address first."
+            return
+        }
+        let normalizedCurrent = currentPassword.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedNew = newPassword.trimmingCharacters(in: .whitespacesAndNewlines)
+        if normalizedCurrent.isEmpty || normalizedNew.isEmpty {
+            errorMessage = "Current and new passwords are required."
+            return
+        }
+        if normalizedNew.count < 6 {
+            errorMessage = "New password must be at least 6 characters."
+            return
+        }
+        if normalizedNew != confirmPassword.trimmingCharacters(in: .whitespacesAndNewlines) {
+            errorMessage = "Password confirmation does not match."
+            return
+        }
+
+        isSubmitting = true
+        defer {
+            isSubmitting = false
+        }
+
+        do {
+            try await session.apiClient.changePassword(
+                baseURL: serverURL,
+                currentPassword: normalizedCurrent,
+                newPassword: normalizedNew
+            )
+            errorMessage = nil
+            dismiss()
+        } catch {
+            errorMessage = session.readableError(error)
         }
     }
 }

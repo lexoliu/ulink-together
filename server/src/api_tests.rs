@@ -183,6 +183,24 @@ async fn insert_record(
     id
 }
 
+async fn insert_comment(database: &AppDatabase, activity: Id, author: Id, content: &str) -> Id {
+    let id = Id::new();
+    sqlx::query(
+        database
+            .sql("INSERT INTO activity_comments (id, activity_id, author_id, content, created_at) VALUES (?1, ?2, ?3, ?4, ?5)")
+            .as_ref(),
+    )
+    .bind(id.to_string())
+    .bind(activity.to_string())
+    .bind(author.to_string())
+    .bind(content)
+    .bind(OffsetDateTime::now_utc().to_string())
+    .execute(database.sqlx())
+    .await
+    .expect("insert comment");
+    id
+}
+
 async fn insert_resource(database: &AppDatabase, creator: Id, name: &str) -> (Id, String) {
     let id = Id::new();
     let filename = format!("{id}.png");
@@ -924,4 +942,366 @@ async fn resource_delete_removes_owned_file_and_row() {
     .expect("fetch resource");
     assert!(resource.is_none());
     assert!(!std::path::Path::new(&format!("./resource/{filename}")).exists());
+}
+
+#[tokio::test]
+async fn leave_then_rejoin_restores_membership_and_count() {
+    let database = build_test_database().await;
+    let owner = insert_user(&database, "student", "leave-owner@example.com", "Owner").await;
+    let volunteer = insert_user(&database, "student", "leave-vol@example.com", "Volunteer").await;
+    let activity = insert_activity(&database, owner, "Leave Test", "need_volunteer", 90).await;
+    let channel = insert_channel(&database, owner, activity, "Leave Test Channel").await;
+    let cookie = insert_session(&database, volunteer).await;
+    let client = test_client(database.clone());
+
+    client
+        .post(&format!("/api/v1/activity/{activity}/apply"))
+        .header("Cookie", &cookie)
+        .send()
+        .await
+        .assert_status_success();
+
+    client
+        .post(&format!("/api/v1/activity/{activity}/leave"))
+        .header("Cookie", &cookie)
+        .send()
+        .await
+        .assert_status_success();
+
+    let left_record = sqlx::query(
+        database
+            .sql("SELECT state FROM records WHERE activity_id = ?1 AND user_id = ?2")
+            .as_ref(),
+    )
+    .bind(activity.to_string())
+    .bind(volunteer.to_string())
+    .fetch_one(database.sqlx())
+    .await
+    .expect("fetch record after leave");
+    assert_eq!(left_record.get::<String, _>("state"), "canceled");
+    let member_after_leave = sqlx::query(
+        database
+            .sql("SELECT 1 FROM channel_members WHERE channel_id = ?1 AND user_id = ?2")
+            .as_ref(),
+    )
+    .bind(channel.to_string())
+    .bind(volunteer.to_string())
+    .fetch_optional(database.sqlx())
+    .await
+    .expect("fetch membership after leave");
+    assert!(member_after_leave.is_none());
+
+    client
+        .post(&format!("/api/v1/activity/{activity}/apply"))
+        .header("Cookie", &cookie)
+        .send()
+        .await
+        .assert_status_success();
+
+    let row = sqlx::query(
+        database
+            .sql("SELECT state FROM records WHERE activity_id = ?1 AND user_id = ?2")
+            .as_ref(),
+    )
+    .bind(activity.to_string())
+    .bind(volunteer.to_string())
+    .fetch_one(database.sqlx())
+    .await
+    .expect("fetch rejoined record");
+    assert_eq!(row.get::<String, _>("state"), "todo");
+
+    let member_after_rejoin = sqlx::query(
+        database
+            .sql("SELECT 1 FROM channel_members WHERE channel_id = ?1 AND user_id = ?2")
+            .as_ref(),
+    )
+    .bind(channel.to_string())
+    .bind(volunteer.to_string())
+    .fetch_optional(database.sqlx())
+    .await
+    .expect("fetch membership after rejoin");
+    assert!(member_after_rejoin.is_some());
+}
+
+#[tokio::test]
+async fn mark_done_custom_overrides_activity_duration() {
+    let database = build_test_database().await;
+    let organizer = insert_user(
+        &database,
+        "admin",
+        "custom-organizer@example.com",
+        "Organizer",
+    )
+    .await;
+    let volunteer = insert_user(&database, "student", "custom-vol@example.com", "Volunteer").await;
+    let activity = insert_activity(&database, organizer, "Custom Done", "ended", 90).await;
+    let record = insert_record(&database, volunteer, activity, "todo", 0).await;
+    let cookie = insert_session(&database, organizer).await;
+    let client = test_client(database.clone());
+
+    client
+        .post(&format!("/api/v1/record/{record}/done_custom"))
+        .header("Cookie", &cookie)
+        .json(&json!({ "confirmed_minutes": 37 }))
+        .send()
+        .await
+        .assert_status_success();
+
+    let row = sqlx::query(
+        database
+            .sql("SELECT state, confirmed_minutes FROM records WHERE id = ?1")
+            .as_ref(),
+    )
+    .bind(record.to_string())
+    .fetch_one(database.sqlx())
+    .await
+    .expect("fetch customized record");
+    assert_eq!(row.get::<String, _>("state"), "done");
+    assert_eq!(row.get::<i64, _>("confirmed_minutes"), 37);
+}
+
+#[tokio::test]
+async fn password_change_and_reset_flow_work() {
+    let database = build_test_database().await;
+    let user = insert_login_user(
+        &database,
+        "student",
+        "password-flow@example.com",
+        "Password Flow",
+        "old-pass",
+    )
+    .await;
+    let cookie = insert_session(&database, user).await;
+    let client = test_client(database.clone());
+
+    client
+        .post("/api/v1/password/change")
+        .header("Cookie", &cookie)
+        .json(&json!({
+            "current_password": "old-pass",
+            "new_password": "new-pass"
+        }))
+        .send()
+        .await
+        .assert_status_success();
+
+    client
+        .post("/api/v1/login")
+        .header("x-forwarded-for", "127.0.0.1")
+        .json(&json!({
+            "email": "password-flow@example.com",
+            "password": "new-pass"
+        }))
+        .send()
+        .await
+        .assert_status_success();
+
+    let reset_request = client
+        .post("/api/v1/password/reset/request")
+        .json(&json!({
+            "email": "password-flow@example.com"
+        }))
+        .send()
+        .await;
+    reset_request.assert_status_success();
+    let reset_payload: serde_json::Value = reset_request.assert_json();
+    let reset_code = reset_payload["code"]
+        .as_str()
+        .expect("reset code")
+        .to_string();
+
+    client
+        .post("/api/v1/password/reset/confirm")
+        .json(&json!({
+            "email": "password-flow@example.com",
+            "code": reset_code,
+            "new_password": "final-pass"
+        }))
+        .send()
+        .await
+        .assert_status_success();
+
+    client
+        .post("/api/v1/login")
+        .header("x-forwarded-for", "127.0.0.1")
+        .json(&json!({
+            "email": "password-flow@example.com",
+            "password": "final-pass"
+        }))
+        .send()
+        .await
+        .assert_status_success();
+}
+
+#[tokio::test]
+async fn notification_read_and_read_all_update_read_at() {
+    let database = build_test_database().await;
+    let admin = insert_user(&database, "admin", "notify-admin@example.com", "Admin").await;
+    let student = insert_user(
+        &database,
+        "student",
+        "notify-student@example.com",
+        "Student",
+    )
+    .await;
+    let admin_cookie = insert_session(&database, admin).await;
+    let student_cookie = insert_session(&database, student).await;
+    let client = test_client(database);
+
+    let first = client
+        .post("/api/v1/notification")
+        .header("Cookie", &admin_cookie)
+        .json(&json!({
+            "user": student.to_string(),
+            "title": "First",
+            "content": "Hello 1"
+        }))
+        .send()
+        .await;
+    first.assert_status_success();
+    let first_json: serde_json::Value = first.assert_json();
+    let first_id = first_json["id"].as_str().expect("first id").to_string();
+
+    client
+        .post("/api/v1/notification")
+        .header("Cookie", &admin_cookie)
+        .json(&json!({
+            "user": student.to_string(),
+            "title": "Second",
+            "content": "Hello 2"
+        }))
+        .send()
+        .await
+        .assert_status_success();
+
+    let list_before = client
+        .get("/api/v1/notification")
+        .header("Cookie", &student_cookie)
+        .send()
+        .await;
+    list_before.assert_status_success();
+    let before_json: serde_json::Value = list_before.assert_json();
+    assert!(before_json
+        .as_array()
+        .expect("notification array")
+        .iter()
+        .all(|item| item["read_at"].is_null()));
+
+    client
+        .post(&format!("/api/v1/notification/{first_id}/read"))
+        .header("Cookie", &student_cookie)
+        .send()
+        .await
+        .assert_status_success();
+
+    let list_after_one = client
+        .get("/api/v1/notification")
+        .header("Cookie", &student_cookie)
+        .send()
+        .await;
+    list_after_one.assert_status_success();
+    let after_one: serde_json::Value = list_after_one.assert_json();
+    assert!(after_one
+        .as_array()
+        .expect("notification array")
+        .iter()
+        .any(|item| item["id"].as_str() == Some(first_id.as_str()) && item["read_at"].is_string()));
+
+    client
+        .post("/api/v1/notification/read_all")
+        .header("Cookie", &student_cookie)
+        .send()
+        .await
+        .assert_status_success();
+    let list_after_all = client
+        .get("/api/v1/notification")
+        .header("Cookie", &student_cookie)
+        .send()
+        .await;
+    list_after_all.assert_status_success();
+    let after_all: serde_json::Value = list_after_all.assert_json();
+    assert!(after_all
+        .as_array()
+        .expect("notification array")
+        .iter()
+        .all(|item| item["read_at"].is_string()));
+}
+
+#[tokio::test]
+async fn admin_can_delete_activity_comment() {
+    let database = build_test_database().await;
+    let owner = insert_user(&database, "student", "comment-owner@example.com", "Owner").await;
+    let author = insert_user(&database, "student", "comment-author@example.com", "Author").await;
+    let admin = insert_user(&database, "admin", "comment-admin@example.com", "Admin").await;
+    let activity = insert_activity(&database, owner, "Comment Govern", "need_volunteer", 60).await;
+    let comment_id = insert_comment(&database, activity, author, "to be removed").await;
+    let admin_cookie = insert_session(&database, admin).await;
+    let client = test_client(database.clone());
+
+    client
+        .delete(&format!("/api/v1/activity/{activity}/comment/{comment_id}"))
+        .header("Cookie", &admin_cookie)
+        .send()
+        .await
+        .assert_status_success();
+
+    let row = sqlx::query(
+        database
+            .sql("SELECT 1 FROM activity_comments WHERE id = ?1")
+            .as_ref(),
+    )
+    .bind(comment_id.to_string())
+    .fetch_optional(database.sqlx())
+    .await
+    .expect("fetch deleted comment");
+    assert!(row.is_none());
+}
+
+#[tokio::test]
+async fn authority_group_update_changes_auth_check_result() {
+    let database = build_test_database().await;
+    let admin = insert_user(
+        &database,
+        "admin",
+        "authority-admin@example.com",
+        "Authority Admin",
+    )
+    .await;
+    let student = insert_user(
+        &database,
+        "student",
+        "authority-student@example.com",
+        "Authority Student",
+    )
+    .await;
+    let admin_cookie = insert_session(&database, admin).await;
+    let student_cookie = insert_session(&database, student).await;
+    let client = test_client(database);
+
+    client
+        .put("/api/v1/auth/groups/student")
+        .header("Cookie", &admin_cookie)
+        .json(&json!({
+            "allow_all_authorities": false,
+            "authorities": ["view_user", "send_notification"]
+        }))
+        .send()
+        .await
+        .assert_status_success();
+
+    let check_view_user = client
+        .get("/api/v1/auth/check/view_user")
+        .header("Cookie", &student_cookie)
+        .send()
+        .await;
+    check_view_user.assert_status_success();
+    check_view_user.assert_json_path("result", &json!(true));
+
+    let check_create_activity = client
+        .get("/api/v1/auth/check/create_activity")
+        .header("Cookie", &student_cookie)
+        .send()
+        .await;
+    check_create_activity.assert_status_success();
+    check_create_activity.assert_json_path("result", &json!(false));
 }

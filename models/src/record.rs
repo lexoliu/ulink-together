@@ -51,3 +51,9 @@ pub struct FindRecordForm {
     pub user: Option<Id>,
     pub activity: Option<Id>,
 }
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MarkDoneCustomForm {
+    pub confirmed_minutes: u16,
+}

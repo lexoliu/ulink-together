@@ -209,6 +209,10 @@ struct APIClient: Sendable {
         _ = try await request(baseURL: baseURL, path: "/activity/\(activityID)/apply", method: .post) as APIMessageResponse
     }
 
+    func leaveActivity(baseURL: URL, activityID: String) async throws {
+        _ = try await request(baseURL: baseURL, path: "/activity/\(activityID)/leave", method: .post) as APIMessageResponse
+    }
+
     func transitionActivity(baseURL: URL, activityID: String, pathComponent: String) async throws {
         _ = try await request(
             baseURL: baseURL,
@@ -270,6 +274,66 @@ struct APIClient: Sendable {
             method: .post,
             body: PostMessageRequest(content: content)
         )
+    }
+
+    func fetchNotifications(baseURL: URL) async throws -> [NotificationEntry] {
+        try await request(baseURL: baseURL, path: "/notification")
+    }
+
+    func markNotificationRead(baseURL: URL, notificationID: String) async throws {
+        _ = try await request(
+            baseURL: baseURL,
+            path: "/notification/\(notificationID)/read",
+            method: .post
+        ) as APIMessageResponse
+    }
+
+    func markAllNotificationsRead(baseURL: URL) async throws {
+        _ = try await request(baseURL: baseURL, path: "/notification/read_all", method: .post) as APIMessageResponse
+    }
+
+    func changePassword(
+        baseURL: URL,
+        currentPassword: String,
+        newPassword: String
+    ) async throws {
+        _ = try await request(
+            baseURL: baseURL,
+            path: "/password/change",
+            method: .post,
+            body: ChangePasswordRequest(
+                currentPassword: currentPassword,
+                newPassword: newPassword
+            )
+        ) as APIMessageResponse
+    }
+
+    func requestPasswordReset(baseURL: URL, email: String) async throws -> String {
+        let response: ResetPasswordRequestResult = try await request(
+            baseURL: baseURL,
+            path: "/password/reset/request",
+            method: .post,
+            body: ResetPasswordRequestPayload(email: email)
+        )
+        return response.code
+    }
+
+    func confirmPasswordReset(
+        baseURL: URL,
+        email: String,
+        code: String,
+        newPassword: String
+    ) async throws {
+        _ = try await request(
+            baseURL: baseURL,
+            path: "/password/reset/confirm",
+            method: .post,
+            body: ResetPasswordConfirmRequest(
+                email: email,
+                code: code,
+                newPassword: newPassword
+            )
+        ) as APIMessageResponse
     }
 
     func fetchRecords(

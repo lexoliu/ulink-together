@@ -9,6 +9,7 @@ use crate::{
 };
 use models::{
     ActivityDetail, ActivityState, ActivitySummary, CreateActivityForm, ListActivityQuery,
+    RecordState,
 };
 use skyzen::{
     extract::Query,
@@ -92,6 +93,10 @@ pub async fn list(
         let state = ActivityState::from_db(row.get::<String, _>("state").as_str())
             .ok_or(ListActivitiesError::InvalidState)?;
         let viewer_record_state = viewer_states.get(&id).copied();
+        let viewer_joined = matches!(
+            viewer_record_state,
+            Some(RecordState::Todo) | Some(RecordState::Done)
+        );
         result.push(ActivitySummary {
             id,
             name: row.get("name"),
@@ -106,7 +111,7 @@ pub async fn list(
             brief_description: row.get("brief_description"),
             duration: row.get::<i64, _>("duration_minutes") as u16,
             state,
-            viewer_joined: viewer_record_state.is_some(),
+            viewer_joined,
             viewer_record_state,
         });
     }
@@ -186,6 +191,10 @@ pub async fn get(
     let viewer_record_state = record::get_user_record_state(&database, id, auth.uid())
         .await
         .expect("Database error");
+    let viewer_joined = matches!(
+        viewer_record_state,
+        Some(RecordState::Todo) | Some(RecordState::Done)
+    );
 
     Ok(Json(ActivityDetail {
         id,
@@ -207,7 +216,7 @@ pub async fn get(
             .try_get::<i64, _>("duration_minutes")
             .expect("Database error") as u16,
         state,
-        viewer_joined: viewer_record_state.is_some(),
+        viewer_joined,
         viewer_record_state,
     }))
 }
@@ -303,7 +312,7 @@ pub async fn join(
 
     let existing = sqlx::query(
         database
-            .sql("SELECT 1 FROM records WHERE activity_id = ?1 AND user_id = ?2 LIMIT 1")
+            .sql("SELECT id, state FROM records WHERE activity_id = ?1 AND user_id = ?2 LIMIT 1")
             .as_ref(),
     )
     .bind(activity_id.to_string())
@@ -311,14 +320,34 @@ pub async fn join(
     .fetch_optional(&mut *conn)
     .await
     .expect("Database error");
-    if existing.is_some() {
-        let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
-        return Err(JoinActivityError::AlreadyJoined);
-    }
+    match existing {
+        Some(row) => {
+            let existing_record_id: String = row.try_get("id").expect("Database error");
+            let existing_state = row.try_get::<String, _>("state").expect("Database error");
+            if RecordState::from_db(&existing_state) != Some(RecordState::Canceled) {
+                let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
+                return Err(JoinActivityError::AlreadyJoined);
+            }
 
-    record::create_record(&database, &mut *conn, auth.uid(), activity_id)
-        .await
-        .expect("Database error");
+            let now = time::OffsetDateTime::now_utc().to_string();
+            sqlx::query(
+                database
+                    .sql("UPDATE records SET state = ?1, confirmed_minutes = 0, confirmed_at = NULL, confirmed_by = NULL, updated_at = ?2 WHERE id = ?3")
+                    .as_ref(),
+            )
+            .bind(RecordState::Todo.as_str())
+            .bind(now)
+            .bind(existing_record_id)
+            .execute(&mut *conn)
+            .await
+            .expect("Database error");
+        }
+        None => {
+            record::create_record(&database, &mut *conn, auth.uid(), activity_id)
+                .await
+                .expect("Database error");
+        }
+    }
     sqlx::query(
         database
             .sql("UPDATE activities SET volunteer_num = volunteer_num + 1 WHERE id = ?1")
@@ -338,6 +367,141 @@ pub async fn join(
         .expect("Database error");
 
     Ok(ApiMessage::new("Join activity successfully"))
+}
+
+#[skyzen::error]
+pub enum LeaveActivityError {
+    #[error("Session expired", status = FORBIDDEN)]
+    SessionExpired,
+
+    #[error("Forbidden", status = FORBIDDEN)]
+    Forbidden,
+
+    #[error("Invalid activity id", status = BAD_REQUEST)]
+    InvalidActivityId,
+
+    #[error("Activity not exists", status = NOT_FOUND)]
+    NotFound,
+
+    #[error("Activity is not open for leaving", status = FORBIDDEN)]
+    CannotLeaveNow,
+
+    #[error("You have not joined this activity", status = FORBIDDEN)]
+    NotJoined,
+}
+
+/// Leave an activity and mark the record as canceled.
+#[skyzen::openapi]
+pub async fn leave(
+    database: State<AppDatabase>,
+    params: Params,
+    session: AuthSession,
+) -> Result<ApiMessage, LeaveActivityError> {
+    let auth = session.into_auth().await.map_err(|err| match err {
+        AuthError::SessionExpired => LeaveActivityError::SessionExpired,
+        _ => LeaveActivityError::Forbidden,
+    })?;
+    let activity_id = parse_oid(
+        params
+            .get("id")
+            .map_err(|_| LeaveActivityError::InvalidActivityId)?,
+    )
+    .map_err(|_| LeaveActivityError::InvalidActivityId)?;
+
+    let mut db_conn = database.sqlx().acquire().await.expect("Database error");
+    let conn = db_conn.as_mut();
+    let begin_stmt = match database.kind() {
+        crate::database::DatabaseKind::Sqlite => "BEGIN IMMEDIATE",
+        crate::database::DatabaseKind::Postgres => "BEGIN",
+    };
+    sqlx::query(begin_stmt)
+        .execute(&mut *conn)
+        .await
+        .expect("Database error");
+
+    let activity = sqlx::query(
+        database
+            .sql("SELECT state FROM activities WHERE id = ?1")
+            .as_ref(),
+    )
+    .bind(activity_id.to_string())
+    .fetch_optional(&mut *conn)
+    .await
+    .expect("Database error");
+    let activity = match activity {
+        Some(activity) => activity,
+        None => {
+            let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
+            return Err(LeaveActivityError::NotFound);
+        }
+    };
+    let current_state = activity
+        .try_get::<String, _>("state")
+        .expect("Database error");
+    if ActivityState::from_db(&current_state) == Some(ActivityState::Ended)
+        || ActivityState::from_db(&current_state) == Some(ActivityState::Canceled)
+    {
+        let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
+        return Err(LeaveActivityError::CannotLeaveNow);
+    }
+
+    let record = sqlx::query(
+        database
+            .sql("SELECT id, state FROM records WHERE activity_id = ?1 AND user_id = ?2 LIMIT 1")
+            .as_ref(),
+    )
+    .bind(activity_id.to_string())
+    .bind(auth.uid().to_string())
+    .fetch_optional(&mut *conn)
+    .await
+    .expect("Database error");
+    let record = match record {
+        Some(record) => record,
+        None => {
+            let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
+            return Err(LeaveActivityError::NotJoined);
+        }
+    };
+    let record_state = record
+        .try_get::<String, _>("state")
+        .expect("Database error");
+    if RecordState::from_db(&record_state) != Some(RecordState::Todo) {
+        let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
+        return Err(LeaveActivityError::NotJoined);
+    }
+
+    let now = time::OffsetDateTime::now_utc().to_string();
+    sqlx::query(
+        database
+            .sql("UPDATE records SET state = ?1, confirmed_minutes = 0, confirmed_at = NULL, confirmed_by = NULL, updated_at = ?2 WHERE id = ?3")
+            .as_ref(),
+    )
+    .bind(RecordState::Canceled.as_str())
+    .bind(now)
+    .bind(record.try_get::<String, _>("id").expect("Database error"))
+    .execute(&mut *conn)
+    .await
+    .expect("Database error");
+    sqlx::query(
+        database
+            .sql("UPDATE activities SET volunteer_num = CASE WHEN volunteer_num > 0 THEN volunteer_num - 1 ELSE 0 END WHERE id = ?1")
+            .as_ref(),
+    )
+    .bind(activity_id.to_string())
+    .execute(&mut *conn)
+    .await
+    .expect("Database error");
+    sqlx::query("COMMIT")
+        .execute(&mut *conn)
+        .await
+        .expect("Database error");
+    drop(db_conn);
+
+    record::sync_activity_channel_member(&database, activity_id, auth.uid(), false)
+        .await
+        .expect("Database error");
+
+    Ok(ApiMessage::new("Leave activity successfully"))
 }
 
 #[skyzen::error]

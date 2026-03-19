@@ -107,6 +107,12 @@ pub fn schema_statements() -> &'static [&'static str] {
         "#,
         "CREATE INDEX IF NOT EXISTS notifications_user_idx ON notifications(user_id)",
         r#"
+        CREATE TABLE IF NOT EXISTS notification_reads (
+            notification_id TEXT PRIMARY KEY,
+            read_at TEXT NOT NULL
+        )
+        "#,
+        r#"
         CREATE TABLE IF NOT EXISTS records (
             id TEXT PRIMARY KEY,
             activity_id TEXT NOT NULL,
@@ -172,6 +178,7 @@ pub fn reset_schema_statements() -> &'static [&'static str] {
         "DROP TABLE IF EXISTS export_batches",
         "DROP TABLE IF EXISTS resources",
         "DROP TABLE IF EXISTS records",
+        "DROP TABLE IF EXISTS notification_reads",
         "DROP TABLE IF EXISTS notifications",
         "DROP TABLE IF EXISTS messages",
         "DROP TABLE IF EXISTS channel_members",

@@ -4,10 +4,10 @@ use crate::{
     utils::{parse_oid, ApiMessage, Id},
 };
 
-use models::{ActivityState, FindRecordForm, RecordEntry, RecordState};
+use models::{ActivityState, FindRecordForm, MarkDoneCustomForm, RecordEntry, RecordState};
 use skyzen::{
     routing::Params,
-    utils::{Form, State},
+    utils::{Form, Json, State},
 };
 use sqlx::{Any, Executor, Row};
 use time::OffsetDateTime;
@@ -282,6 +282,7 @@ async fn update_record_state(
     auth: &Auth,
     record_id: Id,
     state: RecordState,
+    confirmed_minutes_override: Option<u16>,
 ) -> Result<(), UpdateRecordError> {
     let record_hex = record_id.to_string();
     let row = sqlx::query(
@@ -330,9 +331,13 @@ async fn update_record_state(
 
     let now = OffsetDateTime::now_utc().to_string();
     let confirmed_minutes = if state == RecordState::Done {
-        activity
-            .try_get::<i64, _>("duration_minutes")
-            .expect("Database error")
+        confirmed_minutes_override
+            .map(i64::from)
+            .unwrap_or_else(|| {
+                activity
+                    .try_get::<i64, _>("duration_minutes")
+                    .expect("Database error")
+            })
     } else {
         0
     };
@@ -412,7 +417,7 @@ pub async fn mark_done(
             .map_err(|_| MarkDoneError::InvalidRecordId)?,
     )
     .map_err(|_| MarkDoneError::InvalidRecordId)?;
-    update_record_state(&database, &auth, record_id, RecordState::Done)
+    update_record_state(&database, &auth, record_id, RecordState::Done, None)
         .await
         .map_err(|err| match err {
             UpdateRecordError::RecordNotFound => MarkDoneError::NotFound,
@@ -420,6 +425,64 @@ pub async fn mark_done(
             UpdateRecordError::Forbidden => MarkDoneError::Forbidden,
             UpdateRecordError::ActivityNotCompleted => MarkDoneError::ActivityNotCompleted,
         })?;
+    Ok(ApiMessage::new("Mark done successfully"))
+}
+
+#[skyzen::error]
+pub enum MarkDoneCustomError {
+    #[error("Session expired", status = FORBIDDEN)]
+    SessionExpired,
+
+    #[error("Forbidden", status = FORBIDDEN)]
+    Forbidden,
+
+    #[error("Invalid record id", status = BAD_REQUEST)]
+    InvalidRecordId,
+
+    #[error("Record not exists", status = NOT_FOUND)]
+    NotFound,
+
+    #[error("Activity not exists", status = NOT_FOUND)]
+    ActivityNotFound,
+
+    #[error("Activity must be completed before hours can be confirmed", status = CONFLICT)]
+    ActivityNotCompleted,
+}
+
+/// Mark a volunteer's task as done with custom confirmed minutes.
+#[skyzen::openapi]
+pub async fn mark_done_custom(
+    database: State<AppDatabase>,
+    session: AuthSession,
+    params: Params,
+    form: Json<MarkDoneCustomForm>,
+) -> Result<ApiMessage, MarkDoneCustomError> {
+    let auth = session.into_auth().await.map_err(|err| match err {
+        AuthError::SessionExpired => MarkDoneCustomError::SessionExpired,
+        _ => MarkDoneCustomError::Forbidden,
+    })?;
+    let record_id = parse_oid(
+        params
+            .get("id")
+            .map_err(|_| MarkDoneCustomError::InvalidRecordId)?,
+    )
+    .map_err(|_| MarkDoneCustomError::InvalidRecordId)?;
+    let Json(form) = form;
+
+    update_record_state(
+        &database,
+        &auth,
+        record_id,
+        RecordState::Done,
+        Some(form.confirmed_minutes),
+    )
+    .await
+    .map_err(|err| match err {
+        UpdateRecordError::RecordNotFound => MarkDoneCustomError::NotFound,
+        UpdateRecordError::ActivityNotFound => MarkDoneCustomError::ActivityNotFound,
+        UpdateRecordError::Forbidden => MarkDoneCustomError::Forbidden,
+        UpdateRecordError::ActivityNotCompleted => MarkDoneCustomError::ActivityNotCompleted,
+    })?;
     Ok(ApiMessage::new("Mark done successfully"))
 }
 
@@ -458,7 +521,7 @@ pub async fn approve_apply(
             .map_err(|_| ApproveApplyError::InvalidRecordId)?,
     )
     .map_err(|_| ApproveApplyError::InvalidRecordId)?;
-    update_record_state(&database, &auth, record_id, RecordState::Todo)
+    update_record_state(&database, &auth, record_id, RecordState::Todo, None)
         .await
         .map_err(|err| match err {
             UpdateRecordError::RecordNotFound => ApproveApplyError::NotFound,
@@ -506,7 +569,7 @@ pub async fn disapprove_apply(
             .map_err(|_| DisapproveApplyError::InvalidRecordId)?,
     )
     .map_err(|_| DisapproveApplyError::InvalidRecordId)?;
-    update_record_state(&database, &auth, record_id, RecordState::Canceled)
+    update_record_state(&database, &auth, record_id, RecordState::Canceled, None)
         .await
         .map_err(|err| match err {
             UpdateRecordError::RecordNotFound => DisapproveApplyError::NotFound,

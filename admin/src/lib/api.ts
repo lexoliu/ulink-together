@@ -1,6 +1,7 @@
 import axios, { type AxiosInstance } from 'axios'
 
 import type {
+  ActivityComment,
   ActivityDetail,
   ActivityDraft,
   ActivitySummary,
@@ -12,6 +13,8 @@ import type {
   ChannelMessage,
   ChannelResponse,
   ExportBatchResponse,
+  GroupAuthoritySummary,
+  NotificationBatchResult,
   RecordEntry,
   UpdateUserForm,
   UserBatchResult,
@@ -33,6 +36,9 @@ const authorityNames: AuthorityName[] = [
   'create_activity',
   'create_channel',
   'manage_record_anyway',
+  'manage_comment_anyway',
+  'send_notification',
+  'manage_authority_anyway',
   'view_user',
   'generate_export',
   'update_user_anyway',
@@ -189,8 +195,32 @@ export class AdminApiClient {
     })
   }
 
-  async updateRecord(recordId: string, action: 'done' | 'approve_apply' | 'disapprove_apply'): Promise<void> {
+  async updateRecord(
+    recordId: string,
+    action: 'done' | 'approve_apply' | 'disapprove_apply',
+    options?: { confirmedMinutes?: number },
+  ): Promise<void> {
+    if (action === 'done' && options?.confirmedMinutes !== undefined) {
+      await request<ApiMessage>(this.client, `/record/${recordId}/done_custom`, {
+        method: 'POST',
+        data: {
+          confirmed_minutes: options.confirmedMinutes,
+        },
+      })
+      return
+    }
+
     await request<ApiMessage>(this.client, `/record/${recordId}/${action}`, { method: 'POST' })
+  }
+
+  async activityComments(activityId: string): Promise<ActivityComment[]> {
+    return request<ActivityComment[]>(this.client, `/activity/${activityId}/comment`)
+  }
+
+  async deleteActivityComment(activityId: string, commentId: string): Promise<void> {
+    await request<ApiMessage>(this.client, `/activity/${activityId}/comment/${commentId}`, {
+      method: 'DELETE',
+    })
   }
 
   async channels(activityId: string): Promise<ChannelResponse[]> {
@@ -288,6 +318,53 @@ export class AdminApiClient {
 
   async deleteUser(userId: string): Promise<void> {
     await request<ApiMessage>(this.client, `/user/${userId}`, { method: 'DELETE' })
+  }
+
+  async sendNotificationByClass(
+    classname: string,
+    title: string,
+    content: string,
+  ): Promise<NotificationBatchResult> {
+    return request<NotificationBatchResult>(this.client, '/notification/class', {
+      method: 'POST',
+      data: {
+        classname,
+        title,
+        content,
+      },
+    })
+  }
+
+  async sendNotificationByActivity(
+    activityId: string,
+    title: string,
+    content: string,
+  ): Promise<NotificationBatchResult> {
+    return request<NotificationBatchResult>(this.client, '/notification/activity', {
+      method: 'POST',
+      data: {
+        activity: activityId,
+        title,
+        content,
+      },
+    })
+  }
+
+  async authorityGroups(): Promise<GroupAuthoritySummary[]> {
+    return request<GroupAuthoritySummary[]>(this.client, '/auth/groups')
+  }
+
+  async updateAuthorityGroup(
+    code: string,
+    payload: {
+      allow_all_authorities: boolean
+      authorities: string[]
+    },
+  ): Promise<GroupAuthoritySummary> {
+    return request<GroupAuthoritySummary>(this.client, `/auth/groups/${code}`, {
+      method: 'PUT',
+      data: payload,
+    })
   }
 
   pushURL(): string {

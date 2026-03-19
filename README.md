@@ -199,7 +199,29 @@ You can also change the server URL later from the `Account` screen and tap `Reco
 4. Build and run the SwiftUI app
 5. Enter the backend server URL inside the student app
 
-## 6. Verification Commands
+## 6. Build the Source Code Appendix
+
+Generate the IB source-code appendix Typst source and PDF from the current repository state:
+
+```bash
+./scripts/build-source-appendix.sh
+```
+
+This regenerates:
+- `Appendix_3_Source_Code.typ`
+- `appendix/source-code-manifest.json`
+- `Appendix_3_Source_Code.pdf`
+
+If you only want to regenerate the source appendix inputs without compiling the PDF, run:
+
+```bash
+python3 scripts/generate-source-appendix.py \
+  --root . \
+  --manifest-output appendix/source-code-manifest.json \
+  --typst-output Appendix_3_Source_Code.typ
+```
+
+## 7. Verification Commands
 
 Backend tests:
 

@@ -366,7 +366,24 @@ struct ActivityDetailView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                if detail.state == .needVolunteer && !detail.viewerJoined {
+                if detail.viewerRecordState == .todo && (detail.state == .needVolunteer || detail.state == .going) {
+                    Button(role: .destructive) {
+                        Task {
+                            await leave()
+                        }
+                    } label: {
+                        if isUpdating {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                        } else {
+                            Text("Leave Activity")
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .disabled(isUpdating)
+                } else if detail.state == .needVolunteer && !detail.viewerJoined {
                     Button {
                         Task {
                             await join()
@@ -376,7 +393,7 @@ struct ActivityDetailView: View {
                             ProgressView()
                                 .frame(maxWidth: .infinity)
                         } else {
-                            Text("Join Activity")
+                            Text(detail.viewerRecordState == .canceled ? "Rejoin Activity" : "Join Activity")
                                 .frame(maxWidth: .infinity)
                         }
                     }
@@ -544,6 +561,30 @@ struct ActivityDetailView: View {
 
         do {
             try await session.apiClient.joinActivity(baseURL: serverURL, activityID: activityID)
+            await load()
+        } catch {
+            errorMessage = session.readableError(error)
+        }
+    }
+
+    private func leave() async {
+        if session.demoData != nil {
+            errorMessage = "Leaving is disabled in demo mode."
+            return
+        }
+
+        guard let serverURL = session.serverURL else {
+            errorMessage = "Enter a valid service address."
+            return
+        }
+
+        isUpdating = true
+        defer {
+            isUpdating = false
+        }
+
+        do {
+            try await session.apiClient.leaveActivity(baseURL: serverURL, activityID: activityID)
             await load()
         } catch {
             errorMessage = session.readableError(error)

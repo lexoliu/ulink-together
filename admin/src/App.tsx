@@ -1,6 +1,7 @@
 import { Suspense, lazy, startTransition, useDeferredValue, useMemo, useState } from 'react'
 import {
   ArrowRight,
+  BellRing,
   Download,
   FileSpreadsheet,
   FolderKanban,
@@ -16,6 +17,7 @@ import {
   Trash2,
   Upload,
   Users,
+  ShieldCheck,
 } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -38,6 +40,7 @@ import {
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
@@ -49,11 +52,13 @@ import {
   formatDuration,
 } from '@/lib/format'
 import type {
+  ActivityComment,
   ActivityDetail,
   ActivityDraft,
   ActivitySummary,
   AuthorityName,
   ActivityTransitionAction,
+  GroupAuthoritySummary,
   ChannelMessage,
   ChannelResponse,
   ExportBatchResponse,
@@ -66,10 +71,10 @@ import {
   activityTransitionActions,
 } from '@/lib/types'
 
-type PanelTab = 'overview' | 'records' | 'channel'
+type PanelTab = 'overview' | 'records' | 'channel' | 'comments'
 type ActivityScope = 'all' | 'mine'
 type ActivityFilter = 'all' | 'need_volunteer' | 'going' | 'ended' | 'canceled'
-type AdminView = 'home' | 'activities' | 'chats' | 'students'
+type AdminView = 'home' | 'activities' | 'chats' | 'students' | 'operations'
 
 type StudentEditorDraft = {
   realname: string
@@ -164,6 +169,7 @@ function App() {
   const [editingActivity, setEditingActivity] = useState<ActivityDetail | null>(null)
   const [exportBatch, setExportBatch] = useState<ExportBatchResponse | null>(null)
   const [recordActionId, setRecordActionId] = useState<string | null>(null)
+  const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null)
   const [savingStudentId, setSavingStudentId] = useState<string | null>(null)
   const [deletingStudentId, setDeletingStudentId] = useState<string | null>(null)
   const [commandOpen, setCommandOpen] = useState(false)
@@ -274,9 +280,15 @@ function App() {
     queryFn: () => api.userClasses({ group: 'student' }),
     enabled: Boolean(currentUser) && authorities.view_user === true,
   })
+  const authorityGroupsQuery = useQuery({
+    queryKey: ['authority-groups', currentUser?.id],
+    queryFn: () => api.authorityGroups(),
+    enabled: Boolean(currentUser) && authorities.manage_authority_anyway === true,
+  })
 
   const students = studentsQuery.data ?? emptyStudents
   const studentClasses = studentClassesQuery.data ?? []
+  const authorityGroups = authorityGroupsQuery.data ?? []
   const resolvedSelectedStudentId =
     selectedStudentId &&
     (studentsQuery.isLoading || students.some((student) => student.id === selectedStudentId))
@@ -318,6 +330,11 @@ function App() {
   const recordsQuery = useQuery({
     queryKey: ['activity-records', resolvedSelectedActivityId],
     queryFn: () => api.records(resolvedSelectedActivityId!),
+    enabled: Boolean(resolvedSelectedActivityId),
+  })
+  const commentsQuery = useQuery({
+    queryKey: ['activity-comments', resolvedSelectedActivityId],
+    queryFn: () => api.activityComments(resolvedSelectedActivityId!),
     enabled: Boolean(resolvedSelectedActivityId),
   })
 
@@ -463,12 +480,14 @@ function App() {
     mutationFn: async ({
       id,
       action,
+      options,
     }: {
       id: string
       action: 'approve_apply' | 'done' | 'disapprove_apply'
+      options?: { confirmedMinutes?: number }
     }) => {
       setRecordActionId(id)
-      await api.updateRecord(id, action)
+      await api.updateRecord(id, action, options)
     },
     onSuccess: async () => {
       setRecordActionId(null)
@@ -591,6 +610,80 @@ function App() {
     onError: showMutationError,
   })
 
+  const deleteCommentMutation = useMutation({
+    mutationFn: async ({
+      activityId,
+      commentId,
+    }: {
+      activityId: string
+      commentId: string
+    }) => {
+      setDeletingCommentId(commentId)
+      await api.deleteActivityComment(activityId, commentId)
+    },
+    onSuccess: async () => {
+      toast.success('Comment deleted.')
+      await queryClient.invalidateQueries({ queryKey: ['activity-comments'] })
+    },
+    onError: showMutationError,
+    onSettled: () => {
+      setDeletingCommentId(null)
+    },
+  })
+
+  const sendClassNotificationMutation = useMutation({
+    mutationFn: ({
+      classname,
+      title,
+      content,
+    }: {
+      classname: string
+      title: string
+      content: string
+    }) => api.sendNotificationByClass(classname, title, content),
+    onSuccess: (result) => {
+      toast.success(`Notified ${result.affected} students.`)
+    },
+    onError: showMutationError,
+  })
+
+  const sendActivityNotificationMutation = useMutation({
+    mutationFn: ({
+      activityId,
+      title,
+      content,
+    }: {
+      activityId: string
+      title: string
+      content: string
+    }) => api.sendNotificationByActivity(activityId, title, content),
+    onSuccess: (result) => {
+      toast.success(`Notified ${result.affected} participants.`)
+    },
+    onError: showMutationError,
+  })
+
+  const updateAuthorityGroupMutation = useMutation({
+    mutationFn: ({
+      code,
+      allowAllAuthorities,
+      authorities: groupAuthorities,
+    }: {
+      code: string
+      allowAllAuthorities: boolean
+      authorities: string[]
+    }) =>
+      api.updateAuthorityGroup(code, {
+        allow_all_authorities: allowAllAuthorities,
+        authorities: groupAuthorities,
+      }),
+    onSuccess: async (group) => {
+      toast.success(`Updated ${group.code} permissions.`)
+      await queryClient.invalidateQueries({ queryKey: ['authority-groups'] })
+    },
+    onError: showMutationError,
+  })
+
   const participantNames = participantNamesQuery.data ?? {}
   const chatSenderNames = {
     ...(chatMessageNamesQuery.data ?? {}),
@@ -645,6 +738,14 @@ function App() {
     })
   }
 
+  const navigateOperations = () => {
+    startTransition(() => {
+      navigate({
+        pathname: '/operations',
+      })
+    })
+  }
+
   const recentActivities = useMemo(
     () =>
       (activitiesQuery.data ?? [])
@@ -688,6 +789,10 @@ function App() {
   const canViewStudents = authorities.view_user === true
   const canEditStudents = authorities.update_user_anyway === true
   const canDeleteStudents = authorities.delete_user === true
+  const canManageComments = authorities.manage_comment_anyway === true
+  const canSendNotification = authorities.send_notification === true
+  const canManageAuthorities = authorities.manage_authority_anyway === true
+  const canViewOperations = canSendNotification || canManageAuthorities
   const canManageSelectedActivity =
     selectedDetail !== null &&
     (selectedDetail.promoter === currentUser?.id || authorities.manage_record_anyway === true)
@@ -758,6 +863,15 @@ function App() {
                   label="Students"
                   collapsed={sidebarCollapsed}
                   onClick={() => navigateStudents(selectedStudentId ?? undefined)}
+                />
+              ) : null}
+              {canViewOperations ? (
+                <SidebarItem
+                  active={currentView === 'operations'}
+                  icon={<ShieldCheck className="size-4" />}
+                  label="Operations"
+                  collapsed={sidebarCollapsed}
+                  onClick={navigateOperations}
                 />
               ) : null}
             </nav>
@@ -852,6 +966,14 @@ function App() {
                     icon={<Users className="size-4" />}
                     label="Students"
                     onClick={() => navigateStudents(selectedStudentId ?? undefined)}
+                  />
+                ) : null}
+                {canViewOperations ? (
+                  <SidebarItem
+                    active={currentView === 'operations'}
+                    icon={<ShieldCheck className="size-4" />}
+                    label="Operations"
+                    onClick={navigateOperations}
                   />
                 ) : null}
               </div>
@@ -961,6 +1083,32 @@ function App() {
                   await deleteStudentMutation.mutateAsync(studentId)
                 }}
               />
+            ) : currentView === 'operations' ? (
+              <OperationsPage
+                activities={activitiesQuery.data ?? []}
+                classSummaries={studentClasses}
+                classSummariesLoading={studentClassesQuery.isLoading}
+                groups={authorityGroups}
+                groupsLoading={authorityGroupsQuery.isLoading}
+                canSendNotification={canSendNotification}
+                canManageAuthorities={canManageAuthorities}
+                sendingClassNotification={sendClassNotificationMutation.isPending}
+                sendingActivityNotification={sendActivityNotificationMutation.isPending}
+                updatingAuthorityGroup={updateAuthorityGroupMutation.isPending}
+                onSendClassNotification={async (classname, title, content) => {
+                  await sendClassNotificationMutation.mutateAsync({ classname, title, content })
+                }}
+                onSendActivityNotification={async (activityId, title, content) => {
+                  await sendActivityNotificationMutation.mutateAsync({ activityId, title, content })
+                }}
+                onSaveGroup={async (code, allowAllAuthorities, groupAuthorities) => {
+                  await updateAuthorityGroupMutation.mutateAsync({
+                    code,
+                    allowAllAuthorities,
+                    authorities: groupAuthorities,
+                  })
+                }}
+              />
             ) : (
               <ActivitiesPage
                 search={search}
@@ -972,14 +1120,17 @@ function App() {
                 selectedDetail={selectedDetail}
                 selectedDetailPending={selectedDetailPending}
                 records={recordsQuery.data ?? []}
+                comments={commentsQuery.data ?? []}
                 participantNames={participantNames}
                 panelTab={panelTab}
                 channel={channelQuery.data ?? null}
                 messages={messagesQuery.data ?? []}
                 recordActionId={recordActionId}
+                deletingCommentId={deletingCommentId}
                 canCreateActivity={canCreateActivity}
                 canGenerateExport={canGenerateExport}
                 canManageSelectedActivity={canManageSelectedActivity}
+                canManageComments={canManageComments}
                 isExporting={exportMutation.isPending}
                 onSearchChange={setSearch}
                 onScopeChange={setScope}
@@ -1007,7 +1158,10 @@ function App() {
                   }
                 }}
                 onPanelTabChange={(value) => navigateActivities(selectedDetail?.id, value)}
-                onRecordAction={(id, action) => recordActionMutation.mutate({ id, action })}
+                onRecordAction={(id, action, options) => recordActionMutation.mutate({ id, action, options })}
+                onDeleteComment={async (activityId, commentId) => {
+                  await deleteCommentMutation.mutateAsync({ activityId, commentId })
+                }}
               />
             )}
           </main>
@@ -1020,6 +1174,7 @@ function App() {
         activities={activitiesQuery.data ?? []}
         onOpenHome={navigateHome}
         onOpenStudents={canViewStudents ? () => navigateStudents(selectedStudentId ?? undefined) : undefined}
+        onOpenOperations={canViewOperations ? navigateOperations : undefined}
         onOpenActivity={(activityId) => navigateActivities(activityId)}
         onOpenChat={(activityId) => navigateChats(activityId)}
         onCreateActivity={
@@ -1172,14 +1327,17 @@ function ActivitiesPage({
   selectedDetail,
   selectedDetailPending,
   records,
+  comments,
   participantNames,
   panelTab,
   channel,
   messages,
   recordActionId,
+  deletingCommentId,
   canCreateActivity,
   canGenerateExport,
   canManageSelectedActivity,
+  canManageComments,
   isExporting,
   onSearchChange,
   onScopeChange,
@@ -1192,6 +1350,7 @@ function ActivitiesPage({
   onTransition,
   onPanelTabChange,
   onRecordAction,
+  onDeleteComment,
 }: {
   search: string
   scope: ActivityScope
@@ -1202,14 +1361,17 @@ function ActivitiesPage({
   selectedDetail: ActivityDetail | null
   selectedDetailPending: boolean
   records: RecordEntry[]
+  comments: ActivityComment[]
   participantNames: Record<string, string>
   panelTab: PanelTab
   channel: ChannelResponse | null
   messages: ChannelMessage[]
   recordActionId: string | null
+  deletingCommentId: string | null
   canCreateActivity: boolean
   canGenerateExport: boolean
   canManageSelectedActivity: boolean
+  canManageComments: boolean
   isExporting: boolean
   onSearchChange: (value: string) => void
   onScopeChange: (value: ActivityScope) => void
@@ -1221,7 +1383,12 @@ function ActivitiesPage({
   onGenerateExport: () => void
   onTransition: (action: ActivityTransitionAction) => void
   onPanelTabChange: (value: PanelTab) => void
-  onRecordAction: (id: string, action: 'approve_apply' | 'done' | 'disapprove_apply') => void
+  onRecordAction: (
+    id: string,
+    action: 'approve_apply' | 'done' | 'disapprove_apply',
+    options?: { confirmedMinutes?: number },
+  ) => void
+  onDeleteComment: (activityId: string, commentId: string) => Promise<void>
 }) {
   const availableTransitions: readonly ActivityTransitionAction[] = selectedDetail
     ? activityTransitionActions(selectedDetail.state)
@@ -1413,6 +1580,7 @@ function ActivitiesPage({
                     <TabsList variant="line" className="shrink-0 rounded-2xl bg-slate-50 p-1 shadow-none">
                       <TabsTrigger value="overview">Overview</TabsTrigger>
                       <TabsTrigger value="records">Records</TabsTrigger>
+                      <TabsTrigger value="comments">Comments</TabsTrigger>
                       <TabsTrigger value="channel">Coordination</TabsTrigger>
                     </TabsList>
 
@@ -1477,6 +1645,53 @@ function ActivitiesPage({
                           pendingActionId={recordActionId ?? undefined}
                           onRecordAction={onRecordAction}
                         />
+                      </ScrollArea>
+                    </TabsContent>
+
+                    <TabsContent value="comments" className="min-h-0 flex-1">
+                      <ScrollArea className="h-full pr-2">
+                        <Card className="border-slate-200/70 bg-slate-50/65 shadow-none">
+                          <CardHeader className="p-5">
+                            <CardTitle>Activity comments</CardTitle>
+                            <CardDescription>
+                              Moderate public comments for this activity.
+                            </CardDescription>
+                          </CardHeader>
+                          <CardContent className="grid gap-3 px-5 pb-5 pt-0">
+                            {comments.length > 0 ? (
+                              comments.map((comment) => (
+                                <div
+                                  key={comment.id}
+                                  className="rounded-2xl border border-slate-200/80 bg-white p-4"
+                                >
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <p className="font-medium text-slate-950">{comment.author_name}</p>
+                                      <p className="text-xs text-slate-500">{formatDateTime(comment.date)}</p>
+                                    </div>
+                                    {canManageComments ? (
+                                      <Button
+                                        size="sm"
+                                        variant="destructive"
+                                        disabled={deletingCommentId === comment.id}
+                                        onClick={() => {
+                                          void onDeleteComment(selectedDetail.id, comment.id)
+                                        }}
+                                      >
+                                        {deletingCommentId === comment.id ? 'Deleting…' : 'Delete'}
+                                      </Button>
+                                    ) : null}
+                                  </div>
+                                  <p className="mt-3 text-sm leading-6 text-slate-700">{comment.content}</p>
+                                </div>
+                              ))
+                            ) : (
+                              <div className="rounded-2xl border border-dashed border-slate-200 bg-white/70 p-6 text-sm text-slate-500">
+                                No comments yet.
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
                       </ScrollArea>
                     </TabsContent>
 
@@ -2029,6 +2244,263 @@ function StudentsPage({
   )
 }
 
+function OperationsPage({
+  activities,
+  classSummaries,
+  classSummariesLoading,
+  groups,
+  groupsLoading,
+  canSendNotification,
+  canManageAuthorities,
+  sendingClassNotification,
+  sendingActivityNotification,
+  updatingAuthorityGroup,
+  onSendClassNotification,
+  onSendActivityNotification,
+  onSaveGroup,
+}: {
+  activities: ActivitySummary[]
+  classSummaries: UserClassSummary[]
+  classSummariesLoading: boolean
+  groups: GroupAuthoritySummary[]
+  groupsLoading: boolean
+  canSendNotification: boolean
+  canManageAuthorities: boolean
+  sendingClassNotification: boolean
+  sendingActivityNotification: boolean
+  updatingAuthorityGroup: boolean
+  onSendClassNotification: (classname: string, title: string, content: string) => Promise<void>
+  onSendActivityNotification: (activityId: string, title: string, content: string) => Promise<void>
+  onSaveGroup: (
+    code: string,
+    allowAllAuthorities: boolean,
+    authorities: string[],
+  ) => Promise<void>
+}) {
+  const [activityId, setActivityId] = useState('')
+  const [activityTitle, setActivityTitle] = useState('')
+  const [activityContent, setActivityContent] = useState('')
+
+  const [classname, setClassname] = useState('')
+  const [classTitle, setClassTitle] = useState('')
+  const [classContent, setClassContent] = useState('')
+
+  const [groupCode, setGroupCode] = useState('')
+  const [allowAllAuthoritiesOverride, setAllowAllAuthoritiesOverride] = useState<boolean | null>(null)
+  const [authorityTextOverride, setAuthorityTextOverride] = useState<string | null>(null)
+
+  const effectiveActivityId = activityId || activities[0]?.id || ''
+  const effectiveClassname = classname || classSummaries[0]?.classname || ''
+  const effectiveGroupCode = groupCode || groups[0]?.code || ''
+  const selectedGroup = groups.find((group) => group.code === effectiveGroupCode) ?? null
+  const effectiveAllowAllAuthorities =
+    allowAllAuthoritiesOverride ?? selectedGroup?.allow_all_authorities ?? false
+  const effectiveAuthorityText = authorityTextOverride ?? selectedGroup?.authorities.join('\n') ?? ''
+
+  return (
+    <div className="flex h-full min-h-0 flex-col gap-4">
+      <div className="shrink-0 rounded-[2.3rem] border border-white/75 bg-white/76 px-7 py-6 shadow-[0_28px_80px_-34px_rgba(15,23,42,0.24)] backdrop-blur-xl">
+        <div className="flex items-end justify-between">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Operations</p>
+            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">
+              Notification and permission controls
+            </h2>
+          </div>
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 rounded-[2.4rem] border border-white/70 bg-white/70 p-2 shadow-[0_34px_100px_-42px_rgba(15,23,42,0.3)] backdrop-blur-xl">
+        <div className="grid h-full min-h-0 gap-2 xl:grid-cols-2">
+          <ScrollArea className="h-full rounded-[2rem] bg-white p-5">
+            <div className="grid gap-4">
+              <Card className="border-slate-200/70 bg-slate-50/65 shadow-none">
+                <CardHeader className="p-5">
+                  <CardTitle className="flex items-center gap-2">
+                    <BellRing className="size-4" />
+                    Notify by Activity
+                  </CardTitle>
+                  <CardDescription>Send one message to all active participants in an activity.</CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-3 px-5 pb-5 pt-0">
+                  <Select value={effectiveActivityId || undefined} onValueChange={setActivityId}>
+                    <SelectTrigger className="rounded-2xl border-slate-200/80 bg-white/90">
+                      <SelectValue placeholder="Select activity" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {activities.map((activity) => (
+                        <SelectItem key={activity.id} value={activity.id}>
+                          {activity.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    value={activityTitle}
+                    placeholder="Notification title"
+                    onChange={(event) => setActivityTitle(event.target.value)}
+                  />
+                  <Textarea
+                    value={activityContent}
+                    rows={4}
+                    placeholder="Notification content"
+                    onChange={(event) => setActivityContent(event.target.value)}
+                  />
+                  <Button
+                    disabled={!canSendNotification || sendingActivityNotification}
+                    onClick={async () => {
+                      const selectedActivityId = effectiveActivityId.trim()
+                      const title = activityTitle.trim()
+                      const content = activityContent.trim()
+                      if (!selectedActivityId || !title || !content) {
+                        toast.error('Activity, title, and content are required.')
+                        return
+                      }
+                      await onSendActivityNotification(selectedActivityId, title, content)
+                      setActivityTitle('')
+                      setActivityContent('')
+                    }}
+                  >
+                    {sendingActivityNotification ? 'Sending…' : 'Send activity notification'}
+                  </Button>
+                </CardContent>
+              </Card>
+
+              <Card className="border-slate-200/70 bg-slate-50/65 shadow-none">
+                <CardHeader className="p-5">
+                  <CardTitle className="flex items-center gap-2">
+                    <BellRing className="size-4" />
+                    Notify by Class
+                  </CardTitle>
+                  <CardDescription>Broadcast to all students in one class.</CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-3 px-5 pb-5 pt-0">
+                  <Select
+                    value={effectiveClassname || undefined}
+                    onValueChange={setClassname}
+                    disabled={classSummariesLoading || classSummaries.length === 0}
+                  >
+                    <SelectTrigger className="rounded-2xl border-slate-200/80 bg-white/90">
+                      <SelectValue placeholder="Select class" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {classSummaries.map((summary) => (
+                        <SelectItem key={summary.classname} value={summary.classname}>
+                          {summary.classname} ({summary.count})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    value={classTitle}
+                    placeholder="Notification title"
+                    onChange={(event) => setClassTitle(event.target.value)}
+                  />
+                  <Textarea
+                    value={classContent}
+                    rows={4}
+                    placeholder="Notification content"
+                    onChange={(event) => setClassContent(event.target.value)}
+                  />
+                  <Button
+                    disabled={!canSendNotification || sendingClassNotification}
+                    onClick={async () => {
+                      const selectedClass = effectiveClassname.trim()
+                      const title = classTitle.trim()
+                      const content = classContent.trim()
+                      if (!selectedClass || !title || !content) {
+                        toast.error('Class, title, and content are required.')
+                        return
+                      }
+                      await onSendClassNotification(selectedClass, title, content)
+                      setClassTitle('')
+                      setClassContent('')
+                    }}
+                  >
+                    {sendingClassNotification ? 'Sending…' : 'Send class notification'}
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          </ScrollArea>
+
+          <ScrollArea className="h-full rounded-[2rem] bg-white p-5">
+            <Card className="border-slate-200/70 bg-slate-50/65 shadow-none">
+              <CardHeader className="p-5">
+                <CardTitle className="flex items-center gap-2">
+                  <ShieldCheck className="size-4" />
+                  Group Authorities
+                </CardTitle>
+                <CardDescription>
+                  Configure authority grants for each group code.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-3 px-5 pb-5 pt-0">
+                <Select
+                  value={effectiveGroupCode || undefined}
+                  onValueChange={(value) => {
+                    setGroupCode(value)
+                    setAllowAllAuthoritiesOverride(null)
+                    setAuthorityTextOverride(null)
+                  }}
+                  disabled={groupsLoading || groups.length === 0}
+                >
+                  <SelectTrigger className="rounded-2xl border-slate-200/80 bg-white/90">
+                    <SelectValue placeholder="Select group" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {groups.map((group) => (
+                      <SelectItem key={group.code} value={group.code}>
+                        {group.code}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <div className="flex items-center justify-between rounded-2xl border border-slate-200/80 bg-white/80 px-4 py-3">
+                  <p className="text-sm font-medium text-slate-700">Allow all authorities</p>
+                  <Switch
+                    checked={effectiveAllowAllAuthorities}
+                    onCheckedChange={setAllowAllAuthoritiesOverride}
+                    disabled={!canManageAuthorities || selectedGroup === null}
+                  />
+                </div>
+
+                <Textarea
+                  value={effectiveAuthorityText}
+                  rows={10}
+                  placeholder="One authority per line"
+                  onChange={(event) => setAuthorityTextOverride(event.target.value)}
+                  disabled={!canManageAuthorities || selectedGroup === null}
+                />
+
+                <Button
+                  disabled={!canManageAuthorities || selectedGroup === null || updatingAuthorityGroup}
+                  onClick={async () => {
+                    if (!selectedGroup) {
+                      toast.error('Select a group first.')
+                      return
+                    }
+                    const authorities = effectiveAuthorityText
+                      .split('\n')
+                      .map((value) => value.trim())
+                      .filter(Boolean)
+                    await onSaveGroup(selectedGroup.code, effectiveAllowAllAuthorities, authorities)
+                    setAllowAllAuthoritiesOverride(null)
+                    setAuthorityTextOverride(null)
+                  }}
+                >
+                  {updatingAuthorityGroup ? 'Saving…' : 'Save permissions'}
+                </Button>
+              </CardContent>
+            </Card>
+          </ScrollArea>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function LabeledField({
   label,
   children,
@@ -2043,7 +2515,6 @@ function LabeledField({
     </label>
   )
 }
-
 function SidebarItem({
   active,
   icon,
@@ -2194,6 +2665,7 @@ async function invalidateSelectedActivity(queryClient: QueryClient, activityId: 
   if (activityId) {
     await queryClient.invalidateQueries({ queryKey: ['activity-detail', activityId] })
     await queryClient.invalidateQueries({ queryKey: ['activity-records', activityId] })
+    await queryClient.invalidateQueries({ queryKey: ['activity-comments', activityId] })
     await queryClient.invalidateQueries({ queryKey: ['channels', activityId] })
   }
 }
@@ -2220,6 +2692,9 @@ function viewFromPath(pathname: string): AdminView {
   }
   if (pathname.startsWith('/students')) {
     return 'students'
+  }
+  if (pathname.startsWith('/operations')) {
+    return 'operations'
   }
   return 'home'
 }

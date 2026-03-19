@@ -10,6 +10,7 @@ pub struct Notification {
     pub title: String,
     pub content: String,
     pub created_at: String,
+    pub read_at: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

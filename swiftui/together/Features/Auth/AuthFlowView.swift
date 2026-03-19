@@ -1,4 +1,10 @@
+import PhotosUI
 import SwiftUI
+import UniformTypeIdentifiers
+
+#if canImport(UIKit)
+import UIKit
+#endif
 
 private enum AuthMode: String, CaseIterable, Identifiable {
     case login
@@ -48,6 +54,10 @@ struct AuthFlowView: View {
     @State private var registerClassname = ""
     @State private var registerPassword = ""
     @State private var registerConfirmPassword = ""
+    @State private var selectedRegisterAvatarItem: PhotosPickerItem?
+    @State private var pendingRegisterAvatarUpload: RegistrationAvatarUpload?
+    @State private var isLoadingRegisterAvatar = false
+    @State private var showingPasswordReset = false
     @State private var localError: String?
     @FocusState private var focusedField: Field?
 
@@ -94,6 +104,11 @@ struct AuthFlowView: View {
             localError = nil
             session.clearLastError()
         }
+        .onChange(of: selectedRegisterAvatarItem) { _, newValue in
+            Task {
+                await loadRegisterAvatarSelection(from: newValue)
+            }
+        }
         .onChange(of: scenePhase) { _, newValue in
             guard newValue == .active else {
                 return
@@ -101,6 +116,10 @@ struct AuthFlowView: View {
             Task {
                 await session.revalidateServiceAddressIfNeeded()
             }
+        }
+        .sheet(isPresented: $showingPasswordReset) {
+            PasswordResetSheet()
+                .environmentObject(session)
         }
     }
 
@@ -235,6 +254,12 @@ struct AuthFlowView: View {
             }
             .buttonStyle(AuthPrimaryButtonStyle())
             .disabled(session.isAuthenticating)
+
+            Button("Forgot password?") {
+                showingPasswordReset = true
+            }
+            .font(.footnote.weight(.semibold))
+            .buttonStyle(.plain)
         }
     }
 
@@ -290,9 +315,23 @@ struct AuthFlowView: View {
                 }
             }
 
-            Text("You can add a profile photo after signing in.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Profile photo")
+                    .font(.subheadline.weight(.medium))
+                HStack(spacing: 12) {
+                    registerAvatarPreview
+                    PhotosPicker(selection: $selectedRegisterAvatarItem, matching: .images) {
+                        Label(
+                            pendingRegisterAvatarUpload == nil ? "Choose photo" : "Change photo",
+                            systemImage: "photo.on.rectangle"
+                        )
+                    }
+                    .buttonStyle(.bordered)
+                    if isLoadingRegisterAvatar {
+                        ProgressView()
+                    }
+                }
+            }
 
             Button {
                 localError = validateRegistration()
@@ -309,13 +348,16 @@ struct AuthFlowView: View {
                         classname: registerClassname,
                         avatar: nil
                     )
-                    _ = await session.registerAndSignIn(request: request)
+                    _ = await session.registerAndSignIn(
+                        request: request,
+                        avatarUpload: pendingRegisterAvatarUpload
+                    )
                 }
             } label: {
                 submitLabel(title: AuthMode.register.actionTitle)
             }
             .buttonStyle(AuthPrimaryButtonStyle())
-            .disabled(session.isAuthenticating)
+            .disabled(session.isAuthenticating || isLoadingRegisterAvatar)
         }
     }
 
@@ -351,6 +393,66 @@ struct AuthFlowView: View {
         }
     }
 
+    @ViewBuilder
+    private var registerAvatarPreview: some View {
+        if let registerAvatarImage {
+            registerAvatarImage
+                .resizable()
+                .scaledToFill()
+                .frame(width: 64, height: 64)
+                .clipShape(Circle())
+        } else {
+            Circle()
+                .fill(Color(uiColor: .tertiarySystemFill))
+                .frame(width: 64, height: 64)
+                .overlay {
+                    Image(systemName: "person.crop.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                }
+        }
+    }
+
+    private var registerAvatarImage: Image? {
+        guard let pendingRegisterAvatarUpload else {
+            return nil
+        }
+        #if canImport(UIKit)
+        guard let image = UIImage(data: pendingRegisterAvatarUpload.data) else {
+            return nil
+        }
+        return Image(uiImage: image)
+        #else
+        return nil
+        #endif
+    }
+
+    private func loadRegisterAvatarSelection(from item: PhotosPickerItem?) async {
+        guard let item else {
+            pendingRegisterAvatarUpload = nil
+            return
+        }
+
+        isLoadingRegisterAvatar = true
+        defer {
+            isLoadingRegisterAvatar = false
+        }
+
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self), !data.isEmpty else {
+                throw APIError.transport(code: nil, message: "The selected photo could not be loaded.")
+            }
+            let contentType = item.supportedContentTypes.first(where: { $0.conforms(to: .image) }) ?? .jpeg
+            pendingRegisterAvatarUpload = RegistrationAvatarUpload(
+                filename: "avatar.\(contentType.preferredFilenameExtension ?? "jpg")",
+                data: data,
+                mimeType: contentType.preferredMIMEType
+            )
+        } catch {
+            localError = session.readableError(error)
+        }
+    }
+
     private func validateLogin() -> String? {
         if session.hasConfiguredServerURL == false {
             return "Service address is required."
@@ -374,7 +476,142 @@ struct AuthFlowView: View {
         if registerPassword != registerConfirmPassword {
             return "The password confirmation does not match."
         }
+        if session.demoData == nil && pendingRegisterAvatarUpload == nil {
+            return "Profile photo is required during registration."
+        }
         return nil
+    }
+}
+
+private struct PasswordResetSheet: View {
+    @EnvironmentObject private var session: SessionStore
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var email = ""
+    @State private var code = ""
+    @State private var newPassword = ""
+    @State private var confirmPassword = ""
+    @State private var issuedCode: String?
+    @State private var errorMessage: String?
+    @State private var isSubmitting = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Account") {
+                    TextField("School email", text: $email)
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.emailAddress)
+                        .autocorrectionDisabled()
+                }
+
+                Section("Request reset code") {
+                    Button(isSubmitting ? "Requesting..." : "Request Code") {
+                        Task {
+                            await requestCode()
+                        }
+                    }
+                    .disabled(isSubmitting || email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                    if let issuedCode {
+                        Text("Reset code: \(issuedCode)")
+                            .font(.footnote.monospaced())
+                    }
+                }
+
+                Section("Confirm reset") {
+                    TextField("Reset code", text: $code)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    SecureField("New password", text: $newPassword)
+                    SecureField("Confirm password", text: $confirmPassword)
+
+                    Button(isSubmitting ? "Submitting..." : "Confirm Reset") {
+                        Task {
+                            await confirmReset()
+                        }
+                    }
+                    .disabled(isSubmitting)
+                }
+
+                if let errorMessage {
+                    Section {
+                        InlineErrorBanner(message: errorMessage)
+                            .listRowInsets(EdgeInsets())
+                    }
+                }
+            }
+            .navigationTitle("Reset Password")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+
+    private func requestCode() async {
+        guard let serverURL = session.serverURL else {
+            errorMessage = "Enter a valid service address first."
+            return
+        }
+        isSubmitting = true
+        defer {
+            isSubmitting = false
+        }
+
+        do {
+            let issued = try await session.apiClient.requestPasswordReset(
+                baseURL: serverURL,
+                email: email.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+            issuedCode = issued
+            errorMessage = nil
+        } catch {
+            errorMessage = session.readableError(error)
+        }
+    }
+
+    private func confirmReset() async {
+        guard let serverURL = session.serverURL else {
+            errorMessage = "Enter a valid service address first."
+            return
+        }
+        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedCode = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        if normalizedEmail.isEmpty || normalizedCode.isEmpty {
+            errorMessage = "Email and reset code are required."
+            return
+        }
+        if newPassword.count < 6 {
+            errorMessage = "New password must be at least 6 characters."
+            return
+        }
+        if newPassword != confirmPassword {
+            errorMessage = "Password confirmation does not match."
+            return
+        }
+
+        isSubmitting = true
+        defer {
+            isSubmitting = false
+        }
+
+        do {
+            try await session.apiClient.confirmPasswordReset(
+                baseURL: serverURL,
+                email: normalizedEmail,
+                code: normalizedCode,
+                newPassword: newPassword
+            )
+            errorMessage = nil
+            dismiss()
+        } catch {
+            errorMessage = session.readableError(error)
+        }
     }
 }
 

@@ -2,13 +2,17 @@ use crate::{
     database::AppDatabase,
     utils::{parse_oid, Id, ParseIdError},
 };
+use serde::{Deserialize, Serialize};
 use skyzen::extract::Extractor;
+use skyzen::routing::Params;
 use skyzen::utils::{cookie::Cookie, State};
 use skyzen::{
     header::{self, HeaderMap},
+    utils::Json,
     Request,
 };
 use sqlx::Row;
+use utoipa::ToSchema;
 
 #[derive(Clone)]
 pub struct Auth {
@@ -193,4 +197,175 @@ async fn match_group_authority(
     .is_some();
 
     Ok(has_authority)
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct GroupAuthoritySummary {
+    pub code: String,
+    pub allow_all_authorities: bool,
+    pub authorities: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct UpdateGroupAuthoritiesForm {
+    pub allow_all_authorities: bool,
+    pub authorities: Vec<String>,
+}
+
+#[skyzen::error]
+pub enum GroupAuthorityApiError {
+    #[error("Session expired", status = FORBIDDEN)]
+    SessionExpired,
+
+    #[error("Forbidden", status = FORBIDDEN)]
+    Forbidden,
+
+    #[error("Invalid group code", status = BAD_REQUEST)]
+    InvalidGroupCode,
+
+    #[error("Group not found", status = NOT_FOUND)]
+    GroupNotFound,
+
+    #[error("Invalid authority name", status = BAD_REQUEST)]
+    InvalidAuthorityName,
+}
+
+#[skyzen::openapi]
+pub async fn list_groups(
+    database: State<AppDatabase>,
+    session: AuthSession,
+) -> Result<Json<Vec<GroupAuthoritySummary>>, GroupAuthorityApiError> {
+    let auth = session.into_auth().await.map_err(|err| match err {
+        AuthError::SessionExpired => GroupAuthorityApiError::SessionExpired,
+        _ => GroupAuthorityApiError::Forbidden,
+    })?;
+    auth.ensure_authority("manage_authority_anyway")
+        .await
+        .map_err(|_| GroupAuthorityApiError::Forbidden)?;
+
+    let groups = sqlx::query(
+        database
+            .sql("SELECT id, code, allow_all_authorities FROM groups ORDER BY code ASC")
+            .as_ref(),
+    )
+    .fetch_all(database.sqlx())
+    .await
+    .expect("Database error");
+
+    let mut result = Vec::with_capacity(groups.len());
+    for group in groups {
+        let group_id: String = group.try_get("id").expect("Database error");
+        let authority_rows = sqlx::query(
+            database
+                .sql("SELECT authority FROM group_authorities WHERE group_id = ?1 ORDER BY authority ASC")
+                .as_ref(),
+        )
+        .bind(&group_id)
+        .fetch_all(database.sqlx())
+        .await
+        .expect("Database error");
+        let authorities = authority_rows
+            .into_iter()
+            .map(|row| {
+                row.try_get::<String, _>("authority")
+                    .expect("Database error")
+            })
+            .collect::<Vec<_>>();
+        result.push(GroupAuthoritySummary {
+            code: group.try_get("code").expect("Database error"),
+            allow_all_authorities: group
+                .try_get::<i64, _>("allow_all_authorities")
+                .expect("Database error")
+                != 0,
+            authorities,
+        });
+    }
+
+    Ok(Json(result))
+}
+
+#[skyzen::openapi]
+pub async fn update_group(
+    database: State<AppDatabase>,
+    session: AuthSession,
+    params: Params,
+    form: Json<UpdateGroupAuthoritiesForm>,
+) -> Result<Json<GroupAuthoritySummary>, GroupAuthorityApiError> {
+    let auth = session.into_auth().await.map_err(|err| match err {
+        AuthError::SessionExpired => GroupAuthorityApiError::SessionExpired,
+        _ => GroupAuthorityApiError::Forbidden,
+    })?;
+    auth.ensure_authority("manage_authority_anyway")
+        .await
+        .map_err(|_| GroupAuthorityApiError::Forbidden)?;
+
+    let code = params
+        .get("code")
+        .map_err(|_| GroupAuthorityApiError::InvalidGroupCode)?;
+    let code = code.trim();
+    if code.is_empty() {
+        return Err(GroupAuthorityApiError::InvalidGroupCode);
+    }
+    let Json(form) = form;
+
+    let mut authorities = std::collections::BTreeSet::new();
+    for authority in form.authorities {
+        let trimmed = authority.trim();
+        if trimmed.is_empty() {
+            return Err(GroupAuthorityApiError::InvalidAuthorityName);
+        }
+        authorities.insert(trimmed.to_string());
+    }
+
+    let group_row = sqlx::query(
+        database
+            .sql("SELECT id FROM groups WHERE code = ?1 LIMIT 1")
+            .as_ref(),
+    )
+    .bind(code)
+    .fetch_optional(database.sqlx())
+    .await
+    .expect("Database error")
+    .ok_or(GroupAuthorityApiError::GroupNotFound)?;
+    let group_id: String = group_row.try_get("id").expect("Database error");
+
+    let mut tx = database.sqlx().begin().await.expect("Database error");
+    sqlx::query(
+        database
+            .sql("UPDATE groups SET allow_all_authorities = ?1 WHERE id = ?2")
+            .as_ref(),
+    )
+    .bind(if form.allow_all_authorities { 1 } else { 0 })
+    .bind(&group_id)
+    .execute(&mut *tx)
+    .await
+    .expect("Database error");
+    sqlx::query(
+        database
+            .sql("DELETE FROM group_authorities WHERE group_id = ?1")
+            .as_ref(),
+    )
+    .bind(&group_id)
+    .execute(&mut *tx)
+    .await
+    .expect("Database error");
+    for authority in &authorities {
+        sqlx::query(
+            database
+                .sql("INSERT INTO group_authorities (group_id, authority) VALUES (?1, ?2)")
+                .as_ref(),
+        )
+        .bind(&group_id)
+        .bind(authority)
+        .execute(&mut *tx)
+        .await
+        .expect("Database error");
+    }
+    tx.commit().await.expect("Database error");
+
+    Ok(Json(GroupAuthoritySummary {
+        code: code.to_string(),
+        allow_all_authorities: form.allow_all_authorities,
+        authorities: authorities.into_iter().collect(),
+    }))
 }

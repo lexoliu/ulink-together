@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { Command as CommandPrimitive } from 'cmdk'
-import { Download, FolderKanban, House, MessageSquareMore, Plus, Users } from 'lucide-react'
+import { Download, FolderKanban, House, MessageSquareMore, Plus, ShieldCheck, Users } from 'lucide-react'
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { activityStateLabel, formatDateOnly } from '@/lib/format'
@@ -12,6 +12,7 @@ interface CommandPaletteProps {
   activities: ActivitySummary[]
   onOpenHome: () => void
   onOpenStudents?: () => void
+  onOpenOperations?: () => void
   onOpenActivity: (activityId: string) => void
   onOpenChat: (activityId: string) => void
   onCreateActivity?: () => void
@@ -24,6 +25,7 @@ export function CommandPalette({
   activities,
   onOpenHome,
   onOpenStudents,
+  onOpenOperations,
   onOpenActivity,
   onOpenChat,
   onCreateActivity,
@@ -89,6 +91,16 @@ export function CommandPalette({
                   onSelect={() => {
                     onOpenChange(false)
                     onOpenStudents()
+                  }}
+                />
+              ) : null}
+              {onOpenOperations ? (
+                <CommandItem
+                  icon={<ShieldCheck className="size-4" />}
+                  title="Operations"
+                  onSelect={() => {
+                    onOpenChange(false)
+                    onOpenOperations()
                   }}
                 />
               ) : null}

@@ -2,6 +2,9 @@ export type AuthorityName =
   | 'create_activity'
   | 'create_channel'
   | 'manage_record_anyway'
+  | 'manage_comment_anyway'
+  | 'send_notification'
+  | 'manage_authority_anyway'
   | 'view_user'
   | 'generate_export'
   | 'update_user_anyway'
@@ -85,6 +88,14 @@ export interface ChannelMessage {
   datetime: string
 }
 
+export interface ActivityComment {
+  id: string
+  author: string
+  author_name: string
+  content: string
+  date: string
+}
+
 export interface ChannelCreatedResponse {
   message: string
   channel_id: string
@@ -157,6 +168,16 @@ export interface UserBatchResult {
 export interface UserClassSummary {
   classname: string
   count: number
+}
+
+export interface NotificationBatchResult {
+  affected: number
+}
+
+export interface GroupAuthoritySummary {
+  code: string
+  allow_all_authorities: boolean
+  authorities: string[]
 }
 
 const activityTransitionsByState = {
