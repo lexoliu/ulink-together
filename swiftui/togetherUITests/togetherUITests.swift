@@ -17,18 +17,50 @@ final class togetherUITests: XCTestCase {
     }
 
     @MainActor
-    func testOrganizerDemoShowsManageAndAccountSurfaces() throws {
+    func testSignedOutDemoCanReachSignedInShell() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo-signed-out"]
+        app.launch()
+
+        let signInActionButton = app.scrollViews.buttons["Sign In"].firstMatch
+        XCTAssertTrue(signInActionButton.waitForExistence(timeout: 3))
+        let emailField = app.textFields["Enter your school email"]
+        let passwordField = app.secureTextFields["Enter password"]
+        XCTAssertTrue(emailField.waitForExistence(timeout: 3))
+        XCTAssertTrue(passwordField.waitForExistence(timeout: 3))
+        emailField.tap()
+        emailField.typeText("demo@school.edu")
+        passwordField.tap()
+        passwordField.typeText("password")
+        signInActionButton.tap()
+
+        let signedOutPredicate = NSPredicate(format: "exists == false")
+        expectation(for: signedOutPredicate, evaluatedWith: app.navigationBars["Student Access"])
+        expectation(for: signedOutPredicate, evaluatedWith: app.secureTextFields.firstMatch)
+        waitForExpectations(timeout: 5)
+    }
+
+    @MainActor
+    func testVolunteerDemoShowsFeedDetailWithoutManageControls() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo-volunteer"]
+        app.launch()
+
+        XCTAssertTrue(app.navigationBars["Feed"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Participation"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Communication"].exists)
+        XCTAssertFalse(app.staticTexts["Manage Activity"].waitForExistence(timeout: 1))
+    }
+
+    @MainActor
+    func testOrganizerDemoShowsManageControlsInFeedDetail() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-demo-organizer"]
         app.launch()
 
-        XCTAssertTrue(app.tabBars.buttons["Manage"].waitForExistence(timeout: 3))
-        app.tabBars.buttons["Manage"].tap()
-        XCTAssertTrue(app.navigationBars["Manage"].waitForExistence(timeout: 3))
-
-        app.tabBars.buttons["Account"].tap()
-        XCTAssertTrue(app.staticTexts["Ms. Lin"].waitForExistence(timeout: 3))
-        let editButtons = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'Edit'"))
-        XCTAssertGreaterThan(editButtons.count, 0)
+        XCTAssertTrue(app.navigationBars["Feed"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Participation"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Communication"].exists)
+        XCTAssertTrue(app.staticTexts["Manage Activity"].waitForExistence(timeout: 5))
     }
 }

@@ -9,3 +9,6 @@ app/.water
 xcuserdata/
 Appendix_3_Source_Code.typ
 appendix/source-code-manifest.json
+*.mp4
+ia_guide/
+.playwright-mcp/*

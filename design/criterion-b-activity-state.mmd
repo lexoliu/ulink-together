@@ -1,0 +1,8 @@
+stateDiagram-v2
+    [*] --> NeedVolunteer
+    NeedVolunteer --> Going: start
+    NeedVolunteer --> Canceled: cancel
+    Going --> Ended: end
+    Going --> Canceled: cancel
+    Ended --> [*]
+    Canceled --> [*]

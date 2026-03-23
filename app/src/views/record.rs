@@ -19,8 +19,9 @@ pub fn view(state: &AppState) -> NavigationView {
             // Filter tabs
             hstack((
                 filter_button(&filter, RecordFilter::All, text!("All")),
-                filter_button(&filter, RecordFilter::Todo, text!("Todo")),
-                filter_button(&filter, RecordFilter::Done, text!("Done")),
+                filter_button(&filter, RecordFilter::PendingApproval, text!("Pending")),
+                filter_button(&filter, RecordFilter::Approved, text!("Approved")),
+                filter_button(&filter, RecordFilter::Confirmed, text!("Confirmed")),
             ))
             .padding(),
             // Records list
@@ -31,8 +32,9 @@ pub fn view(state: &AppState) -> NavigationView {
                         .into_iter()
                         .filter(|r| match filter.get() {
                             RecordFilter::All => true,
-                            RecordFilter::Todo => r.state == RecordState::Todo,
-                            RecordFilter::Done => r.state == RecordState::Done,
+                            RecordFilter::PendingApproval => r.state == RecordState::PendingApproval,
+                            RecordFilter::Approved => r.state == RecordState::Approved,
+                            RecordFilter::Confirmed => r.state == RecordState::Confirmed,
                         })
                         .collect();
 
@@ -62,8 +64,9 @@ pub fn view(state: &AppState) -> NavigationView {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum RecordFilter {
     All,
-    Todo,
-    Done,
+    PendingApproval,
+    Approved,
+    Confirmed,
 }
 
 /// Creates a filter button
@@ -106,8 +109,9 @@ fn record_row(record: models::RecordEntry) -> impl View {
 /// State badge with appropriate styling
 fn state_badge(state: RecordState) -> AnyView {
     match state {
-        RecordState::Todo => AnyView::new(text!("Todo").font(font::Caption).foreground(Accent)),
-        RecordState::Done => AnyView::new(text!("Done").font(font::Caption).foreground(Foreground)),
+        RecordState::PendingApproval => AnyView::new(text!("Pending").font(font::Caption).foreground(Accent)),
+        RecordState::Approved => AnyView::new(text!("Approved").font(font::Caption).foreground(Foreground)),
+        RecordState::Confirmed => AnyView::new(text!("Confirmed").font(font::Caption).foreground(Foreground)),
         RecordState::Canceled => AnyView::new(
             text!("Canceled")
                 .font(font::Caption)

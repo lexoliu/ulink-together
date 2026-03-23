@@ -1,0 +1,14 @@
+flowchart TD
+    Start([Apply request received]) --> Begin["Begin transaction"]
+    Begin --> Exists{"Activity exists?"}
+    Exists -- No --> Missing["Reject: not found"]
+    Exists -- Yes --> State{"State = NeedVolunteer?"}
+    State -- No --> Closed["Reject: not recruiting"]
+    State -- Yes --> Capacity{"Capacity available?"}
+    Capacity -- No --> Full["Reject: activity full"]
+    Capacity -- Yes --> Duplicate{"Existing record for user?"}
+    Duplicate -- Yes --> Joined["Reject: duplicate application"]
+    Duplicate -- No --> Create["Insert record and increment volunteer count"]
+    Create --> Sync["Sync activity channel membership"]
+    Sync --> Commit["Commit transaction"]
+    Commit --> Success([Application recorded])

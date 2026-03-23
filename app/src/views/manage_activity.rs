@@ -322,7 +322,7 @@ fn volunteer_row(
         )), // Truncate ID
         spacer(),
         state_badge_record(status),
-        if status == RecordState::Todo {
+        if status == RecordState::PendingApproval {
             AnyView::new(hstack((
                 button(text!("Approve")).action({
                     let state = state.clone();
@@ -378,9 +378,9 @@ fn update_record(
     spawn_local(async move {
         let api = state.api.get();
         let res = if approve {
-            api.approve_apply(&record_id).await
+            api.approve_record(&record_id).await
         } else {
-            api.disapprove_apply(&record_id).await
+            api.cancel_record(&record_id).await
         };
 
         match res {
@@ -406,8 +406,9 @@ fn state_badge(state: ActivityState) -> impl View {
 
 fn state_badge_record(state: RecordState) -> impl View {
     match state {
-        RecordState::Todo => AnyView::new(text!("Pending").foreground(Accent)),
-        RecordState::Done => AnyView::new(text!("Approved").foreground(Foreground)),
-        RecordState::Canceled => AnyView::new(text!("Rejected").foreground(MutedForeground)),
+        RecordState::PendingApproval => AnyView::new(text!("Pending").foreground(Accent)),
+        RecordState::Approved => AnyView::new(text!("Approved").foreground(Foreground)),
+        RecordState::Confirmed => AnyView::new(text!("Confirmed").foreground(Foreground)),
+        RecordState::Canceled => AnyView::new(text!("Canceled").foreground(MutedForeground)),
     }
 }

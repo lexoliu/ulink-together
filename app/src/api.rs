@@ -249,9 +249,9 @@ impl Api {
         parse_response(response).await
     }
 
-    /// Mark a record as done
-    pub async fn mark_record_done(&self, record_id: &str) -> Result<(), ApiError> {
-        let url = format!("{}/record/{}/done", self.base_url, record_id);
+    /// Confirm a record
+    pub async fn confirm_record(&self, record_id: &str) -> Result<(), ApiError> {
+        let url = format!("{}/record/{}/confirm", self.base_url, record_id);
         let mut client = zenwave::client();
         let mut req = client.post(&url);
         if let Some(token) = &self._token {
@@ -262,8 +262,8 @@ impl Api {
     }
 
     /// Approve a volunteer application
-    pub async fn approve_apply(&self, record_id: &str) -> Result<(), ApiError> {
-        let url = format!("{}/record/{}/approve_apply", self.base_url, record_id);
+    pub async fn approve_record(&self, record_id: &str) -> Result<(), ApiError> {
+        let url = format!("{}/record/{}/approve", self.base_url, record_id);
         let mut client = zenwave::client();
         let mut req = client.post(&url);
         if let Some(token) = &self._token {
@@ -273,9 +273,9 @@ impl Api {
         parse_empty_response(response).await
     }
 
-    /// Disapprove a volunteer application
-    pub async fn disapprove_apply(&self, record_id: &str) -> Result<(), ApiError> {
-        let url = format!("{}/record/{}/disapprove_apply", self.base_url, record_id);
+    /// Cancel a volunteer application or participation
+    pub async fn cancel_record(&self, record_id: &str) -> Result<(), ApiError> {
+        let url = format!("{}/record/{}/cancel", self.base_url, record_id);
         let mut client = zenwave::client();
         let mut req = client.post(&url);
         if let Some(token) = &self._token {
