@@ -197,11 +197,11 @@ export class AdminApiClient {
 
   async updateRecord(
     recordId: string,
-    action: 'done' | 'approve_apply' | 'disapprove_apply',
+    action: 'confirm' | 'approve' | 'cancel',
     options?: { confirmedMinutes?: number },
   ): Promise<void> {
-    if (action === 'done' && options?.confirmedMinutes !== undefined) {
-      await request<ApiMessage>(this.client, `/record/${recordId}/done_custom`, {
+    if (action === 'confirm' && options?.confirmedMinutes !== undefined) {
+      await request<ApiMessage>(this.client, `/record/${recordId}/confirm_custom`, {
         method: 'POST',
         data: {
           confirmed_minutes: options.confirmedMinutes,

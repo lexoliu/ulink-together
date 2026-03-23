@@ -20,7 +20,7 @@ interface ActivityRecordsTableProps {
   pendingActionId?: string
   onRecordAction: (
     recordId: string,
-    action: 'approve_apply' | 'done' | 'disapprove_apply',
+    action: 'approve' | 'confirm' | 'cancel',
     options?: { confirmedMinutes?: number },
   ) => void
 }
@@ -40,7 +40,7 @@ export function ActivityRecordsTable({
       <CardHeader>
         <CardTitle>Participant records</CardTitle>
         <CardDescription>
-          Review who joined, confirm completed hours, and close out attendance.
+          Review pending applications, approved participants, and confirmed hours.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -84,7 +84,7 @@ export function ActivityRecordsTable({
                           size="sm"
                           variant="outline"
                           disabled={pendingActionId === record.id}
-                          onClick={() => onRecordAction(record.id, 'approve_apply')}
+                          onClick={() => onRecordAction(record.id, 'approve')}
                         >
                           Approve
                         </Button>
@@ -101,7 +101,7 @@ export function ActivityRecordsTable({
                             }
                             const trimmed = input.trim()
                             if (!trimmed) {
-                              onRecordAction(record.id, 'done')
+                              onRecordAction(record.id, 'confirm')
                               return
                             }
                             const parsedMinutes = Number.parseInt(trimmed, 10)
@@ -113,18 +113,18 @@ export function ActivityRecordsTable({
                               window.alert('Please enter a non-negative integer minute value.')
                               return
                             }
-                            onRecordAction(record.id, 'done', {
+                            onRecordAction(record.id, 'confirm', {
                               confirmedMinutes: parsedMinutes,
                             })
                           }}
                         >
-                          {canConfirmHours ? 'Mark done' : `${activityStateLabel(activityState)} first`}
+                          {canConfirmHours ? 'Confirm' : `${activityStateLabel(activityState)} first`}
                         </Button>
                         <Button
                           size="sm"
                           variant="destructive"
                           disabled={pendingActionId === record.id}
-                          onClick={() => onRecordAction(record.id, 'disapprove_apply')}
+                          onClick={() => onRecordAction(record.id, 'cancel')}
                         >
                           Cancel
                         </Button>

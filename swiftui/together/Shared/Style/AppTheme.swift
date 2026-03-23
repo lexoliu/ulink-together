@@ -33,10 +33,12 @@ enum AppTheme {
 
     static func stateTint(for state: RecordState) -> Color {
         switch state {
-        case .todo:
+        case .pendingApproval:
             Color(red: 0.72, green: 0.52, blue: 0.22)
-        case .done:
+        case .approved:
             Color(red: 0.30, green: 0.55, blue: 0.35)
+        case .confirmed:
+            accentTint
         case .canceled:
             Color(red: 0.70, green: 0.30, blue: 0.28)
         }

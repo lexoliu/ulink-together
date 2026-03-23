@@ -1,7 +1,7 @@
 use crate::{
     auth::AuthSession,
     database::AppDatabase,
-    utils::{sha256, ApiMessage, Id},
+    utils::{hash_password, verify_password, ApiMessage, Id},
 };
 
 use rand::{distributions::Uniform, prelude::Distribution};
@@ -31,7 +31,7 @@ pub async fn handler(
 
     let users = sqlx::query(
         database
-            .sql("SELECT id, password_hash, salt FROM users WHERE email = ?1")
+            .sql("SELECT id, password_hash FROM users WHERE email = ?1")
             .as_ref(),
     )
     .bind(form.email.as_ref())
@@ -42,9 +42,8 @@ pub async fn handler(
     let row = users.ok_or(LoginError::NotFound)?;
     let user_id: String = row.get("id");
     let password_hash: String = row.get("password_hash");
-    let salt: String = row.get("salt");
 
-    if sha256(form.password + &salt) == password_hash {
+    if verify_password(&form.password, &password_hash).expect("bcrypt verify password") {
         let session = generate_session(&database, &user_id, ip.0).await;
         cookies.add(
             Cookie::build(("uid", user_id.clone()))
@@ -155,7 +154,7 @@ pub async fn change_password(
 
     let row = sqlx::query(
         database
-            .sql("SELECT password_hash, salt FROM users WHERE id = ?1")
+            .sql("SELECT password_hash FROM users WHERE id = ?1")
             .as_ref(),
     )
     .bind(auth.uid().to_string())
@@ -165,20 +164,17 @@ pub async fn change_password(
     .ok_or(ChangePasswordError::UserNotFound)?;
 
     let password_hash: String = row.try_get("password_hash").expect("Database error");
-    let salt: String = row.try_get("salt").expect("Database error");
-    if sha256(form.current_password + &salt) != password_hash {
+    if !verify_password(&form.current_password, &password_hash).expect("bcrypt verify password") {
         return Err(ChangePasswordError::WrongCurrentPassword);
     }
 
-    let next_salt = rand_string(16);
-    let next_hash = sha256(form.new_password + &next_salt);
+    let next_hash = hash_password(&form.new_password).expect("bcrypt hash password");
     sqlx::query(
         database
-            .sql("UPDATE users SET password_hash = ?1, salt = ?2 WHERE id = ?3")
+            .sql("UPDATE users SET password_hash = ?1 WHERE id = ?2")
             .as_ref(),
     )
     .bind(next_hash)
-    .bind(next_salt)
     .bind(auth.uid().to_string())
     .execute(database.sqlx())
     .await
@@ -311,15 +307,13 @@ pub async fn confirm_password_reset(
     .ok_or(ConfirmResetPasswordError::UserNotFound)?;
     let user_id: String = user_row.try_get("id").expect("Database error");
 
-    let next_salt = rand_string(16);
-    let next_hash = sha256(form.new_password + &next_salt);
+    let next_hash = hash_password(&form.new_password).expect("bcrypt hash password");
     sqlx::query(
         database
-            .sql("UPDATE users SET password_hash = ?1, salt = ?2 WHERE id = ?3")
+            .sql("UPDATE users SET password_hash = ?1 WHERE id = ?2")
             .as_ref(),
     )
     .bind(next_hash)
-    .bind(next_salt)
     .bind(&user_id)
     .execute(database.sqlx())
     .await
@@ -413,8 +407,7 @@ mod tests {
     async fn setup_db_with_user(email: &str, password: &str) -> (AppDatabase, String) {
         let database = build_test_database().await;
         let user_id = Id::new().to_string();
-        let salt = "salty";
-        let password_hash = sha256(password.to_string() + salt);
+        let password_hash = hash_password(password).expect("bcrypt hash password");
         let group_id = Id::new().to_string();
 
         sqlx::query(
@@ -429,9 +422,8 @@ mod tests {
                 description,
                 classname,
                 password_hash,
-                salt,
                 group_id
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
             "#,
                 )
                 .as_ref(),
@@ -443,7 +435,6 @@ mod tests {
         .bind("")
         .bind("Class A")
         .bind(password_hash)
-        .bind(salt)
         .bind(group_id)
         .execute(database.sqlx())
         .await

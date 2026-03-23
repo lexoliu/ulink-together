@@ -469,14 +469,20 @@ async fn seed_records_for_activity(
 
     for (index, student) in selected_students.iter().enumerate() {
         let record_state = match state {
-            ActivityState::NeedVolunteer | ActivityState::Going => RecordState::Todo,
-            ActivityState::Ended if index < done_count => RecordState::Done,
-            ActivityState::Ended => RecordState::Todo,
+            ActivityState::NeedVolunteer | ActivityState::Going => {
+                if index % 3 == 0 {
+                    RecordState::PendingApproval
+                } else {
+                    RecordState::Approved
+                }
+            }
+            ActivityState::Ended if index < done_count => RecordState::Confirmed,
+            ActivityState::Ended => RecordState::Approved,
             ActivityState::Canceled => RecordState::Canceled,
         };
         let updated_at =
             format_rfc3339(scheduled_at - Duration::days(2) + Duration::hours(index as i64));
-        let confirmed_at = if record_state == RecordState::Done {
+        let confirmed_at = if record_state == RecordState::Confirmed {
             Some(format_rfc3339(
                 scheduled_at
                     + Duration::minutes(i64::from(duration_minutes))
@@ -492,13 +498,13 @@ async fn seed_records_for_activity(
                 activity_id,
                 user_id: student.id,
                 state: record_state,
-                confirmed_minutes: if record_state == RecordState::Done {
+                confirmed_minutes: if record_state == RecordState::Confirmed {
                     duration_minutes
                 } else {
                     0
                 },
                 confirmed_at: confirmed_at.as_deref(),
-                confirmed_by: if record_state == RecordState::Done {
+                confirmed_by: if record_state == RecordState::Confirmed {
                     Some(teacher.id)
                 } else {
                     None

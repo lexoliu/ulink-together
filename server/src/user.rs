@@ -14,7 +14,7 @@ use utoipa::ToSchema;
 use crate::{
     auth::{get_group_id, AuthError, AuthSession},
     database::AppDatabase,
-    utils::{sha256, ApiMessage, Id},
+    utils::{hash_password, ApiMessage, Id},
 };
 
 #[derive(Debug, Deserialize, Serialize, Clone, ToSchema)]
@@ -317,12 +317,11 @@ pub async fn import_csv(
     let mut tx = database.sqlx().begin().await.expect("Database error");
     for student in &parsed {
         let user_id = Id::new();
-        let salt = rand_string(16);
-        let password_hash = sha256(student.password.clone() + &salt);
+        let password_hash = hash_password(&student.password).expect("bcrypt hash password");
 
         let result = sqlx::query(
             database
-                .sql("INSERT INTO users (id, email, realname, gender, description, classname, avatar_path, password_hash, salt, group_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)")
+                .sql("INSERT INTO users (id, email, realname, gender, description, classname, avatar_path, password_hash, group_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)")
                 .as_ref(),
         )
         .bind(user_id.to_string())
@@ -333,7 +332,6 @@ pub async fn import_csv(
         .bind(&student.classname)
         .bind(student.avatar.clone())
         .bind(password_hash)
-        .bind(&salt)
         .bind(student_group_id.to_string())
         .execute(&mut *tx)
         .await;
@@ -663,8 +661,7 @@ pub async fn register(
     form: Json<RegisterPayload>,
 ) -> Result<ApiMessage, RegisterError> {
     let Json(form) = form;
-    let salt = rand_string(16);
-    let password = sha256(form.password.clone() + &salt);
+    let password = hash_password(&form.password).expect("bcrypt hash password");
     let group_id = get_group_id(&database, "student")
         .await
         .ok_or(RegisterError::StudentGroupMissing)?;
@@ -683,9 +680,8 @@ pub async fn register(
             classname,
             avatar_path,
             password_hash,
-            salt,
             group_id
-        ) VALUES (?1, ?2, ?3, ?4, '', ?5, ?6, ?7, ?8, ?9)
+        ) VALUES (?1, ?2, ?3, ?4, '', ?5, ?6, ?7, ?8)
         "#,
             )
             .as_ref(),
@@ -697,7 +693,6 @@ pub async fn register(
     .bind(&form.classname)
     .bind(form.avatar.clone())
     .bind(password)
-    .bind(&salt)
     .bind(group_id.to_string())
     .execute(database.sqlx())
     .await;
@@ -883,7 +878,7 @@ pub fn rand_string(len: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::database::build_test_database;
+    use crate::{database::build_test_database, utils::verify_password};
     use skyzen::utils::{Json, State};
     use sqlx::Row;
 
@@ -920,7 +915,7 @@ mod tests {
         let row = sqlx::query(
             database
                 .sql(
-                    "SELECT email, password_hash, salt, group_id, avatar_path FROM users WHERE email = ?1",
+                    "SELECT email, password_hash, group_id, avatar_path FROM users WHERE email = ?1",
                 )
                 .as_ref(),
         )
@@ -929,10 +924,9 @@ mod tests {
         .await
         .expect("fetch user");
 
-        let salt: String = row.get("salt");
         let password_hash: String = row.get("password_hash");
         assert_eq!(row.get::<String, _>("email"), "test@example.com");
-        assert_eq!(password_hash, sha256("secret".to_string() + &salt));
+        assert!(verify_password("secret", &password_hash).expect("bcrypt verify password"));
         assert_eq!(row.get::<String, _>("group_id"), group_id.to_string());
         assert_eq!(
             row.get::<Option<String>, _>("avatar_path"),

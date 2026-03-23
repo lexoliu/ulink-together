@@ -50,8 +50,8 @@ struct AppDemoData {
             briefDescription: "Guide younger readers through story stations and check-in.",
             duration: 180,
             state: .needVolunteer,
-            viewerJoined: true,
-            viewerRecordState: .todo
+            viewerParticipating: true,
+            viewerRecordState: .pendingApproval
         )
 
         let secondarySummary = ActivitySummary(
@@ -66,7 +66,7 @@ struct AppDemoData {
             briefDescription: "Prepare seasonal beds and document biodiversity for the school report.",
             duration: 150,
             state: .needVolunteer,
-            viewerJoined: false,
+            viewerParticipating: false,
             viewerRecordState: nil
         )
 
@@ -83,8 +83,8 @@ struct AppDemoData {
             volunteers: [volunteerID, teammateID],
             duration: primarySummary.duration,
             state: .needVolunteer,
-            viewerJoined: true,
-            viewerRecordState: .todo
+            viewerParticipating: true,
+            viewerRecordState: .pendingApproval
         )
 
         let volunteerProfile = UserProfile(
@@ -103,7 +103,7 @@ struct AppDemoData {
                 recordID: "record-library-drive",
                 user: volunteerID,
                 activity: primaryActivityID,
-                state: .todo,
+                state: .pendingApproval,
                 activityName: primarySummary.name,
                 activityDate: primarySummary.date,
                 activityDuration: primarySummary.duration,
@@ -115,7 +115,7 @@ struct AppDemoData {
                 recordID: "record-river-cleanup",
                 user: volunteerID,
                 activity: "activity-river-cleanup",
-                state: .done,
+                state: .confirmed,
                 activityName: "River Cleanup",
                 activityDate: "2026-02-18T08:00:00Z",
                 activityDuration: 120,
@@ -197,7 +197,7 @@ struct AppDemoData {
                         recordID: "record-organizer-view-1",
                         user: volunteerID,
                         activity: primaryActivityID,
-                        state: .todo,
+                        state: .pendingApproval,
                         activityName: primarySummary.name,
                         activityDate: primarySummary.date,
                         activityDuration: primarySummary.duration,
@@ -209,7 +209,7 @@ struct AppDemoData {
                         recordID: "record-organizer-view-2",
                         user: teammateID,
                         activity: primaryActivityID,
-                        state: .todo,
+                        state: .pendingApproval,
                         activityName: primarySummary.name,
                         activityDate: primarySummary.date,
                         activityDuration: primarySummary.duration,

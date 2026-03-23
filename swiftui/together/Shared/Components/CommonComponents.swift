@@ -328,10 +328,10 @@ struct ActivityCard: View {
                 CapacityBar(current: activity.volunteerNum, limit: activity.maxVolunteerNum)
 
                 if let action {
-                    Button(activity.viewerJoined ? "Joined" : "Join Activity", action: action)
+                    Button(activity.viewerParticipating ? "Participating" : "Apply Activity", action: action)
                         .buttonStyle(.borderedProminent)
-                        .tint(activity.viewerJoined ? .orange : AppTheme.accentTint)
-                        .disabled(activity.viewerJoined || activity.state != .needVolunteer)
+                        .tint(activity.viewerParticipating ? .orange : AppTheme.accentTint)
+                        .disabled(activity.viewerParticipating || activity.state != .needVolunteer)
                 }
             }
         }

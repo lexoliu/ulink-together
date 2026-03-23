@@ -42,8 +42,8 @@ pub fn api() -> Route {
                 .put(activity::update)
                 .delete(activity::delete)
                 .route((
-                    "/apply".post(activity::join),
-                    "/leave".post(activity::leave),
+                    "/apply".post(activity::apply),
+                    "/withdraw".post(activity::withdraw),
                     "/comment".at(comment::list).post(comment::post),
                     "/comment/{comment_id}".delete(comment::delete),
                     "/need_volunteer".post(activity::turn_need_volunteer),
@@ -55,10 +55,10 @@ pub fn api() -> Route {
             .at(record::find)
             .post(record::find)
             .route(("/{id}".route((
-                "/done".post(record::mark_done),
-                "/done_custom".post(record::mark_done_custom),
-                "/approve_apply".post(record::approve_apply),
-                "/disapprove_apply".post(record::disapprove_apply),
+                "/confirm".post(record::confirm),
+                "/confirm_custom".post(record::confirm_custom),
+                "/approve".post(record::approve),
+                "/cancel".post(record::cancel),
             )),)),
         "/message"
             .at(message::find)

@@ -297,7 +297,7 @@ pub async fn create_for_activity(
 
     let rows = sqlx::query(
         database
-            .sql("SELECT DISTINCT user_id FROM records WHERE activity_id = ?1 AND state NOT IN ('canceled', 'canneled', 'cancelled')")
+            .sql("SELECT DISTINCT user_id FROM records WHERE activity_id = ?1 AND state IN ('approved', 'confirmed')")
             .as_ref(),
     )
     .bind(activity_id.to_string())

@@ -49,7 +49,7 @@ pub struct ActivitySummary {
     pub brief_description: String,
     pub duration: u16,
     pub state: ActivityState,
-    pub viewer_joined: bool,
+    pub viewer_participating: bool,
     pub viewer_record_state: Option<RecordState>,
 }
 
@@ -68,7 +68,7 @@ pub struct ActivityDetail {
     pub volunteers: Vec<Id>,
     pub duration: u16,
     pub state: ActivityState,
-    pub viewer_joined: bool,
+    pub viewer_participating: bool,
     pub viewer_record_state: Option<RecordState>,
 }
 

@@ -66,7 +66,7 @@ pub async fn list(
                     records.confirmed_minutes
                 FROM records
                 JOIN users ON users.id = records.user_id
-                WHERE records.state = 'done'
+                WHERE records.state = 'confirmed'
                 ORDER BY users.realname ASC
                 "#,
             )

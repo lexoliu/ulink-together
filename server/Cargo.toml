@@ -14,9 +14,9 @@ serde_json = "1.0"
 bytes = "1.5.0"
 ring = "0.16.20"
 rand = "0.8.5"
+bcrypt = "0.15"
 csv = "1.4.0"
 time = { version = "0.3.28", features = ["formatting"] }
-hex = "0.4.3"
 bytestr = { version = "0.1.0", features = ["serde"] }
 log = "0.4.20"
 futures-util = "0.3.28"

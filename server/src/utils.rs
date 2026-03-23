@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 
+use bcrypt::{hash, verify, BcryptError, DEFAULT_COST};
 use skyzen::{
     utils::{json::JsonEncodingError, Json},
     StatusCode,
@@ -9,9 +10,12 @@ use utoipa::ToSchema;
 // Re-export Id from models crate
 pub use models::Id;
 
-pub fn sha256(v: impl AsRef<[u8]>) -> String {
-    use ring::digest::{digest, SHA256};
-    hex::encode(digest(&SHA256, v.as_ref()))
+pub fn hash_password(password: &str) -> Result<String, BcryptError> {
+    hash(password, DEFAULT_COST)
+}
+
+pub fn verify_password(password: &str, password_hash: &str) -> Result<bool, BcryptError> {
+    verify(password, password_hash)
 }
 
 pub fn normalize_endpoint_error_message(message: &str) -> Cow<'_, str> {

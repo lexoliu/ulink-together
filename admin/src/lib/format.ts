@@ -60,10 +60,12 @@ export function activityStateLabel(state: ActivityState): string {
 
 export function recordStateLabel(state: RecordState): string {
   switch (state) {
-    case 'todo':
-      return 'Joined'
-    case 'done':
-      return 'Completed'
+    case 'pending_approval':
+      return 'Pending approval'
+    case 'approved':
+      return 'Approved'
+    case 'confirmed':
+      return 'Confirmed'
     case 'canceled':
       return 'Cancelled'
   }

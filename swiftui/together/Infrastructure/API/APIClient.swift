@@ -205,12 +205,12 @@ struct APIClient: Sendable {
         try await request(baseURL: baseURL, path: "/activity/\(activityID)", method: .put, body: payload)
     }
 
-    func joinActivity(baseURL: URL, activityID: String) async throws {
+    func applyActivity(baseURL: URL, activityID: String) async throws {
         _ = try await request(baseURL: baseURL, path: "/activity/\(activityID)/apply", method: .post) as APIMessageResponse
     }
 
-    func leaveActivity(baseURL: URL, activityID: String) async throws {
-        _ = try await request(baseURL: baseURL, path: "/activity/\(activityID)/leave", method: .post) as APIMessageResponse
+    func withdrawActivity(baseURL: URL, activityID: String) async throws {
+        _ = try await request(baseURL: baseURL, path: "/activity/\(activityID)/withdraw", method: .post) as APIMessageResponse
     }
 
     func transitionActivity(baseURL: URL, activityID: String, pathComponent: String) async throws {

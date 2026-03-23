@@ -59,16 +59,19 @@ enum ActivityState: String, Codable, CaseIterable, Sendable {
 }
 
 enum RecordState: String, Codable, CaseIterable, Sendable {
-    case todo
-    case done
+    case pendingApproval = "pending_approval"
+    case approved
+    case confirmed
     case canceled
 
     var title: String {
         switch self {
-        case .todo:
-            "Joined"
-        case .done:
-            "Completed"
+        case .pendingApproval:
+            "Pending Approval"
+        case .approved:
+            "Approved"
+        case .confirmed:
+            "Confirmed"
         case .canceled:
             "Cancelled"
         }
@@ -87,7 +90,7 @@ struct ActivitySummary: Codable, Identifiable, Hashable, Sendable {
     let briefDescription: String
     let duration: Int
     let state: ActivityState
-    let viewerJoined: Bool
+    let viewerParticipating: Bool
     let viewerRecordState: RecordState?
 
     enum CodingKeys: String, CodingKey {
@@ -102,7 +105,7 @@ struct ActivitySummary: Codable, Identifiable, Hashable, Sendable {
         case briefDescription = "brief_description"
         case duration
         case state
-        case viewerJoined = "viewer_joined"
+        case viewerParticipating = "viewer_participating"
         case viewerRecordState = "viewer_record_state"
     }
 }
@@ -120,7 +123,7 @@ struct ActivityDetail: Codable, Identifiable, Hashable, Sendable {
     let volunteers: [String]
     let duration: Int
     let state: ActivityState
-    let viewerJoined: Bool
+    let viewerParticipating: Bool
     let viewerRecordState: RecordState?
 
     enum CodingKeys: String, CodingKey {
@@ -136,7 +139,7 @@ struct ActivityDetail: Codable, Identifiable, Hashable, Sendable {
         case volunteers
         case duration
         case state
-        case viewerJoined = "viewer_joined"
+        case viewerParticipating = "viewer_participating"
         case viewerRecordState = "viewer_record_state"
     }
 }

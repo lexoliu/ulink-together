@@ -93,9 +93,9 @@ pub async fn list(
         let state = ActivityState::from_db(row.get::<String, _>("state").as_str())
             .ok_or(ListActivitiesError::InvalidState)?;
         let viewer_record_state = viewer_states.get(&id).copied();
-        let viewer_joined = matches!(
+        let viewer_participating = matches!(
             viewer_record_state,
-            Some(RecordState::Todo) | Some(RecordState::Done)
+            Some(RecordState::Approved) | Some(RecordState::Confirmed)
         );
         result.push(ActivitySummary {
             id,
@@ -111,7 +111,7 @@ pub async fn list(
             brief_description: row.get("brief_description"),
             duration: row.get::<i64, _>("duration_minutes") as u16,
             state,
-            viewer_joined,
+            viewer_participating,
             viewer_record_state,
         });
     }
@@ -191,9 +191,9 @@ pub async fn get(
     let viewer_record_state = record::get_user_record_state(&database, id, auth.uid())
         .await
         .expect("Database error");
-    let viewer_joined = matches!(
+    let viewer_participating = matches!(
         viewer_record_state,
-        Some(RecordState::Todo) | Some(RecordState::Done)
+        Some(RecordState::Approved) | Some(RecordState::Confirmed)
     );
 
     Ok(Json(ActivityDetail {
@@ -216,13 +216,13 @@ pub async fn get(
             .try_get::<i64, _>("duration_minutes")
             .expect("Database error") as u16,
         state,
-        viewer_joined,
+        viewer_participating,
         viewer_record_state,
     }))
 }
 
 #[skyzen::error]
-pub enum JoinActivityError {
+pub enum ApplyActivityError {
     #[error("Session expired", status = FORBIDDEN)]
     SessionExpired,
 
@@ -245,23 +245,23 @@ pub enum JoinActivityError {
     AlreadyJoined,
 }
 
-/// Join an activity
+/// Apply for an activity
 #[skyzen::openapi]
-pub async fn join(
+pub async fn apply(
     database: State<AppDatabase>,
     params: Params,
     session: AuthSession,
-) -> Result<ApiMessage, JoinActivityError> {
+) -> Result<ApiMessage, ApplyActivityError> {
     let auth = session.into_auth().await.map_err(|err| match err {
-        AuthError::SessionExpired => JoinActivityError::SessionExpired,
-        _ => JoinActivityError::Forbidden,
+        AuthError::SessionExpired => ApplyActivityError::SessionExpired,
+        _ => ApplyActivityError::Forbidden,
     })?;
     let activity_id = parse_oid(
         params
             .get("id")
-            .map_err(|_| JoinActivityError::InvalidActivityId)?,
+            .map_err(|_| ApplyActivityError::InvalidActivityId)?,
     )
-    .map_err(|_| JoinActivityError::InvalidActivityId)?;
+    .map_err(|_| ApplyActivityError::InvalidActivityId)?;
 
     let mut db_conn = database.sqlx().acquire().await.expect("Database error");
     let conn = db_conn.as_mut();
@@ -287,14 +287,14 @@ pub async fn join(
         Some(row) => row,
         None => {
             let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
-            return Err(JoinActivityError::NotFound);
+            return Err(ApplyActivityError::NotFound);
         }
     };
 
     let current_state = row.try_get::<String, _>("state").expect("Database error");
     if ActivityState::from_db(&current_state) != Some(ActivityState::NeedVolunteer) {
         let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
-        return Err(JoinActivityError::NotRecruiting);
+        return Err(ApplyActivityError::NotRecruiting);
     }
 
     let volunteer_num = row
@@ -306,7 +306,7 @@ pub async fn join(
     {
         if volunteer_num >= max {
             let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
-            return Err(JoinActivityError::Full);
+            return Err(ApplyActivityError::Full);
         }
     }
 
@@ -326,7 +326,7 @@ pub async fn join(
             let existing_state = row.try_get::<String, _>("state").expect("Database error");
             if RecordState::from_db(&existing_state) != Some(RecordState::Canceled) {
                 let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
-                return Err(JoinActivityError::AlreadyJoined);
+                return Err(ApplyActivityError::AlreadyJoined);
             }
 
             let now = time::OffsetDateTime::now_utc().to_string();
@@ -335,7 +335,7 @@ pub async fn join(
                     .sql("UPDATE records SET state = ?1, confirmed_minutes = 0, confirmed_at = NULL, confirmed_by = NULL, updated_at = ?2 WHERE id = ?3")
                     .as_ref(),
             )
-            .bind(RecordState::Todo.as_str())
+            .bind(RecordState::PendingApproval.as_str())
             .bind(now)
             .bind(existing_record_id)
             .execute(&mut *conn)
@@ -348,29 +348,17 @@ pub async fn join(
                 .expect("Database error");
         }
     }
-    sqlx::query(
-        database
-            .sql("UPDATE activities SET volunteer_num = volunteer_num + 1 WHERE id = ?1")
-            .as_ref(),
-    )
-    .bind(activity_id.to_string())
-    .execute(&mut *conn)
-    .await
-    .expect("Database error");
     sqlx::query("COMMIT")
         .execute(&mut *conn)
         .await
         .expect("Database error");
     drop(db_conn);
-    record::sync_activity_channel_member(&database, activity_id, auth.uid(), true)
-        .await
-        .expect("Database error");
 
-    Ok(ApiMessage::new("Join activity successfully"))
+    Ok(ApiMessage::new("Apply activity successfully"))
 }
 
 #[skyzen::error]
-pub enum LeaveActivityError {
+pub enum WithdrawActivityError {
     #[error("Session expired", status = FORBIDDEN)]
     SessionExpired,
 
@@ -390,23 +378,23 @@ pub enum LeaveActivityError {
     NotJoined,
 }
 
-/// Leave an activity and mark the record as canceled.
+/// Withdraw a pending application and mark the record as canceled.
 #[skyzen::openapi]
-pub async fn leave(
+pub async fn withdraw(
     database: State<AppDatabase>,
     params: Params,
     session: AuthSession,
-) -> Result<ApiMessage, LeaveActivityError> {
+) -> Result<ApiMessage, WithdrawActivityError> {
     let auth = session.into_auth().await.map_err(|err| match err {
-        AuthError::SessionExpired => LeaveActivityError::SessionExpired,
-        _ => LeaveActivityError::Forbidden,
+        AuthError::SessionExpired => WithdrawActivityError::SessionExpired,
+        _ => WithdrawActivityError::Forbidden,
     })?;
     let activity_id = parse_oid(
         params
             .get("id")
-            .map_err(|_| LeaveActivityError::InvalidActivityId)?,
+            .map_err(|_| WithdrawActivityError::InvalidActivityId)?,
     )
-    .map_err(|_| LeaveActivityError::InvalidActivityId)?;
+    .map_err(|_| WithdrawActivityError::InvalidActivityId)?;
 
     let mut db_conn = database.sqlx().acquire().await.expect("Database error");
     let conn = db_conn.as_mut();
@@ -432,7 +420,7 @@ pub async fn leave(
         Some(activity) => activity,
         None => {
             let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
-            return Err(LeaveActivityError::NotFound);
+            return Err(WithdrawActivityError::NotFound);
         }
     };
     let current_state = activity
@@ -442,7 +430,7 @@ pub async fn leave(
         || ActivityState::from_db(&current_state) == Some(ActivityState::Canceled)
     {
         let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
-        return Err(LeaveActivityError::CannotLeaveNow);
+        return Err(WithdrawActivityError::CannotLeaveNow);
     }
 
     let record = sqlx::query(
@@ -459,15 +447,15 @@ pub async fn leave(
         Some(record) => record,
         None => {
             let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
-            return Err(LeaveActivityError::NotJoined);
+            return Err(WithdrawActivityError::NotJoined);
         }
     };
     let record_state = record
         .try_get::<String, _>("state")
         .expect("Database error");
-    if RecordState::from_db(&record_state) != Some(RecordState::Todo) {
+    if RecordState::from_db(&record_state) != Some(RecordState::PendingApproval) {
         let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
-        return Err(LeaveActivityError::NotJoined);
+        return Err(WithdrawActivityError::NotJoined);
     }
 
     let now = time::OffsetDateTime::now_utc().to_string();
@@ -482,26 +470,13 @@ pub async fn leave(
     .execute(&mut *conn)
     .await
     .expect("Database error");
-    sqlx::query(
-        database
-            .sql("UPDATE activities SET volunteer_num = CASE WHEN volunteer_num > 0 THEN volunteer_num - 1 ELSE 0 END WHERE id = ?1")
-            .as_ref(),
-    )
-    .bind(activity_id.to_string())
-    .execute(&mut *conn)
-    .await
-    .expect("Database error");
     sqlx::query("COMMIT")
         .execute(&mut *conn)
         .await
         .expect("Database error");
     drop(db_conn);
 
-    record::sync_activity_channel_member(&database, activity_id, auth.uid(), false)
-        .await
-        .expect("Database error");
-
-    Ok(ApiMessage::new("Leave activity successfully"))
+    Ok(ApiMessage::new("Withdraw application successfully"))
 }
 
 #[skyzen::error]
@@ -660,7 +635,7 @@ pub async fn create(
         volunteers: Vec::new(),
         duration,
         state: ActivityState::NeedVolunteer,
-        viewer_joined: false,
+        viewer_participating: false,
         viewer_record_state: None,
     }))
 }
@@ -772,7 +747,7 @@ pub async fn update(
             .try_get::<i64, _>("duration_minutes")
             .expect("Database error") as u16,
         state,
-        viewer_joined: viewer_record_state.is_some(),
+        viewer_participating: matches!(viewer_record_state, Some(RecordState::Approved) | Some(RecordState::Confirmed)),
         viewer_record_state,
     }))
 }
@@ -885,7 +860,7 @@ async fn change_state(
         sqlx::query(
             database
                 .sql(
-                    "UPDATE records SET state = 'canceled', confirmed_minutes = 0, confirmed_at = NULL, confirmed_by = NULL, updated_at = ?1 WHERE activity_id = ?2 AND state != 'done'",
+                    "UPDATE records SET state = 'canceled', confirmed_minutes = 0, confirmed_at = NULL, confirmed_by = NULL, updated_at = ?1 WHERE activity_id = ?2 AND state != 'confirmed'",
                 )
                 .as_ref(),
         )
@@ -894,6 +869,12 @@ async fn change_state(
         .execute(database.sqlx())
         .await
         .expect("Database error");
+        record::recalculate_activity_volunteer_num(&database, id)
+            .await
+            .expect("Database error");
+        record::sync_activity_channel_members(&database, id)
+            .await
+            .expect("Database error");
     }
 
     Ok(ApiMessage::new(format!(

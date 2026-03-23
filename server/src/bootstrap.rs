@@ -147,13 +147,8 @@ pub async fn ensure_group(
         .map_err(|error| sqlx::Error::Decode(Box::new(error)))
 }
 
-pub fn hash_password(password: &str, salt: &str) -> String {
-    use ring::digest::{digest, SHA256};
-
-    let mut combined = String::with_capacity(password.len() + salt.len());
-    combined.push_str(password);
-    combined.push_str(salt);
-    hex::encode(digest(&SHA256, combined.as_bytes()))
+pub fn hash_password(password: &str) -> String {
+    bcrypt::hash(password, bcrypt::DEFAULT_COST).expect("bcrypt hash password")
 }
 
 pub fn rand_string<R: Rng + ?Sized>(rng: &mut R, len: usize) -> String {
@@ -176,12 +171,11 @@ where
     R: Rng + ?Sized,
 {
     let id = Id::new();
-    let salt = rand_string(rng, 16);
-    let password_hash = hash_password(user.password, &salt);
+    let password_hash = hash_password(user.password);
 
     sqlx::query(
         database
-            .sql("INSERT INTO users (id, email, realname, gender, description, classname, avatar_path, password_hash, salt, group_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)")
+            .sql("INSERT INTO users (id, email, realname, gender, description, classname, avatar_path, password_hash, group_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)")
             .as_ref(),
     )
     .bind(id.to_string())
@@ -192,7 +186,6 @@ where
     .bind(user.classname)
     .bind(user.avatar_path)
     .bind(password_hash)
-    .bind(salt)
     .bind(user.group_id.to_string())
     .execute(executor)
     .await?;

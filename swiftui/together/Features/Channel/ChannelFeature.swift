@@ -83,7 +83,7 @@ struct ActivityChannelView: View {
     }
 
     private var canAccessChannel: Bool {
-        activity.viewerJoined || canManageActivity
+        activity.viewerParticipating || canManageActivity
     }
 
     private var canManageActivity: Bool {

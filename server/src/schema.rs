@@ -30,7 +30,6 @@ pub fn schema_statements() -> &'static [&'static str] {
             classname TEXT NOT NULL,
             avatar_path TEXT,
             password_hash TEXT NOT NULL,
-            salt TEXT NOT NULL,
             group_id TEXT NOT NULL
         )
         "#,

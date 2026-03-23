@@ -3,7 +3,7 @@ use crate::{
     database::{build_test_database, AppDatabase},
     push::PushHub,
     schema::ensure_group_authority_any,
-    utils::{sha256, Id},
+    utils::{hash_password, verify_password, Id},
 };
 use async_std::fs;
 use models::{CreateActivityForm, RecordEntry, User};
@@ -31,13 +31,14 @@ async fn insert_user(database: &AppDatabase, group_code: &str, email: &str, real
     sqlx::query(
         database
             .sql(
-                "INSERT INTO users (id, email, realname, gender, description, classname, avatar_path, password_hash, salt, group_id) VALUES (?1, ?2, ?3, 'other', '', 'Class A', NULL, 'hash', 'salt', ?4)",
+                "INSERT INTO users (id, email, realname, gender, description, classname, avatar_path, password_hash, group_id) VALUES (?1, ?2, ?3, 'other', '', 'Class A', NULL, ?4, ?5)",
             )
             .as_ref(),
     )
     .bind(id.to_string())
     .bind(email)
     .bind(realname)
+    .bind(hash_password("test-password").expect("bcrypt hash password"))
     .bind(group.to_string())
     .execute(database.sqlx())
     .await
@@ -54,12 +55,11 @@ async fn insert_login_user(
 ) -> Id {
     let group = group_id(database, group_code).await;
     let id = Id::new();
-    let salt = "test-salt";
-    let password_hash = sha256(format!("{password}{salt}"));
+    let password_hash = hash_password(password).expect("bcrypt hash password");
     sqlx::query(
         database
             .sql(
-                "INSERT INTO users (id, email, realname, gender, description, classname, avatar_path, password_hash, salt, group_id) VALUES (?1, ?2, ?3, 'other', '', 'Class A', NULL, ?4, ?5, ?6)",
+                "INSERT INTO users (id, email, realname, gender, description, classname, avatar_path, password_hash, group_id) VALUES (?1, ?2, ?3, 'other', '', 'Class A', NULL, ?4, ?5)",
             )
             .as_ref(),
     )
@@ -67,7 +67,6 @@ async fn insert_login_user(
     .bind(email)
     .bind(realname)
     .bind(password_hash)
-    .bind(salt)
     .bind(group.to_string())
     .execute(database.sqlx())
     .await
@@ -157,7 +156,7 @@ async fn insert_record(
     confirmed_minutes: i64,
 ) -> Id {
     let id = Id::new();
-    let confirmed_at = if state == "done" {
+    let confirmed_at = if state == "confirmed" {
         Some(OffsetDateTime::now_utc().to_string())
     } else {
         None
@@ -175,7 +174,7 @@ async fn insert_record(
     .bind(state)
     .bind(confirmed_minutes)
     .bind(confirmed_at.as_deref())
-    .bind(if state == "done" { Some(user.to_string()) } else { None })
+    .bind(if state == "confirmed" { Some(user.to_string()) } else { None })
     .bind(OffsetDateTime::now_utc().to_string())
     .execute(database.sqlx())
     .await
@@ -289,7 +288,7 @@ async fn owner_can_update_activity() {
 }
 
 #[tokio::test]
-async fn join_adds_channel_membership_and_allows_message_post() {
+async fn apply_does_not_add_channel_membership_or_allow_message_post_before_approval() {
     let database = build_test_database().await;
     let owner = insert_user(&database, "student", "owner3@example.com", "Owner").await;
     ensure_group_authority_any(
@@ -322,7 +321,7 @@ async fn join_adds_channel_membership_and_allows_message_post() {
     .fetch_optional(database.sqlx())
     .await
     .expect("check membership");
-    assert!(membership.is_some());
+    assert!(membership.is_none());
 
     let post_response = client
         .post(&format!("/api/v1/channel/{channel}"))
@@ -330,8 +329,7 @@ async fn join_adds_channel_membership_and_allows_message_post() {
         .json(&json!({ "content": "hello" }))
         .send()
         .await;
-    post_response.assert_status_success();
-    post_response.assert_json_path("content", &json!("hello"));
+    post_response.assert_status(403);
 }
 
 #[tokio::test]
@@ -389,8 +387,8 @@ async fn record_find_defaults_to_current_user() {
     let user_one = insert_user(&database, "student", "u1@example.com", "User One").await;
     let user_two = insert_user(&database, "student", "u2@example.com", "User Two").await;
     let activity = insert_activity(&database, user_one, "Cleanup", "need_volunteer", 120).await;
-    insert_record(&database, user_one, activity, "todo", 0).await;
-    insert_record(&database, user_two, activity, "todo", 0).await;
+    insert_record(&database, user_one, activity, "approved", 0).await;
+    insert_record(&database, user_two, activity, "approved", 0).await;
     let cookie = insert_session(&database, user_one).await;
     let client = test_client(database);
 
@@ -478,8 +476,8 @@ async fn leaderboard_returns_ranked_totals() {
     let user_b = insert_user(&database, "student", "b@example.com", "Bob").await;
     let activity_1 = insert_activity(&database, user_a, "A1", "ended", 120).await;
     let activity_2 = insert_activity(&database, user_b, "A2", "ended", 60).await;
-    insert_record(&database, user_a, activity_1, "done", 120).await;
-    insert_record(&database, user_b, activity_2, "done", 60).await;
+    insert_record(&database, user_a, activity_1, "confirmed", 120).await;
+    insert_record(&database, user_b, activity_2, "confirmed", 60).await;
     let cookie = insert_session(&database, viewer).await;
     let client = test_client(database);
 
@@ -675,34 +673,26 @@ async fn batch_import_csv_creates_students_with_default_and_row_password() {
 
     let one = sqlx::query(
         database
-            .sql("SELECT password_hash, salt, classname FROM users WHERE email = ?1")
+            .sql("SELECT password_hash, classname FROM users WHERE email = ?1")
             .as_ref(),
     )
     .bind("student-one@example.com")
     .fetch_one(database.sqlx())
     .await
     .expect("query student one");
-    let one_salt: String = one.get("salt");
-    assert_eq!(
-        one.get::<String, _>("password_hash"),
-        sha256(format!("{}{}", "default-pass", one_salt))
-    );
+    assert!(verify_password("default-pass", &one.get::<String, _>("password_hash")).expect("bcrypt verify password"));
     assert_eq!(one.get::<String, _>("classname"), "Class 10A");
 
     let two = sqlx::query(
         database
-            .sql("SELECT password_hash, salt, avatar_path FROM users WHERE email = ?1")
+            .sql("SELECT password_hash, avatar_path FROM users WHERE email = ?1")
             .as_ref(),
     )
     .bind("student-two@example.com")
     .fetch_one(database.sqlx())
     .await
     .expect("query student two");
-    let two_salt: String = two.get("salt");
-    assert_eq!(
-        two.get::<String, _>("password_hash"),
-        sha256(format!("{}{}", "custom-pass", two_salt))
-    );
+    assert!(verify_password("custom-pass", &two.get::<String, _>("password_hash")).expect("bcrypt verify password"));
     assert_eq!(
         two.get::<Option<String>, _>("avatar_path"),
         Some("/api/v1/resource/a.png".to_string())
@@ -840,7 +830,7 @@ async fn export_requires_authority_and_generates_csv() {
     let admin = insert_user(&database, "admin", "admin@example.com", "Admin").await;
     let volunteer = insert_user(&database, "student", "student@example.com", "Student").await;
     let activity = insert_activity(&database, admin, "Cleanup", "ended", 90).await;
-    insert_record(&database, volunteer, activity, "done", 90).await;
+    insert_record(&database, volunteer, activity, "confirmed", 90).await;
     let cookie = insert_session(&database, admin).await;
     let client = test_client(database);
 
@@ -874,18 +864,18 @@ async fn mark_done_requires_completed_activity() {
         90,
     )
     .await;
-    let record = insert_record(&database, volunteer, activity, "todo", 0).await;
+    let record = insert_record(&database, volunteer, activity, "approved", 0).await;
     let cookie = insert_session(&database, organizer).await;
     let client = test_client(database);
 
     let response = client
-        .post(&format!("/api/v1/record/{record}/done"))
+        .post(&format!("/api/v1/record/{record}/confirm"))
         .header("Cookie", &cookie)
         .send()
         .await;
 
     response.assert_status(409);
-    response.assert_body_contains("Activity must be completed before hours can be confirmed");
+    response.assert_body_contains("Invalid record state transition");
 }
 
 #[tokio::test]
@@ -962,7 +952,7 @@ async fn leave_then_rejoin_restores_membership_and_count() {
         .assert_status_success();
 
     client
-        .post(&format!("/api/v1/activity/{activity}/leave"))
+        .post(&format!("/api/v1/activity/{activity}/withdraw"))
         .header("Cookie", &cookie)
         .send()
         .await
@@ -1008,7 +998,7 @@ async fn leave_then_rejoin_restores_membership_and_count() {
     .fetch_one(database.sqlx())
     .await
     .expect("fetch rejoined record");
-    assert_eq!(row.get::<String, _>("state"), "todo");
+    assert_eq!(row.get::<String, _>("state"), "pending_approval");
 
     let member_after_rejoin = sqlx::query(
         database
@@ -1020,7 +1010,7 @@ async fn leave_then_rejoin_restores_membership_and_count() {
     .fetch_optional(database.sqlx())
     .await
     .expect("fetch membership after rejoin");
-    assert!(member_after_rejoin.is_some());
+    assert!(member_after_rejoin.is_none());
 }
 
 #[tokio::test]
@@ -1035,12 +1025,12 @@ async fn mark_done_custom_overrides_activity_duration() {
     .await;
     let volunteer = insert_user(&database, "student", "custom-vol@example.com", "Volunteer").await;
     let activity = insert_activity(&database, organizer, "Custom Done", "ended", 90).await;
-    let record = insert_record(&database, volunteer, activity, "todo", 0).await;
+    let record = insert_record(&database, volunteer, activity, "approved", 0).await;
     let cookie = insert_session(&database, organizer).await;
     let client = test_client(database.clone());
 
     client
-        .post(&format!("/api/v1/record/{record}/done_custom"))
+        .post(&format!("/api/v1/record/{record}/confirm_custom"))
         .header("Cookie", &cookie)
         .json(&json!({ "confirmed_minutes": 37 }))
         .send()
@@ -1056,7 +1046,7 @@ async fn mark_done_custom_overrides_activity_duration() {
     .fetch_one(database.sqlx())
     .await
     .expect("fetch customized record");
-    assert_eq!(row.get::<String, _>("state"), "done");
+    assert_eq!(row.get::<String, _>("state"), "confirmed");
     assert_eq!(row.get::<i64, _>("confirmed_minutes"), 37);
 }
 

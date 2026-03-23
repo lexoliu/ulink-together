@@ -13,7 +13,7 @@ export type AuthorityName =
 export type ActivityState = 'need_volunteer' | 'going' | 'ended' | 'canceled'
 export type ActivityTransitionAction = 'need_volunteer' | 'go' | 'end' | 'cancel'
 
-export type RecordState = 'todo' | 'done' | 'canceled'
+export type RecordState = 'pending_approval' | 'approved' | 'confirmed' | 'canceled'
 
 export interface UserProfile {
   id: string
@@ -38,7 +38,7 @@ export interface ActivitySummary {
   brief_description: string
   duration: number
   state: ActivityState
-  viewer_joined: boolean
+  viewer_participating: boolean
   viewer_record_state: RecordState | null
 }
 
@@ -55,7 +55,7 @@ export interface ActivityDetail {
   volunteers: string[]
   duration: number
   state: ActivityState
-  viewer_joined: boolean
+  viewer_participating: boolean
   viewer_record_state: RecordState | null
 }
 

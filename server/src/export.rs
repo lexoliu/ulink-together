@@ -95,7 +95,7 @@ pub async fn generate(
                 FROM records
                 JOIN users ON users.id = records.user_id
                 JOIN activities ON activities.id = records.activity_id
-                WHERE records.state = 'done' AND records.confirmed_minutes > 0
+                WHERE records.state = 'confirmed' AND records.confirmed_minutes > 0
                 ORDER BY users.classname ASC, users.realname ASC, activities.date ASC, activities.name ASC
                 "#,
             )

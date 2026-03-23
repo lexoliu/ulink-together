@@ -3,7 +3,8 @@ import SwiftUI
 private enum FeedFilter: String, CaseIterable, Identifiable {
     case all
     case recruiting
-    case joined
+    case pendingApproval
+    case participating
     case inProgress
     case completed
 
@@ -17,8 +18,10 @@ private enum FeedFilter: String, CaseIterable, Identifiable {
             "All"
         case .recruiting:
             "Recruiting"
-        case .joined:
-            "Joined"
+        case .pendingApproval:
+            "Pending"
+        case .participating:
+            "Participating"
         case .inProgress:
             "In Progress"
         case .completed:
@@ -127,8 +130,10 @@ struct FeedHomeView: View {
                 true
             case .recruiting:
                 activity.state == .needVolunteer
-            case .joined:
-                activity.viewerJoined
+            case .pendingApproval:
+                activity.viewerRecordState == .pendingApproval
+            case .participating:
+                activity.viewerParticipating
             case .inProgress:
                 activity.state == .going
             case .completed:
@@ -273,7 +278,7 @@ struct ActivityDetailView: View {
             DisclosureGroup(isExpanded: $isParticipantsExpanded) {
                 VStack(alignment: .leading, spacing: 16) {
                     if records.isEmpty {
-                        Text("No participant records yet.")
+                        Text("No application or participation records yet.")
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(records) { record in
@@ -362,38 +367,38 @@ struct ActivityDetailView: View {
                 if let recordState = detail.viewerRecordState {
                     StateChip(title: recordState.title, tint: AppTheme.stateTint(for: recordState))
                 } else {
-                    Text("You have not joined this activity yet.")
+                    Text("You have not applied to this activity yet.")
                         .foregroundStyle(.secondary)
                 }
 
-                if detail.viewerRecordState == .todo && (detail.state == .needVolunteer || detail.state == .going) {
+                if detail.viewerRecordState == .pendingApproval && detail.state == .needVolunteer {
                     Button(role: .destructive) {
                         Task {
-                            await leave()
+                            await withdraw()
                         }
                     } label: {
                         if isUpdating {
                             ProgressView()
                                 .frame(maxWidth: .infinity)
                         } else {
-                            Text("Leave Activity")
+                            Text("Withdraw Application")
                                 .frame(maxWidth: .infinity)
                         }
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
                     .disabled(isUpdating)
-                } else if detail.state == .needVolunteer && !detail.viewerJoined {
+                } else if detail.state == .needVolunteer && !detail.viewerParticipating && detail.viewerRecordState != .pendingApproval {
                     Button {
                         Task {
-                            await join()
+                            await apply()
                         }
                     } label: {
                         if isUpdating {
                             ProgressView()
                                 .frame(maxWidth: .infinity)
                         } else {
-                            Text(detail.viewerRecordState == .canceled ? "Rejoin Activity" : "Join Activity")
+                            Text(detail.viewerRecordState == .canceled ? "Reapply Activity" : "Apply Activity")
                                 .frame(maxWidth: .infinity)
                         }
                     }
@@ -426,7 +431,7 @@ struct ActivityDetailView: View {
                     } label: {
                         labelRow(
                             title: "Team Chat",
-                            subtitle: "Live messaging for joined volunteers.",
+                            subtitle: "Live messaging for approved volunteers.",
                             systemImage: "message"
                         )
                     }
@@ -503,7 +508,7 @@ struct ActivityDetailView: View {
     }
 
     private func canAccessChannel(detail: ActivityDetail) -> Bool {
-        detail.viewerJoined || canManage(detail: detail)
+        detail.viewerParticipating || canManage(detail: detail)
     }
 
     private func load() async {
@@ -543,9 +548,9 @@ struct ActivityDetailView: View {
         }
     }
 
-    private func join() async {
+    private func apply() async {
         if session.demoData != nil {
-            errorMessage = "Joining is disabled in demo mode."
+            errorMessage = "Applying is disabled in demo mode."
             return
         }
 
@@ -560,16 +565,16 @@ struct ActivityDetailView: View {
         }
 
         do {
-            try await session.apiClient.joinActivity(baseURL: serverURL, activityID: activityID)
+            try await session.apiClient.applyActivity(baseURL: serverURL, activityID: activityID)
             await load()
         } catch {
             errorMessage = session.readableError(error)
         }
     }
 
-    private func leave() async {
+    private func withdraw() async {
         if session.demoData != nil {
-            errorMessage = "Leaving is disabled in demo mode."
+            errorMessage = "Withdrawal is disabled in demo mode."
             return
         }
 
@@ -584,7 +589,7 @@ struct ActivityDetailView: View {
         }
 
         do {
-            try await session.apiClient.leaveActivity(baseURL: serverURL, activityID: activityID)
+            try await session.apiClient.withdrawActivity(baseURL: serverURL, activityID: activityID)
             await load()
         } catch {
             errorMessage = session.readableError(error)
@@ -700,12 +705,28 @@ struct ActivityDetailView: View {
     @ViewBuilder
     private func participantControls(for record: RecordEntry) -> some View {
         switch record.state {
-        case .todo:
+        case .pendingApproval:
+            HStack(spacing: 12) {
+                Button("Approve") {
+                    Task {
+                        await updateRecord(recordID: record.id, action: "approve")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button("Reject", role: .destructive) {
+                    Task {
+                        await updateRecord(recordID: record.id, action: "cancel")
+                    }
+                }
+                .buttonStyle(.bordered)
+            }
+        case .approved:
             HStack(spacing: 12) {
                 if detail?.state == .ended {
-                    Button("Mark Done") {
+                    Button("Confirm") {
                         Task {
-                            await updateRecord(recordID: record.id, action: "done")
+                            await updateRecord(recordID: record.id, action: "confirm")
                         }
                     }
                     .buttonStyle(.borderedProminent)
@@ -713,13 +734,13 @@ struct ActivityDetailView: View {
 
                 Button("Cancel", role: .destructive) {
                     Task {
-                        await updateRecord(recordID: record.id, action: "disapprove_apply")
+                        await updateRecord(recordID: record.id, action: "cancel")
                     }
                 }
                 .buttonStyle(.bordered)
             }
-        case .done:
-            recordStatusLabel(title: "Completed", systemImage: "checkmark.circle.fill", tint: AppTheme.stateTint(for: RecordState.done))
+        case .confirmed:
+            recordStatusLabel(title: "Confirmed", systemImage: "checkmark.circle.fill", tint: AppTheme.stateTint(for: RecordState.confirmed))
         case .canceled:
             recordStatusLabel(title: "Cancelled", systemImage: "xmark.circle.fill", tint: AppTheme.stateTint(for: RecordState.canceled))
         }

@@ -483,7 +483,7 @@ function App() {
       options,
     }: {
       id: string
-      action: 'approve_apply' | 'done' | 'disapprove_apply'
+      action: 'approve' | 'confirm' | 'cancel'
       options?: { confirmedMinutes?: number }
     }) => {
       setRecordActionId(id)
@@ -1385,7 +1385,7 @@ function ActivitiesPage({
   onPanelTabChange: (value: PanelTab) => void
   onRecordAction: (
     id: string,
-    action: 'approve_apply' | 'done' | 'disapprove_apply',
+    action: 'approve' | 'confirm' | 'cancel',
     options?: { confirmedMinutes?: number },
   ) => void
   onDeleteComment: (activityId: string, commentId: string) => Promise<void>

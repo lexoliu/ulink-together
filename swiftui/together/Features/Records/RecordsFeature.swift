@@ -2,8 +2,9 @@ import SwiftUI
 
 private enum RecordsFilter: String, CaseIterable, Identifiable {
     case all
-    case joined
-    case completed
+    case pendingApproval
+    case approved
+    case confirmed
     case cancelled
 
     var id: String {
@@ -14,10 +15,12 @@ private enum RecordsFilter: String, CaseIterable, Identifiable {
         switch self {
         case .all:
             "All"
-        case .joined:
-            "Joined"
-        case .completed:
-            "Completed"
+        case .pendingApproval:
+            "Pending"
+        case .approved:
+            "Approved"
+        case .confirmed:
+            "Confirmed"
         case .cancelled:
             "Cancelled"
         }
@@ -48,7 +51,7 @@ struct RecordsHomeView: View {
             } else if filteredRecords.isEmpty {
                 EmptyStateCard(
                     title: "No records yet",
-                    message: "Your joined and completed volunteer work will appear here.",
+                    message: "Your pending, approved, and confirmed volunteer work will appear here.",
                     systemImage: "clock.badge.questionmark"
                 )
             } else {
@@ -98,10 +101,12 @@ struct RecordsHomeView: View {
             switch filter {
             case .all:
                 true
-            case .joined:
-                record.state == .todo
-            case .completed:
-                record.state == .done
+            case .pendingApproval:
+                record.state == .pendingApproval
+            case .approved:
+                record.state == .approved
+            case .confirmed:
+                record.state == .confirmed
             case .cancelled:
                 record.state == .canceled
             }
@@ -110,7 +115,7 @@ struct RecordsHomeView: View {
 
     private var summaryCard: some View {
         let completedMinutes = records
-            .filter { $0.state == .done }
+            .filter { $0.state == .confirmed }
             .reduce(into: 0) { partialResult, record in
                 partialResult += record.confirmedMinutes
             }
