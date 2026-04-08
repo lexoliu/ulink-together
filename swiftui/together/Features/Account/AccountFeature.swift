@@ -25,7 +25,6 @@ struct AccountHomeView: View {
             } else {
                 EmptyStateCard(
                     title: "No profile loaded",
-                    message: "Sign in again to refresh your account details.",
                     systemImage: "person.crop.circle.badge.exclamationmark"
                 )
             }
@@ -346,20 +345,6 @@ struct ProfileEditorView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Profile photo")
                         .font(.headline)
-
-                    if pendingAvatarUpload != nil {
-                        Text("Selected photo will upload when you save.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    } else if user.avatar == nil {
-                        Text("Add a photo after account creation.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Text("Choose a new photo to replace the current one.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
                 }
 
                 Spacer()
@@ -373,9 +358,6 @@ struct ProfileEditorView: View {
             if isLoadingAvatar {
                 HStack(spacing: 8) {
                     ProgressView()
-                    Text("Loading selected photo...")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
                 }
             }
         }

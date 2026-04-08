@@ -155,7 +155,6 @@ struct InlineErrorBanner: View {
 
 struct EmptyStateCard: View {
     let title: String
-    let message: String
     let systemImage: String
 
     var body: some View {
@@ -166,9 +165,6 @@ struct EmptyStateCard: View {
                     .foregroundStyle(AppTheme.accentTint)
                 Text(title)
                     .font(.title3.weight(.semibold))
-                Text(message)
-                    .font(.body)
-                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -186,9 +182,6 @@ struct LoadingCard: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
                         .font(.headline)
-                    Text("The app is syncing with the server.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
                 }
             }
         }
@@ -198,7 +191,6 @@ struct LoadingCard: View {
 struct InsightMetricTile: View {
     let eyebrow: String
     let value: String
-    let detail: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -210,10 +202,6 @@ struct InsightMetricTile: View {
             Text(value)
                 .font(.title2.weight(.bold))
                 .foregroundStyle(.primary)
-            Text(detail)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(18)
         .frame(maxWidth: .infinity, minHeight: 128, alignment: .topLeading)
@@ -230,7 +218,6 @@ struct InsightMetricTile: View {
 
 struct ComposedStateHighlight: Identifiable {
     let title: String
-    let detail: String
     let systemImage: String
 
     var id: String {
@@ -240,7 +227,6 @@ struct ComposedStateHighlight: Identifiable {
 
 struct ComposedStateCard: View {
     let title: String
-    let message: String
     let systemImage: String
     var minHeight: CGFloat = 260
     var highlights: [ComposedStateHighlight] = []
@@ -261,10 +247,6 @@ struct ComposedStateCard: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(title)
                             .font(.title2.weight(.bold))
-                        Text(message)
-                            .font(.body)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
 
@@ -275,10 +257,6 @@ struct ComposedStateCard: View {
                                 Label(highlight.title, systemImage: highlight.systemImage)
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(.primary)
-                                Text(highlight.detail)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                    .fixedSize(horizontal: false, vertical: true)
                             }
                             .padding(16)
                             .frame(maxWidth: .infinity, minHeight: 108, alignment: .topLeading)

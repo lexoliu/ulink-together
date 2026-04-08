@@ -54,7 +54,6 @@ struct FeedHomeView: View {
                     List {
                         EmptyStateCard(
                             title: "No activities here yet",
-                            message: "Try a different filter, refresh the feed, or wait for organisers to publish the next opportunity.",
                             systemImage: "calendar.badge.exclamationmark"
                         )
                         .listRowSeparator(.hidden)
@@ -212,25 +211,19 @@ private struct FeedDetailPlaceholderView: View {
         PageWidthReader {
             ComposedStateCard(
                 title: isLoading ? "Preparing your activity workspace" : "Choose an activity from the feed",
-                message: isLoading
-                    ? "We are syncing the latest opportunities so this pane can open with schedule, organiser, and participation details."
-                    : "Select any activity on the left to inspect the full plan, confirm the venue and timing, and decide whether to join.",
                 systemImage: isLoading ? "hourglass.circle" : "rectangle.and.text.magnifyingglass",
                 minHeight: 276,
                 highlights: [
                     ComposedStateHighlight(
                         title: "Current lens",
-                        detail: "The feed is focused on \(filterTitle.lowercased()) opportunities right now.",
                         systemImage: "line.3.horizontal.decrease.circle"
                     ),
                     ComposedStateHighlight(
                         title: "What opens here",
-                        detail: "Each detail view shows date, location, description, records, and organiser actions.",
                         systemImage: "doc.text.magnifyingglass"
                     ),
                     ComposedStateHighlight(
                         title: "Keep it fresh",
-                        detail: "Pull to refresh when organisers publish updates or confirm participation changes.",
                         systemImage: "arrow.clockwise"
                     ),
                 ]
@@ -239,18 +232,15 @@ private struct FeedDetailPlaceholderView: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: 14)], spacing: 14) {
                 InsightMetricTile(
                     eyebrow: "Browse",
-                    value: "Open plans",
-                    detail: "Activity cards on the left stay compact so the full briefing can breathe on the right."
+                    value: "Open plans"
                 )
                 InsightMetricTile(
                     eyebrow: "Compare",
-                    value: "Dates + capacity",
-                    detail: "Review logistics before committing, then return here whenever the organiser updates the plan."
+                    value: "Dates + capacity"
                 )
                 InsightMetricTile(
                     eyebrow: "Track",
-                    value: "Your status",
-                    detail: "Pending approvals, joined events, and completed work remain visible through the feed filters."
+                    value: "Your status"
                 )
             }
         }
@@ -288,7 +278,6 @@ struct ActivityDetailView: View {
             } else {
                 EmptyStateCard(
                     title: "Activity unavailable",
-                    message: "The selected activity could not be loaded.",
                     systemImage: "xmark.circle"
                 )
             }
@@ -432,7 +421,7 @@ struct ActivityDetailView: View {
                 if let recordState = detail.viewerRecordState {
                     StateChip(title: recordState.title, tint: AppTheme.stateTint(for: recordState))
                 } else {
-                    Text("You have not applied to this activity yet.")
+                    Text("Not applied")
                         .foregroundStyle(.secondary)
                 }
 
@@ -485,7 +474,7 @@ struct ActivityDetailView: View {
                 } label: {
                     labelRow(
                         title: "Public Notes",
-                        subtitle: "Announcements and questions visible to everyone.",
+                        subtitle: "",
                         systemImage: "text.bubble"
                     )
                 }
@@ -496,14 +485,14 @@ struct ActivityDetailView: View {
                     } label: {
                         labelRow(
                             title: "Team Chat",
-                            subtitle: "Live messaging for approved volunteers.",
+                            subtitle: "",
                             systemImage: "message"
                         )
                     }
                 } else {
                     labelRow(
                         title: "Team Chat",
-                        subtitle: "Join this activity before opening live team chat.",
+                        subtitle: "",
                         systemImage: "lock.message"
                     )
                     .opacity(0.6)
@@ -516,10 +505,6 @@ struct ActivityDetailView: View {
         CardPanel {
             DisclosureGroup(isExpanded: $isManagementExpanded) {
                 VStack(alignment: .leading, spacing: 14) {
-                    Text("Update the activity state here while keeping participant progress in the same workflow.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-
                     HStack {
                         Button("Recruiting") {
                             Task {

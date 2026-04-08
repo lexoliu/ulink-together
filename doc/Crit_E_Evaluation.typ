@@ -47,81 +47,81 @@
   [Registration worked with all required fields and avatar upload. Database inspection confirmed passwords were stored as bcrypt hashes, not plaintext.],
   [#text(fill: success-green, weight: "bold")[✓]],
 
-  [#image("design/assets/auth-preview-compact.png", width: 100%)],
-  [#image("design/assets/auth-preview-compact.png", width: 100%)],
-  [#image("design/assets/auth-preview-compact.png", width: 100%)],
+  [#image("assets/auth-preview-compact.png", width: 100%)],
+  [#image("assets/auth-preview-compact.png", width: 100%)],
+  [#image("assets/auth-preview-compact.png", width: 100%)],
 
   [[2] Authority-based access control distinguishes volunteers from organisers and administrators, so volunteers browse and apply, organisers create, manage, approve, and confirm activities, and administrators manage users, groups, and permissions through the web panel.],
   [Each access level showed distinct interfaces: students could only browse and apply, organisers could publish and confirm, and administrators could manage users and permissions through the web panel.],
   [#text(fill: success-green, weight: "bold")[✓]],
 
-  [#image("design/assets/manage-preview.png", width: 100%)],
-  [#image("design/assets/manage-preview.png", width: 100%)],
-  [#image("design/assets/manage-preview.png", width: 100%)],
+  [#image("assets/manage-preview.png", width: 100%)],
+  [#image("assets/manage-preview.png", width: 100%)],
+  [#image("assets/manage-preview.png", width: 100%)],
 
   [[3] Organisers can publish activities with a title, date, location, capacity, duration, and description, and published activities appear in the volunteer feed.],
   [A test activity published with all required fields appeared immediately in the volunteer feed with correct details.],
   [#text(fill: success-green, weight: "bold")[✓]],
 
-  [#image("design/assets/ipad-feed-landscape-final.png", width: 100%)],
-  [#image("design/assets/ipad-feed-landscape-final.png", width: 100%)],
-  [#image("design/assets/ipad-feed-landscape-final.png", width: 100%)],
+  [#image("assets/ipad-feed-landscape-final.png", width: 100%)],
+  [#image("assets/ipad-feed-landscape-final.png", width: 100%)],
+  [#image("assets/ipad-feed-landscape-final.png", width: 100%)],
 
   [[4] Organisers can edit or cancel published activities, with changes propagated to all affected volunteers.],
   [Editing location and time propagated correctly to enrolled volunteers. Cancellation updated the activity status consistently.],
   [#text(fill: success-green, weight: "bold")[✓]],
 
-  [#image("design/assets/admin-activities-viewport.png", width: 100%)],
-  [#image("design/assets/admin-activities-viewport.png", width: 100%)],
-  [#image("design/assets/admin-activities-viewport.png", width: 100%)],
+  [#image("assets/admin-activities-viewport.png", width: 100%)],
+  [#image("assets/admin-activities-viewport.png", width: 100%)],
+  [#image("assets/admin-activities-viewport.png", width: 100%)],
 
   [[5] Volunteers can apply to activities, organisers approve or reject applications, and server-enforced capacity protection prevents overbooking under concurrent access.],
   [Application and approval worked as expected; full-capacity activities rejected further requests. Concurrent testing was limited to a small number of simultaneous requests, so capacity safety under heavy load has not been fully stress-tested.],
   [#text(fill: success-green, weight: "bold")[✓]],
 
-  [#image("design/assets/admin-activities-viewport.png", width: 100%)],
-  [#image("design/assets/admin-activities-viewport.png", width: 100%)],
-  [#image("design/assets/admin-activities-viewport.png", width: 100%)],
+  [#image("assets/admin-activities-viewport.png", width: 100%)],
+  [#image("assets/admin-activities-viewport.png", width: 100%)],
+  [#image("assets/admin-activities-viewport.png", width: 100%)],
 
   [[6] Each activity has a scoped messaging channel where participants and the organiser can coordinate.],
   [Each activity had its own message thread, keeping logistics separate. However, there are no push notifications for new messages yet, so users must open the channel manually.],
   [#text(fill: success-green, weight: "bold")[✓]],
 
-  [#image("design/assets/ipad-feed-landscape-final.png", width: 100%)],
-  [#image("design/assets/ipad-feed-landscape-final.png", width: 100%)],
-  [#image("design/assets/ipad-feed-landscape-final.png", width: 100%)],
+  [#image("assets/ipad-feed-landscape-final.png", width: 100%)],
+  [#image("assets/ipad-feed-landscape-final.png", width: 100%)],
+  [#image("assets/ipad-feed-landscape-final.png", width: 100%)],
 
   [[7] Organisers can confirm volunteer participation after an activity completes, converting participation records to completed status.],
   [After an activity ended, the organiser confirmed attendees and their records moved to completed status with the correct duration stored.],
   [#text(fill: success-green, weight: "bold")[✓]],
 
-  [#image("design/assets/records-preview.png", width: 100%)],
-  [#image("design/assets/records-preview.png", width: 100%)],
-  [#image("design/assets/records-preview.png", width: 100%)],
+  [#image("assets/records-preview.png", width: 100%)],
+  [#image("assets/records-preview.png", width: 100%)],
+  [#image("assets/records-preview.png", width: 100%)],
 
   [[8] A leaderboard ranks volunteers by total confirmed hours, computed from participation records rather than stored totals.],
   [The leaderboard ranking updated correctly as new hours were confirmed, reflecting actual participation records rather than a manually maintained total.],
   [#text(fill: success-green, weight: "bold")[✓]],
 
-  [#image("design/assets/ipad-feed-landscape-final.png", width: 100%)],
-  [#image("design/assets/ipad-feed-landscape-final.png", width: 100%)],
-  [#image("design/assets/ipad-feed-landscape-final.png", width: 100%)],
+  [#image("assets/ipad-feed-landscape-final.png", width: 100%)],
+  [#image("assets/ipad-feed-landscape-final.png", width: 100%)],
+  [#image("assets/ipad-feed-landscape-final.png", width: 100%)],
 
   [[9] The system provides a configurable export that generates confirmed-hours data in a format compatible with the school's ISMAS import workflow.],
   [The export produced a file matching the ISMAS column structure, replacing the manual copy-paste process.],
   [#text(fill: success-green, weight: "bold")[✓]],
 
-  [#image("design/assets/admin-operations-viewport.png", width: 100%)],
-  [#image("design/assets/admin-operations-viewport.png", width: 100%)],
-  [#image("design/assets/admin-operations-viewport.png", width: 100%)],
+  [#image("assets/admin-operations-viewport.png", width: 100%)],
+  [#image("assets/admin-operations-viewport.png", width: 100%)],
+  [#image("assets/admin-operations-viewport.png", width: 100%)],
 
   [[10] The application runs on iPad with iPadOS 17+ in both portrait and landscape orientations, with no layout breakage or blocked controls.],
   [Both orientations were usable with no hidden controls. Portrait mode required more scrolling due to lower information density; the app is clearly optimised for landscape.],
   [#text(fill: success-green, weight: "bold")[✓]],
 
-  [#image("design/assets/auth-preview-compact.png", width: 100%)],
-  [#image("design/assets/auth-preview-compact.png", width: 100%)],
-  [#image("design/assets/auth-preview-compact.png", width: 100%)],
+  [#image("assets/auth-preview-compact.png", width: 100%)],
+  [#image("assets/auth-preview-compact.png", width: 100%)],
+  [#image("assets/auth-preview-compact.png", width: 100%)],
 )
 
 = Recommendations for Future Improvements

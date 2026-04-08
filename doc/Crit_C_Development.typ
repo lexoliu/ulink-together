@@ -110,7 +110,7 @@ if promoter_hex == auth.uid().to_string()
 #align(center)[#emph[Code snippet: Allowing activity management only to the owner or a privileged organiser]]
 
 #figure(
-  image("design/assets/manage-preview.png", width: 100%),
+  image("assets/manage-preview.png", width: 100%),
   caption: [The organiser workspace exposes management actions that are not available to ordinary volunteers],
 )
 
@@ -146,7 +146,7 @@ if let Some(max) = row.try_get::<Option<i64>, _>("max_volunteer_num").expect("Da
 #align(center)[#emph[Code snippet: Rejecting applications when capacity has been reached]]
 
 #figure(
-  image("design/assets/admin-activities-viewport.png", width: 100%),
+  image("assets/admin-activities-viewport.png", width: 100%),
   caption: [Organiser-facing workflow for managing published activities and their lifecycle],
 )
 
@@ -177,7 +177,7 @@ pub async fn subscribe(&self, user: Id) -> Sse {
 #align(center)[#emph[Code snippet: Registering an SSE stream for real-time updates]]
 
 #figure(
-  image("design/assets/ipad-feed-landscape-final.png", width: 100%),
+  image("assets/ipad-feed-landscape-final.png", width: 100%),
   caption: [The native iPad client provides the shared communication and activity experience in one interface],
 )
 
@@ -214,7 +214,7 @@ let mut csv = String::from(
 #align(center)[#emph[Code snippet: Building an ISMAS-compatible export file]]
 
 #figure(
-  image("design/assets/admin-operations-viewport.png", width: 100%),
+  image("assets/admin-operations-viewport.png", width: 100%),
   caption: [Administrative export workflow supporting school reporting requirements],
 )
 

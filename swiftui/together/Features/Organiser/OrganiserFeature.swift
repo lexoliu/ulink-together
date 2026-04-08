@@ -15,9 +15,6 @@ struct OrganiserHomeView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Organiser Workspace")
                         .font(.title3.weight(.semibold))
-                    Text("Create activities, revise published details, guide participation, and generate school-ready hour exports.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
 
                     if session.canCreateActivities || session.canGenerateExport {
                         ViewThatFits(in: .horizontal) {
@@ -66,7 +63,6 @@ struct OrganiserHomeView: View {
             } else if activities.isEmpty {
                 EmptyStateCard(
                     title: "No managed activities",
-                    message: "Published activities you own will appear here.",
                     systemImage: "square.and.pencil"
                 )
             } else {
@@ -209,9 +205,6 @@ struct ActivityEditorView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(title)
                         .font(.title2.weight(.bold))
-                    Text("Keep the plan concise, scannable, and clear enough for volunteers to commit with confidence.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
                 }
             }
 

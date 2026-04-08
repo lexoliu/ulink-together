@@ -16,7 +16,6 @@ struct NotificationsHomeView: View {
             } else if notifications.isEmpty {
                 EmptyStateCard(
                     title: "No notifications yet",
-                    message: "When teachers send updates, they will appear here.",
                     systemImage: "bell.slash"
                 )
             } else {

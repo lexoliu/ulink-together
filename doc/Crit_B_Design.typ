@@ -402,7 +402,7 @@ The following UML use case diagram shows the three main actors and the functions
 == Student-side SwiftUI iPad Interface
 
 #figure(
-  image("design/assets/wireframe-student-annotated.svg", width: 100%),
+  image("assets/wireframe-student-annotated.svg", width: 100%),
   caption: [Student-side annotated wireframe showing the planned feed and activity-detail workspace],
 )
 
@@ -457,21 +457,21 @@ The export feature is also intentionally limited. Because ISMAS does not provide
 )
 
 #figure(
-  image("design/assets/wireframe-admin-activity.svg", width: 100%),
+  image("assets/wireframe-admin-activity.svg", width: 100%),
   caption: [Teacher/admin annotated wireframe for the activity management workspace],
 )
 
 #pagebreak()
 
 #figure(
-  image("design/assets/wireframe-admin-students.svg", width: 100%),
+  image("assets/wireframe-admin-students.svg", width: 100%),
   caption: [Teacher/admin annotated wireframe for the student management workspace],
 )
 
 #pagebreak()
 
 #figure(
-  image("design/assets/wireframe-admin-operations.svg", width: 100%),
+  image("assets/wireframe-admin-operations.svg", width: 100%),
   caption: [Teacher/admin annotated wireframe for the operations and permissions workspace],
 )
 

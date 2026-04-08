@@ -23,7 +23,6 @@ struct ActivityChannelView: View {
                 } else if !canAccessChannel {
                     EmptyStateCard(
                         title: "Join Required",
-                        message: "Join this activity before opening its coordination room.",
                         systemImage: "lock.fill"
                     )
                 } else if let channel {
@@ -43,7 +42,6 @@ struct ActivityChannelView: View {
                 } else {
                     EmptyStateCard(
                         title: "Channel unavailable",
-                        message: "This activity room is not available yet.",
                         systemImage: "bubble.left.and.bubble.right"
                     )
                 }
@@ -125,8 +123,7 @@ struct ActivityChannelView: View {
                     if sortedMessages.isEmpty {
                         ContentUnavailableView(
                             "No Messages Yet",
-                            systemImage: "message.badge.waveform",
-                            description: Text("Updates and volunteer replies will appear here.")
+                            systemImage: "message.badge.waveform"
                         )
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 60)
@@ -187,10 +184,6 @@ struct ActivityChannelView: View {
                 }
 
                 HStack {
-                    Text(activity.state.channelIsReadOnly ? "Read only" : "Visible to everyone in this activity room")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-
                     Spacer()
 
                     Button {

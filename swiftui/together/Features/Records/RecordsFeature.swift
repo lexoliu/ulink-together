@@ -68,50 +68,14 @@ struct RecordsHomeView: View {
             if isLoading {
                 ComposedStateCard(
                     title: "Loading participation records",
-                    message: "We are collecting organiser decisions and confirmed hours so your record book stays current.",
                     systemImage: "clock.badge.checkmark",
-                    minHeight: 260,
-                    highlights: [
-                        ComposedStateHighlight(
-                            title: "Pending review",
-                            detail: "Fresh submissions appear here before organisers approve or cancel them.",
-                            systemImage: "hourglass"
-                        ),
-                        ComposedStateHighlight(
-                            title: "Approved hours",
-                            detail: "Approved entries remain visible until the final confirmed minutes arrive.",
-                            systemImage: "checkmark.circle"
-                        ),
-                        ComposedStateHighlight(
-                            title: "Export-ready history",
-                            detail: "Confirmed time feeds the official hour export used by organisers.",
-                            systemImage: "doc.badge.clock"
-                        ),
-                    ]
+                    minHeight: 220
                 )
             } else if filteredRecords.isEmpty {
                 ComposedStateCard(
                     title: "No records yet",
-                    message: "Your pending, approved, and confirmed volunteer work will collect here once you begin joining activities.",
                     systemImage: "clock.badge.questionmark",
-                    minHeight: 248,
-                    highlights: [
-                        ComposedStateHighlight(
-                            title: "Join an activity",
-                            detail: "Open the feed and apply for a live opportunity to start your record trail.",
-                            systemImage: "person.crop.circle.badge.plus"
-                        ),
-                        ComposedStateHighlight(
-                            title: "Watch approval progress",
-                            detail: "Organiser review moves records from pending to approved and then confirmed.",
-                            systemImage: "list.clipboard"
-                        ),
-                        ComposedStateHighlight(
-                            title: "Build your total",
-                            detail: "Confirmed minutes accumulate into the hour total used on school reports.",
-                            systemImage: "chart.bar"
-                        ),
-                    ]
+                    minHeight: 220
                 )
             } else {
                 ForEach(filteredRecords) { record in
@@ -193,9 +157,6 @@ struct RecordsHomeView: View {
                         .font(.headline)
                     Text(DisplayText.hours(minutes: overview.completedMinutes))
                         .font(.system(.largeTitle, design: .rounded).weight(.bold))
-                    Text("Confirmed school-report time across all completed activities.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
             }
@@ -206,18 +167,15 @@ struct RecordsHomeView: View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 14)], spacing: 14) {
             InsightMetricTile(
                 eyebrow: "Pending",
-                value: "\(overview.pendingCount)",
-                detail: "Waiting for organiser approval."
+                value: "\(overview.pendingCount)"
             )
             InsightMetricTile(
                 eyebrow: "Approved",
-                value: "\(overview.approvedCount)",
-                detail: "Accepted and awaiting final confirmation."
+                value: "\(overview.approvedCount)"
             )
             InsightMetricTile(
                 eyebrow: "Confirmed",
-                value: "\(overview.confirmedCount)",
-                detail: "Already counted toward official hours."
+                value: "\(overview.confirmedCount)"
             )
         }
     }

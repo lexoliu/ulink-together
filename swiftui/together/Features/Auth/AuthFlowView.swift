@@ -40,11 +40,32 @@ private enum AuthMode: String, CaseIterable, Identifiable {
     }
 }
 
+private enum AuthStep: Int, CaseIterable, Identifiable {
+    case serviceAddress
+    case credentials
+
+    var id: Int { rawValue }
+
+    var indexTitle: String {
+        "Step \(rawValue + 1)"
+    }
+
+    var title: String {
+        switch self {
+        case .serviceAddress:
+            "Service address"
+        case .credentials:
+            "Account"
+        }
+    }
+}
+
 struct AuthFlowView: View {
     @EnvironmentObject private var session: SessionStore
     @Environment(\.scenePhase) private var scenePhase
 
-    @State private var mode: AuthMode = .login
+    @State private var step: AuthStep
+    @State private var mode: AuthMode
     @State private var loginEmail = ""
     @State private var loginPassword = ""
 
@@ -78,31 +99,44 @@ struct AuthFlowView: View {
         "Prefer not to say",
     ]
 
-    var body: some View {
-        NavigationStack {
-            PageWidthReader {
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: 24) {
-                        guidancePanel
-                            .frame(maxWidth: 312, alignment: .leading)
-                        formPanel
-                            .frame(maxWidth: 560, alignment: .leading)
-                    }
+    init() {
+        _step = State(initialValue: .serviceAddress)
+        _mode = State(initialValue: .login)
+    }
 
-                    VStack(spacing: 18) {
-                        guidancePanel
+    fileprivate init(previewStep: AuthStep, previewMode: AuthMode = .login) {
+        _step = State(initialValue: previewStep)
+        _mode = State(initialValue: previewMode)
+    }
+
+    var body: some View {
+        ZStack {
+            AuthSceneBackground()
+
+            GeometryReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 28) {
+                        stepIndicator
                         formPanel
                     }
+                    .frame(maxWidth: 760, alignment: .leading)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: proxy.size.height - 48, alignment: .center)
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 24)
                 }
+                .scrollIndicators(.hidden)
             }
-            .navigationTitle("Student Access")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.visible, for: .navigationBar)
         }
         .scrollDismissesKeyboard(.interactively)
+        .animation(.snappy, value: step)
         .onChange(of: mode) { _, _ in
             localError = nil
             session.clearLastError()
+            guard step == .credentials else {
+                return
+            }
+            focusedField = mode == .login ? .loginEmail : .registerEmail
         }
         .onChange(of: selectedRegisterAvatarItem) { _, newValue in
             Task {
@@ -123,38 +157,17 @@ struct AuthFlowView: View {
         }
     }
 
-    private var guidancePanel: some View {
-        CardPanel {
-            VStack(alignment: .leading, spacing: 20) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("For Students")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .textCase(.uppercase)
-
-                    Text("School volunteer access")
-                        .font(.system(size: 30, weight: .bold))
-                        .foregroundStyle(.primary)
-
-                    Text("Sign in, join activities, and track confirmed hours.")
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+    private var stepIndicator: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 14) {
+                ForEach(AuthStep.allCases) { authStep in
+                    authStepBadge(for: authStep)
                 }
+            }
 
-                Divider()
-
-                VStack(spacing: 12) {
-                    AuthGuidanceRow(
-                        systemImage: "envelope",
-                        title: "School email",
-                        detail: "Use your school account."
-                    )
-                    AuthGuidanceRow(
-                        systemImage: "link",
-                        title: "Service address",
-                        detail: "Enter the address from school."
-                    )
+            VStack(spacing: 12) {
+                ForEach(AuthStep.allCases) { authStep in
+                    authStepBadge(for: authStep)
                 }
             }
         }
@@ -162,60 +175,120 @@ struct AuthFlowView: View {
 
     private var formPanel: some View {
         CardPanel {
-            VStack(alignment: .leading, spacing: 20) {
-                serviceAddressPanel
+            VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(step.indexTitle)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(AppTheme.accentTint)
+                        .textCase(.uppercase)
+                        .tracking(1.1)
 
-                Picker("Authentication", selection: $mode) {
-                    ForEach(AuthMode.allCases) { authMode in
-                        Text(authMode.title).tag(authMode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .padding(4)
-                .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(Color(uiColor: .tertiarySystemGroupedBackground))
-                )
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(mode.title)
-                        .font(.title2.weight(.semibold))
-                    Text(mode.subtitle)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                    Text(step.title)
+                        .font(.title2.weight(.bold))
                 }
 
                 if let message = localError ?? session.lastError {
                     InlineErrorBanner(message: message)
                 }
 
-                switch mode {
-                case .login:
-                    loginForm
-                case .register:
-                    registerForm
+                switch step {
+                case .serviceAddress:
+                    serviceAddressStep
+                case .credentials:
+                    credentialsStep
                 }
             }
         }
     }
 
-    private var serviceAddressPanel: some View {
-        AuthFieldShell(
-            title: "School service address",
-            detail: "Only needed the first time you sign in on this iPad.",
-            isFocused: focusedField == .serviceAddress
-        ) {
-            TextField(
-                "https://volunteer.ulink.edu.cn",
-                text: Binding(
-                    get: { session.serverURLText },
-                    set: { session.updateServerURL($0) }
+    private var serviceAddressStep: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            AuthFieldShell(
+                title: "Service address",
+                isFocused: focusedField == .serviceAddress
+            ) {
+                TextField(
+                    "https://volunteer.ulink.edu.cn",
+                    text: Binding(
+                        get: { session.serverURLText },
+                        set: { session.updateServerURL($0) }
+                    )
                 )
+                .textInputAutocapitalization(.never)
+                .keyboardType(.URL)
+                .autocorrectionDisabled()
+                .focused($focusedField, equals: .serviceAddress)
+            }
+
+            Button {
+                advanceToCredentials()
+            } label: {
+                submitLabel(title: "Next")
+            }
+            .buttonStyle(AuthPrimaryButtonStyle())
+        }
+        .onAppear {
+            focusedField = .serviceAddress
+        }
+    }
+
+    private var credentialsStep: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            confirmedAddressPanel
+
+            Picker("Authentication", selection: $mode) {
+                ForEach(AuthMode.allCases) { authMode in
+                    Text(authMode.title).tag(authMode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(4)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color(uiColor: .tertiarySystemGroupedBackground))
             )
-            .textInputAutocapitalization(.never)
-            .keyboardType(.URL)
-            .autocorrectionDisabled()
-            .focused($focusedField, equals: .serviceAddress)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(mode.title)
+                    .font(.title2.weight(.semibold))
+            }
+
+            switch mode {
+            case .login:
+                loginForm
+            case .register:
+                registerForm
+            }
+        }
+    }
+
+    private var confirmedAddressPanel: some View {
+        HStack(alignment: .top, spacing: 16) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(session.serverURLText)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(.primary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+
+            Button("Change") {
+                localError = nil
+                session.clearLastError()
+                step = .serviceAddress
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding(18)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color(uiColor: .systemBackground).opacity(0.72))
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(AppTheme.accentTint.opacity(0.12), lineWidth: 1)
         }
     }
 
@@ -476,6 +549,68 @@ struct AuthFlowView: View {
         }
         return nil
     }
+
+    private func validateServiceAddress() -> String? {
+        do {
+            _ = try SessionStore.normalizeServerURL(from: session.serverURLText)
+            return nil
+        } catch {
+            return "Enter a valid service address."
+        }
+    }
+
+    private func advanceToCredentials() {
+        localError = validateServiceAddress()
+        guard localError == nil else {
+            return
+        }
+        session.clearLastError()
+        step = .credentials
+        focusedField = mode == .login ? .loginEmail : .registerEmail
+    }
+
+    private func authStepBadge(for authStep: AuthStep) -> some View {
+        let isCurrent = authStep == step
+        let isComplete = authStep.rawValue < step.rawValue
+
+        return HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(
+                        isCurrent || isComplete
+                            ? AppTheme.accentTint
+                            : Color(uiColor: .tertiarySystemFill)
+                    )
+                    .frame(width: 34, height: 34)
+
+                Image(systemName: isComplete ? "checkmark" : "\(authStep.rawValue + 1).circle.fill")
+                    .font(.footnote.weight(.bold))
+                    .foregroundStyle(isCurrent || isComplete ? .white : .secondary)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(authStep.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(isCurrent ? Color(uiColor: .systemBackground).opacity(0.84) : Color.white.opacity(0.44))
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(
+                    isCurrent ? AppTheme.accentTint.opacity(0.26) : Color.white.opacity(0.30),
+                    lineWidth: 1
+                )
+        }
+    }
 }
 
 private struct PasswordResetSheet: View {
@@ -610,33 +745,38 @@ private struct PasswordResetSheet: View {
     }
 }
 
-private struct AuthGuidanceRow: View {
-    let systemImage: String
-    let title: String
-    let detail: String
-
+private struct AuthSceneBackground: View {
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Image(systemName: systemImage)
-                .font(.body.weight(.semibold))
-                .foregroundStyle(AppTheme.accentTint)
-                .frame(width: 32, height: 32)
-                .background(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Color(uiColor: .systemBackground))
-                )
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.97, green: 0.98, blue: 1.00),
+                    Color(red: 0.93, green: 0.95, blue: 0.99),
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.headline)
-                Text(detail)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            Circle()
+                .fill(AppTheme.accentTint.opacity(0.18))
+                .frame(width: 420, height: 420)
+                .blur(radius: 110)
+                .offset(x: -240, y: -220)
 
-            Spacer(minLength: 0)
+            Circle()
+                .fill(Color(red: 0.56, green: 0.70, blue: 0.86).opacity(0.22))
+                .frame(width: 520, height: 520)
+                .blur(radius: 130)
+                .offset(x: 260, y: 250)
+
+            RoundedRectangle(cornerRadius: 140, style: .continuous)
+                .fill(Color.white.opacity(0.28))
+                .frame(width: 880, height: 420)
+                .rotationEffect(.degrees(-12))
+                .blur(radius: 4)
+                .offset(x: 180, y: -40)
         }
+        .ignoresSafeArea()
     }
 }
 
@@ -707,7 +847,12 @@ private struct AuthPrimaryButtonStyle: ButtonStyle {
     }
 }
 
-#Preview("Auth") {
-    AuthFlowView()
+#Preview("Auth Step 1", traits: .landscapeLeft) {
+    AuthFlowView(previewStep: .serviceAddress)
+        .environmentObject(SessionStore.previewSignedOut())
+}
+
+#Preview("Auth Step 2", traits: .landscapeLeft) {
+    AuthFlowView(previewStep: .credentials)
         .environmentObject(SessionStore.previewSignedOut())
 }

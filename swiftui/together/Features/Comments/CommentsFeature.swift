@@ -17,7 +17,6 @@ struct CommentsView: View {
             } else if comments.isEmpty {
                 EmptyStateCard(
                     title: "No public notes yet",
-                    message: "Be the first to share an announcement or question for everyone.",
                     systemImage: "text.bubble"
                 )
             } else {
@@ -41,8 +40,6 @@ struct CommentsView: View {
 
             CardPanel {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Add a public note")
-                        .font(.headline)
                     TextField("Share an announcement or question", text: $composer, axis: .vertical)
                         .lineLimit(3 ... 6)
                         .textFieldStyle(.roundedBorder)

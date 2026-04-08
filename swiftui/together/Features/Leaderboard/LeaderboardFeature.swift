@@ -13,9 +13,6 @@ struct LeaderboardHomeView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Leaderboard")
                         .font(.title3.weight(.semibold))
-                    Text("Confirmed volunteer hours ranked across the current school dataset.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -24,7 +21,6 @@ struct LeaderboardHomeView: View {
             } else if entries.isEmpty {
                 EmptyStateCard(
                     title: "No rankings yet",
-                    message: "The leaderboard will populate when confirmed records exist.",
                     systemImage: "trophy"
                 )
             } else {
