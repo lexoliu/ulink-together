@@ -63,6 +63,7 @@ Do not casually reinterpret these criteria during implementation. If a criterion
 ## Working Rules For Future Agents
 
 - Build the client from `SPECS.md`, not from guesswork.
+- For JavaScript or TypeScript package tasks, use `bun` instead of `npm` unless the user explicitly requests otherwise.
 - Do not reference `app/` during implementation work. Treat it as dead exploratory code.
 - If historical behavior or prior product flow needs to be understood, use `/Users/lexoliu/Coding/old-ulink-together` as the reference repository instead.
 - Do not mention old products or exploratory client implementations in project-facing docs unless explicitly asked.

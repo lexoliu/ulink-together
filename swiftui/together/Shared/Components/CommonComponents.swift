@@ -195,6 +195,110 @@ struct LoadingCard: View {
     }
 }
 
+struct InsightMetricTile: View {
+    let eyebrow: String
+    let value: String
+    let detail: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(eyebrow)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+                .tracking(1.2)
+            Text(value)
+                .font(.title2.weight(.bold))
+                .foregroundStyle(.primary)
+            Text(detail)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, minHeight: 128, alignment: .topLeading)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.compactCardRadius, style: .continuous)
+                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: AppTheme.compactCardRadius, style: .continuous)
+                .strokeBorder(Color(uiColor: .separator).opacity(0.12), lineWidth: 1)
+        }
+    }
+}
+
+struct ComposedStateHighlight: Identifiable {
+    let title: String
+    let detail: String
+    let systemImage: String
+
+    var id: String {
+        title
+    }
+}
+
+struct ComposedStateCard: View {
+    let title: String
+    let message: String
+    let systemImage: String
+    var minHeight: CGFloat = 260
+    var highlights: [ComposedStateHighlight] = []
+
+    var body: some View {
+        CardPanel {
+            VStack(alignment: .leading, spacing: 22) {
+                HStack(alignment: .top, spacing: 18) {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(AppTheme.accentTint.opacity(0.12))
+                        .frame(width: 60, height: 60)
+                        .overlay {
+                            Image(systemName: systemImage)
+                                .font(.title2.weight(.semibold))
+                                .foregroundStyle(AppTheme.accentTint)
+                        }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(title)
+                            .font(.title2.weight(.bold))
+                        Text(message)
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                if !highlights.isEmpty {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 12)], spacing: 12) {
+                        ForEach(highlights) { highlight in
+                            VStack(alignment: .leading, spacing: 10) {
+                                Label(highlight.title, systemImage: highlight.systemImage)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                                Text(highlight.detail)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .padding(16)
+                            .frame(maxWidth: .infinity, minHeight: 108, alignment: .topLeading)
+                            .background(
+                                RoundedRectangle(cornerRadius: AppTheme.compactCardRadius, style: .continuous)
+                                    .fill(Color(uiColor: .systemBackground).opacity(0.58))
+                            )
+                            .overlay {
+                                RoundedRectangle(cornerRadius: AppTheme.compactCardRadius, style: .continuous)
+                                    .strokeBorder(Color(uiColor: .separator).opacity(0.10), lineWidth: 1)
+                            }
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .topLeading)
+        }
+    }
+}
+
 private struct AppCardSurface: ViewModifier {
     func body(content: Content) -> some View {
         content
@@ -274,6 +378,7 @@ struct RankingRow: View {
 struct ActivityCard: View {
     let activity: ActivitySummary
     let action: (() -> Void)?
+    var isSelected: Bool = false
 
     var body: some View {
         CardPanel {
@@ -333,6 +438,16 @@ struct ActivityCard: View {
                         .tint(activity.viewerParticipating ? .orange : AppTheme.accentTint)
                         .disabled(activity.viewerParticipating || activity.state != .needVolunteer)
                 }
+            }
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(isSelected ? AppTheme.accentTint : Color.clear, lineWidth: 2)
+        }
+        .background {
+            if isSelected {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(AppTheme.accentTint.opacity(0.08))
             }
         }
     }

@@ -62,12 +62,19 @@ struct FeedHomeView: View {
                     }
                     .listStyle(.plain)
                 } else {
-                    List(selection: $selectedActivityID) {
+                    List {
                         Section {
                             ForEach(filteredActivities) { activity in
-                                NavigationLink(value: activity.id) {
-                                    ActivityCard(activity: activity, action: nil)
+                                Button {
+                                    selectedActivityID = activity.id
+                                } label: {
+                                    ActivityCard(
+                                        activity: activity,
+                                        action: nil,
+                                        isSelected: selectedActivityID == activity.id
+                                    )
                                 }
+                                .buttonStyle(.plain)
                                 .listRowSeparator(.hidden)
                                 .listRowBackground(Color.clear)
                             }
@@ -92,12 +99,12 @@ struct FeedHomeView: View {
                     .background(.clear)
             }
         } detail: {
-            if let selectedActivityID {
+            if let resolvedSelectedActivityID {
                 NavigationStack {
-                    ActivityDetailView(activityID: selectedActivityID)
+                    ActivityDetailView(activityID: resolvedSelectedActivityID)
                 }
             } else {
-                ContentUnavailableView("Choose an Activity", systemImage: "rectangle.and.text.magnifyingglass", description: Text("Browse open opportunities and inspect the full activity plan here."))
+                FeedDetailPlaceholderView(filterTitle: filter.title, isLoading: isLoading)
                     .background(AppBackgroundView())
             }
         }
@@ -116,6 +123,10 @@ struct FeedHomeView: View {
         } message: {
             Text(errorMessage ?? "")
         }
+    }
+
+    private var resolvedSelectedActivityID: String? {
+        selectedActivityID ?? filteredActivities.first?.id ?? activities.first?.id
     }
 
     private var filteredActivities: [ActivitySummary] {
@@ -191,6 +202,60 @@ struct FeedHomeView: View {
         }
     }
 
+}
+
+private struct FeedDetailPlaceholderView: View {
+    let filterTitle: String
+    let isLoading: Bool
+
+    var body: some View {
+        PageWidthReader {
+            ComposedStateCard(
+                title: isLoading ? "Preparing your activity workspace" : "Choose an activity from the feed",
+                message: isLoading
+                    ? "We are syncing the latest opportunities so this pane can open with schedule, organiser, and participation details."
+                    : "Select any activity on the left to inspect the full plan, confirm the venue and timing, and decide whether to join.",
+                systemImage: isLoading ? "hourglass.circle" : "rectangle.and.text.magnifyingglass",
+                minHeight: 276,
+                highlights: [
+                    ComposedStateHighlight(
+                        title: "Current lens",
+                        detail: "The feed is focused on \(filterTitle.lowercased()) opportunities right now.",
+                        systemImage: "line.3.horizontal.decrease.circle"
+                    ),
+                    ComposedStateHighlight(
+                        title: "What opens here",
+                        detail: "Each detail view shows date, location, description, records, and organiser actions.",
+                        systemImage: "doc.text.magnifyingglass"
+                    ),
+                    ComposedStateHighlight(
+                        title: "Keep it fresh",
+                        detail: "Pull to refresh when organisers publish updates or confirm participation changes.",
+                        systemImage: "arrow.clockwise"
+                    ),
+                ]
+            )
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: 14)], spacing: 14) {
+                InsightMetricTile(
+                    eyebrow: "Browse",
+                    value: "Open plans",
+                    detail: "Activity cards on the left stay compact so the full briefing can breathe on the right."
+                )
+                InsightMetricTile(
+                    eyebrow: "Compare",
+                    value: "Dates + capacity",
+                    detail: "Review logistics before committing, then return here whenever the organiser updates the plan."
+                )
+                InsightMetricTile(
+                    eyebrow: "Track",
+                    value: "Your status",
+                    detail: "Pending approvals, joined events, and completed work remain visible through the feed filters."
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
 }
 
 struct ActivityDetailView: View {

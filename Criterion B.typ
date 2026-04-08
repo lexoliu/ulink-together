@@ -59,51 +59,29 @@
 == System Decomposition
 
 #figure(
-  diagram(
-    node-stroke: 0.8pt + navy,
-    node-fill: white,
-    node-inset: 5pt,
-    spacing: (16pt, 28pt),
-    edge-stroke: 0.7pt + luma(120),
+  mermaid(
+    "graph TD
+    Together --> Account
+    Together --> Activity
+    Together --> Participation
+    Together --> Communication
+    Together --> Administration
 
-    node((3, 0), text(weight: "bold", size: 8pt)[Together], corner-radius: 3pt, name: <root>),
+    Account --> Register
+    Account --> Login_Profile[\"Login / Profile\"]
 
-    node((0, 1.2), text(size: 7.5pt)[Account], corner-radius: 3pt, name: <acct>),
-    node((1.5, 1.2), text(size: 7.5pt)[Activity], corner-radius: 3pt, name: <activity>),
-    node((3, 1.2), text(size: 7.5pt)[Participation], corner-radius: 3pt, name: <participation>),
-    node((4.5, 1.2), text(size: 7.5pt)[Communication], corner-radius: 3pt, name: <communication>),
-    node((6, 1.2), text(size: 7.5pt)[Administration], corner-radius: 3pt, name: <admin>),
+    Activity --> Publish
+    Activity --> Browse_Detail[\"Browse / Detail\"]
 
-    edge(<root>, <acct>, "->"),
-    edge(<root>, <activity>, "->"),
-    edge(<root>, <participation>, "->"),
-    edge(<root>, <communication>, "->"),
-    edge(<root>, <admin>, "->"),
+    Participation --> Apply
+    Participation --> Confirm_Hours[\"Confirm Hours\"]
 
-    node((-0.3, 2.4), text(size: 6.5pt)[Register], corner-radius: 2pt),
-    node((0.5, 2.4), text(size: 6.5pt)[Login / Profile], corner-radius: 2pt),
-    edge(<acct>, (-0.3, 2.4), "->"),
-    edge(<acct>, (0.5, 2.4), "->"),
+    Communication --> Comments
+    Communication --> Channel
 
-    node((1.1, 2.4), text(size: 6.5pt)[Publish], corner-radius: 2pt),
-    node((1.9, 2.4), text(size: 6.5pt)[Browse / Detail], corner-radius: 2pt),
-    edge(<activity>, (1.1, 2.4), "->"),
-    edge(<activity>, (1.9, 2.4), "->"),
-
-    node((2.6, 2.4), text(size: 6.5pt)[Apply], corner-radius: 2pt),
-    node((3.4, 2.4), text(size: 6.5pt)[Confirm Hours], corner-radius: 2pt),
-    edge(<participation>, (2.6, 2.4), "->"),
-    edge(<participation>, (3.4, 2.4), "->"),
-
-    node((4.1, 2.4), text(size: 6.5pt)[Comments], corner-radius: 2pt),
-    node((4.9, 2.4), text(size: 6.5pt)[Channel], corner-radius: 2pt),
-    edge(<communication>, (4.1, 2.4), "->"),
-    edge(<communication>, (4.9, 2.4), "->"),
-
-    node((5.6, 2.4), text(size: 6.5pt)[Manage Users], corner-radius: 2pt),
-    node((6.4, 2.4), text(size: 6.5pt)[Exports], corner-radius: 2pt),
-    edge(<admin>, (5.6, 2.4), "->"),
-    edge(<admin>, (6.4, 2.4), "->"),
+    Administration --> Manage_Users[\"Manage Users\"]
+    Administration --> Exports
+"
   ),
   caption: [System decomposition diagram],
 )
@@ -112,7 +90,7 @@
 
 #figure(
   mermaid(
-    "flowchart LR\n    Volunteer[\"Volunteer / Organiser\\nSwiftUI iPad App\"]\n    Admin[\"Administrator\\nReact Admin Panel\"]\n    Server[\"Rust Server\\nAuthentication, permissions, activity lifecycle, messaging, export\"]\n    DB[(\"PostgreSQL / SQLite\\nusers, activities, records, channels, messages, exports\")]\n    Storage[\"File storage\\navatars and attachments\"]\n\n    Volunteer -->|\"HTTPS / JSON API\"| Server\n    Admin -->|\"HTTPS / JSON API\"| Server\n    Server -->|\"SQL queries / transactions\"| DB\n    Server -->|\"Read / write\"| Storage\n"
+    "flowchart LR\n    Volunteer[\"Volunteer / Organiser\\nSwiftUI iPad App\"]\n    Admin[\"Administrator\\nReact Admin Panel\"]\n    Server[\"Rust Server\\nAuthentication, permissions, activity lifecycle, messaging, export\"]\n    DB[(\"PostgreSQL\\nusers, activities, records, channels, messages, exports\")]\n    Storage[\"File storage\\navatars and attachments\"]\n\n    Volunteer -->|\"HTTPS / JSON API\"| Server\n    Admin -->|\"HTTPS / JSON API\"| Server\n    Server -->|\"SQL queries / transactions\"| DB\n    Server -->|\"Read / write\"| Storage\n"
   ),
   caption: [System architecture diagram],
 )
@@ -132,21 +110,117 @@
 
 = Database Design
 
-== Core Entities
+== Database Tables
+
+#let db-table-header(name, desc) = [
+  #v(0.6em)
+  *TABLE NAME:* #h(1em) #name \
+  *DESCRIPTION:* #h(1em) #desc
+  #v(0.2em)
+]
+
+#let field-header = table.header(
+  text(fill: white, weight: "bold", style: "italic")[FIELD NAME],
+  text(fill: white, weight: "bold", style: "italic")[DATA TYPE],
+  text(fill: white, weight: "bold", style: "italic")[DESCRIPTION],
+  text(fill: white, weight: "bold", style: "italic")[VALIDATION RULES],
+)
+
+#db-table-header("users", "Stores all registered volunteer, organiser, and administrator accounts")
 
 #table(
-  columns: (1fr, 1.2fr, 1.8fr),
-  table.header(
-    text(fill: white, weight: "bold")[Entity],
-    text(fill: white, weight: "bold")[Important fields],
-    text(fill: white, weight: "bold")[Purpose],
-  ),
-  [users], [`id`, `email`, `group_id`, `classname`], [Stores volunteer, organiser, and administrator identities.],
-  [activities], [`id`, `promoter_id`, `state`, `max_volunteer_num`], [Stores each volunteer opportunity and its lifecycle state.],
-  [records], [`activity_id`, `user_id`, `state`, `confirmed_minutes`], [Stores who applied, who completed the activity, and how many minutes were confirmed.],
-  [channels], [`id`, `activity_id`, `owner_id`], [Creates one communication space per activity where needed.],
-  [messages], [`channel_id`, `sender_id`, `content`], [Stores activity-scoped communication history.],
-  [export_batches / export_items], [`creator_id`, `target_format`, `confirmed_minutes`], [Stores report generation data for the school reporting workflow.],
+  columns: (1fr, 0.8fr, 1.8fr, 1.2fr),
+  field-header,
+  [id], [TEXT], [Unique identifier for the user], [Primary key (UUID)],
+  [email], [TEXT], [The user's school email address], [Unique; required],
+  [realname], [TEXT], [Full display name], [Required],
+  [gender], [TEXT], [Gender of the user], [-],
+  [description], [TEXT], [Short biography or personal statement], [-],
+  [classname], [TEXT], [Class or homeroom identifier], [Required],
+  [avatar_path], [TEXT], [File path to uploaded avatar image], [Nullable],
+  [password_hash], [TEXT], [Bcrypt hash of the account password], [Required],
+  [group_id], [TEXT], [Foreign key to the groups table], [Required; FK → groups.id],
+)
+
+#db-table-header("activities", "Stores each volunteer opportunity published by an organiser")
+
+#table(
+  columns: (1fr, 0.8fr, 1.8fr, 1.2fr),
+  field-header,
+  [id], [TEXT], [Unique identifier for the activity], [Primary key (UUID)],
+  [promoter_id], [TEXT], [The organiser who created this activity], [FK → users.id],
+  [name], [TEXT], [Title of the activity], [Required],
+  [location], [TEXT], [Where the activity takes place], [Required],
+  [state], [TEXT], [Current lifecycle state], [One of: need_volunteer, going, ended, canceled],
+  [volunteer_num], [INTEGER], [Number of volunteers currently signed up], [Default 0],
+  [max_volunteer_num], [INTEGER], [Maximum capacity for volunteers], [Nullable (unlimited if null)],
+  [date], [TEXT], [Scheduled date of the activity], [Nullable],
+  [brief_description], [TEXT], [Short summary shown in the feed], [Required],
+  [description], [TEXT], [Full details shown in the detail view], [Required],
+  [duration_minutes], [INTEGER], [Expected duration in minutes], [Required],
+)
+
+#db-table-header("records", "Tracks each volunteer's participation in an activity and confirmed hours")
+
+#table(
+  columns: (1fr, 0.8fr, 1.8fr, 1.2fr),
+  field-header,
+  [id], [TEXT], [Unique identifier for the record], [Primary key (UUID)],
+  [activity_id], [TEXT], [The activity this record belongs to], [FK → activities.id],
+  [user_id], [TEXT], [The volunteer who applied], [FK → users.id],
+  [state], [TEXT], [Current record state], [One of: todo, done, canceled],
+  [confirmed_minutes], [INTEGER], [Minutes confirmed by the organiser], [Default 0],
+  [confirmed_at], [TEXT], [Timestamp of confirmation], [Nullable],
+  [confirmed_by], [TEXT], [User who confirmed the hours], [Nullable; FK → users.id],
+  [updated_at], [TEXT], [Last modification timestamp], [Required],
+)
+
+#db-table-header("channels", "Communication rooms, each linked to one activity")
+
+#table(
+  columns: (1fr, 0.8fr, 1.8fr, 1.2fr),
+  field-header,
+  [id], [TEXT], [Unique identifier for the channel], [Primary key (UUID)],
+  [name], [TEXT], [Display name of the channel], [Required],
+  [owner_id], [TEXT], [The organiser who owns the channel], [FK → users.id],
+  [activity_id], [TEXT], [The activity this channel is linked to], [Nullable; FK → activities.id],
+  [created_at], [TEXT], [Creation timestamp], [Required],
+)
+
+#db-table-header("messages", "Individual messages sent within activity channels")
+
+#table(
+  columns: (1fr, 0.8fr, 1.8fr, 1.2fr),
+  field-header,
+  [id], [TEXT], [Unique identifier for the message], [Primary key (UUID)],
+  [channel_id], [TEXT], [The channel this message belongs to], [FK → channels.id],
+  [sender_id], [TEXT], [The user who sent this message], [FK → users.id],
+  [content], [TEXT], [Message body text], [Required],
+  [sent_at], [TEXT], [Timestamp when the message was sent], [Required],
+)
+
+#db-table-header("export_batches", "Tracks each batch export request for school reporting")
+
+#table(
+  columns: (1fr, 0.8fr, 1.8fr, 1.2fr),
+  field-header,
+  [id], [TEXT], [Unique identifier for the batch], [Primary key (UUID)],
+  [creator_id], [TEXT], [User who initiated the export], [FK → users.id],
+  [target_format], [TEXT], [Output format (e.g. CSV)], [Required],
+  [status], [TEXT], [Processing status], [Required],
+  [created_at], [TEXT], [Creation timestamp], [Required],
+)
+
+#db-table-header("export_items", "Individual rows within an export batch")
+
+#table(
+  columns: (1fr, 0.8fr, 1.8fr, 1.2fr),
+  field-header,
+  [id], [TEXT], [Unique identifier for the item], [Primary key (UUID)],
+  [batch_id], [TEXT], [The batch this item belongs to], [FK → export_batches.id],
+  [user_id], [TEXT], [The volunteer being reported], [FK → users.id],
+  [activity_id], [TEXT], [The activity being reported], [FK → activities.id],
+  [confirmed_minutes], [INTEGER], [Confirmed hours for this record], [Required],
 )
 
 == Entity-Relationship Diagram
@@ -187,14 +261,7 @@
   [Application control], [The join action is separated from organiser-only controls so that role-based actions stay clear on the interface.],
 )
 
-#figure(
-  mermaid(
-    "flowchart TD\n    Start([Apply request received]) --> Begin[\"Begin transaction\"]\n    Begin --> Exists{\"Activity exists?\"}\n    Exists -- No --> Missing[\"Reject: not found\"]\n    Exists -- Yes --> State{\"State = NeedVolunteer?\"}\n    State -- No --> Closed[\"Reject: not recruiting\"]\n    State -- Yes --> Capacity{\"Capacity available?\"}\n    Capacity -- No --> Full[\"Reject: activity full\"]\n    Capacity -- Yes --> Duplicate{\"Existing record for user?\"}\n    Duplicate -- Yes --> Joined[\"Reject: duplicate application\"]\n    Duplicate -- No --> Create[\"Insert record and increment volunteer count\"]\n    Create --> Sync[\"Sync activity channel membership\"]\n    Sync --> Commit[\"Commit transaction\"]\n    Commit --> Success([Application recorded])\n"
-  ),
-  caption: [Apply flowchart for the volunteer activity module],
-)
-
-== Activity Lifecycle Module
+== Activity Lifecycle
 
 #table(
   columns: (1fr, 2fr, 0.8fr),
@@ -211,68 +278,81 @@
 
 #figure(
   mermaid(
-    "stateDiagram-v2\n    [*] --> NeedVolunteer\n    NeedVolunteer --> Going: start\n    NeedVolunteer --> Canceled: cancel\n    Going --> Ended: end\n    Going --> Canceled: cancel\n    Ended --> [*]\n    Canceled --> [*]\n"
+    "stateDiagram-v2
+    [*] --> NeedVolunteer
+    NeedVolunteer --> Going: start
+    NeedVolunteer --> Canceled: cancel
+    Going --> Ended: end
+    Going --> Canceled: cancel
+    Ended --> [*]
+    Canceled --> [*]
+"
   ),
   caption: [Activity lifecycle state diagram],
 )
 
-== Access and Screen Navigation
+= Use Case Diagram
+
+The following UML use case diagram shows the three main actors and the functions each actor can access within the system.
 
 #figure(
   diagram(
-    spacing: (26pt, 16pt),
+    spacing: (32pt, 18pt),
     node-stroke: 0.8pt + navy,
     node-fill: white,
-    node-inset: 6pt,
-    edge-stroke: 0.7pt + luma(120),
+    node-inset: 8pt,
+    edge-stroke: 0.6pt + luma(140),
 
-    node((0, 1.4), text(weight: "bold", size: 8pt)[Volunteer], name: <volunteer>),
-    node((0, 3.2), text(weight: "bold", size: 8pt)[Organiser], name: <organiser>),
-    node((0, 5), text(weight: "bold", size: 8pt)[Administrator], name: <adminactor>),
+    // Actors (stick-figure placeholders on the left)
+    node((0, 1), text(weight: "bold", size: 8pt)[Volunteer], name: <volunteer>, shape: rect, corner-radius: 3pt),
+    node((0, 3.5), text(weight: "bold", size: 8pt)[Organiser], name: <organiser>, shape: rect, corner-radius: 3pt),
+    node((0, 6), text(weight: "bold", size: 8pt)[Administrator], name: <admin>, shape: rect, corner-radius: 3pt),
 
-    node((3, 0.6), text(size: 7pt)[Browse Activity Feed], shape: fletcher.shapes.ellipse, name: <feed>),
-    node((3, 1.8), text(size: 7pt)[View Activity Detail], shape: fletcher.shapes.ellipse, name: <detail>),
-    node((3, 3), text(size: 7pt)[Apply to Activity], shape: fletcher.shapes.ellipse, name: <apply>),
-    node((3, 4.2), text(size: 7pt)[View Personal Records], shape: fletcher.shapes.ellipse, name: <records>),
-    node((3, 5.4), text(size: 7pt)[Use Activity Channel], shape: fletcher.shapes.ellipse, name: <channel>),
-    node((6.2, 1.2), text(size: 7pt)[Create / Edit Activity], shape: fletcher.shapes.ellipse, name: <create>),
-    node((6.2, 2.6), text(size: 7pt)[Confirm Participation], shape: fletcher.shapes.ellipse, name: <confirm>),
-    node((6.2, 4), text(size: 7pt)[Manage Users / Groups], shape: fletcher.shapes.ellipse, name: <manage>),
-    node((6.2, 5.4), text(size: 7pt)[Generate Export], shape: fletcher.shapes.ellipse, name: <export>),
+    // Use cases (ellipses in the centre)
+    node((3.5, 0), text(size: 7pt)[Browse Activity Feed], shape: fletcher.shapes.ellipse, name: <feed>),
+    node((3.5, 1), text(size: 7pt)[View Activity Detail], shape: fletcher.shapes.ellipse, name: <detail>),
+    node((3.5, 2), text(size: 7pt)[Apply to Activity], shape: fletcher.shapes.ellipse, name: <apply>),
+    node((3.5, 3), text(size: 7pt)[View Personal Records], shape: fletcher.shapes.ellipse, name: <records>),
+    node((3.5, 4), text(size: 7pt)[Use Activity Channel], shape: fletcher.shapes.ellipse, name: <channel>),
+    node((3.5, 5), text(size: 7pt)[View Leaderboard], shape: fletcher.shapes.ellipse, name: <leaderboard>),
 
+    node((7, 1.5), text(size: 7pt)[Create / Edit Activity], shape: fletcher.shapes.ellipse, name: <create>),
+    node((7, 3), text(size: 7pt)[Confirm Participation], shape: fletcher.shapes.ellipse, name: <confirm>),
+
+    node((7, 4.5), text(size: 7pt)[Manage Users / Groups], shape: fletcher.shapes.ellipse, name: <manage>),
+    node((7, 6), text(size: 7pt)[Generate Export], shape: fletcher.shapes.ellipse, name: <export>),
+
+    // Volunteer associations
     edge(<volunteer>, <feed>, "--"),
     edge(<volunteer>, <detail>, "--"),
     edge(<volunteer>, <apply>, "--"),
     edge(<volunteer>, <records>, "--"),
     edge(<volunteer>, <channel>, "--"),
+    edge(<volunteer>, <leaderboard>, "--"),
 
+    // Organiser associations
     edge(<organiser>, <feed>, "--"),
     edge(<organiser>, <detail>, "--"),
     edge(<organiser>, <channel>, "--"),
     edge(<organiser>, <create>, "--"),
     edge(<organiser>, <confirm>, "--"),
+    edge(<organiser>, <leaderboard>, "--"),
 
-    edge(<adminactor>, <manage>, "--"),
-    edge(<adminactor>, <export>, "--"),
+    // Administrator associations
+    edge(<admin>, <manage>, "--"),
+    edge(<admin>, <export>, "--"),
+    edge(<admin>, <create>, "--"),
   ),
-  caption: [UML use case diagram for main actors and screens],
+  caption: [UML use case diagram mapping actors to system functions],
 )
 
 = User Interface Design
 
 == Student-side SwiftUI iPad Interface
 
-#grid(
-  columns: 2,
-  gutter: 14pt,
-  ui-image("design/assets/login-screen.png", [Student sign-in screen]),
-  ui-image("design/assets/register-screen.png", [Student registration screen]),
-  ui-image("design/assets/square-screen.png", [Student activity feed screen]),
-  ui-image("design/assets/detail-screen.png", [Student activity detail screen]),
-  ui-image("design/assets/records-screen.png", [Student participation records screen]),
-  ui-image("design/assets/messages-screen.png", [Student activity messaging screen]),
-  ui-image("design/assets/profile-screen.png", [Student account and profile screen]),
-  ui-image("design/assets/create-screen.png", [Organiser activity editor on iPad]),
+#figure(
+  image("design/assets/wireframe-student-annotated.svg", width: 100%),
+  caption: [Student-side annotated wireframe showing the planned feed and activity-detail workspace],
 )
 
 #table(
@@ -319,43 +399,99 @@
   [Operations and export], [Permission controls and export preparation are isolated from day-to-day student flows because they are sensitive, infrequent, and administrative.],
 )
 
+#figure(
+  image("design/assets/wireframe-admin-activity.svg", width: 100%),
+  caption: [Teacher/admin annotated wireframe for the activity management workspace],
+)
+
+#pagebreak()
+
+#figure(
+  image("design/assets/wireframe-admin-students.svg", width: 100%),
+  caption: [Teacher/admin annotated wireframe for the student management workspace],
+)
+
+#pagebreak()
+
+#figure(
+  image("design/assets/wireframe-admin-operations.svg", width: 100%),
+  caption: [Teacher/admin annotated wireframe for the operations and permissions workspace],
+)
+
+#pagebreak()
+
 = Test Plan
 
-The test plan is organised by success criterion. Each criterion includes at least valid and invalid testing, and a boundary test where the feature has a meaningful limit.
+The test plan is organised by success criterion from Criterion A. Each criterion includes valid and invalid test cases grouped together, with boundary tests where the feature has a meaningful limit.
+
+#let sc-header(num, name) = table.cell(colspan: 4, fill: rgb("#e8eef5"), text(weight: "bold", size: 9pt)[Success Criterion #num: #name])
 
 #table(
-  columns: (0.6fr, 1.4fr, 0.9fr, 1.3fr, 1.4fr),
+  columns: (0.7fr, 1.3fr, 1.6fr, 1.6fr),
   table.header(
-    text(fill: white, weight: "bold")[SC],
-    text(fill: white, weight: "bold")[Feature],
     text(fill: white, weight: "bold")[Test type],
-    text(fill: white, weight: "bold")[Planned test case],
+    text(fill: white, weight: "bold")[Aspect],
+    text(fill: white, weight: "bold")[Test case],
     text(fill: white, weight: "bold")[Expected result],
   ),
-  [1], [Registration], [Valid], [Submit a new account with school email, password, name, class, and avatar.], [Account is created and can log in successfully.],
-  [1], [Registration], [Invalid], [Submit with duplicate school email or missing required fields.], [The form rejects the request with field-specific validation feedback.],
-  [2], [Role-based access], [Valid], [Log in as volunteer, organiser, and administrator.], [Each user only sees the screens and actions allowed by the assigned role.],
-  [2], [Role-based access], [Invalid], [Attempt organiser/admin actions with a volunteer account.], [Restricted action is denied and does not change server data.],
-  [3], [Publish activity], [Valid], [Create an activity with complete title, date, location, duration, and capacity.], [The activity appears correctly in the feed and detail view.],
-  [3], [Publish activity], [Invalid], [Submit the create form with missing required values.], [The form highlights missing values and prevents submission.],
-  [4], [Edit / cancel activity], [Valid], [Update an existing activity and cancel another one.], [Changes propagate to the interface and canceled activities no longer allow new applications.],
-  [4], [Edit / cancel activity], [Invalid], [Attempt to manage an activity without organiser rights.], [The request is rejected and the activity remains unchanged.],
-  [5], [Apply with capacity protection], [Valid], [Apply to an open activity with places remaining.], [One participation record is created and the volunteer count increases once.],
-  [5], [Apply with capacity protection], [Invalid], [Apply to a full activity or apply twice to the same activity.], [The request is rejected with no duplicate participation record.],
-  [5], [Apply with capacity protection], [Boundary], [Two users apply at the same time for the final remaining place.], [Only one application succeeds and capacity is not exceeded.],
-  [6], [Activity channel], [Valid], [A member sends and reloads a message in the activity channel.], [The message persists and is visible to channel members.],
-  [6], [Activity channel], [Invalid], [A non-member attempts to read or send messages.], [The request is rejected and no new message is stored.],
-  [7], [Participation confirmation], [Valid], [Organiser confirms participation minutes after an activity ends.], [The record moves to the completed state and stores the confirmed minutes.],
-  [7], [Participation confirmation], [Invalid], [Attempt to confirm participation before the activity is finished or with the wrong role.], [The system blocks the confirmation.],
-  [8], [Leaderboard], [Valid], [Open the leaderboard after several completed records exist.], [Users are ranked by confirmed participation minutes.],
-  [8], [Leaderboard], [Invalid], [Check whether unconfirmed records affect ranking totals.], [Unconfirmed participation does not change rankings.],
-  [8], [Leaderboard], [Boundary], [Give two volunteers equal confirmed totals.], [Tie ordering remains stable and predictable.],
-  [9], [Export], [Valid], [Generate a batch for confirmed records.], [The exported file contains the required fields for school reporting.],
-  [9], [Export], [Invalid], [Generate an export when the user lacks permission or records are incomplete.], [The request is blocked or incomplete records are excluded.],
-  [10], [iPad layout], [Valid], [Run the app on iPad in portrait and landscape.], [Core screens remain usable with visible controls and readable content.],
-  [10], [iPad layout], [Invalid], [Open screens with very long titles or long message history.], [The interface scrolls or truncates safely instead of breaking the layout.],
-  [10], [iPad layout], [Boundary], [Rotate the device during input and navigation.], [The current screen remains stable and interactive.],
-  [Testing evidence], [Backend unit tests], [Ongoing], [Extend unit tests around participation records, ranking, export logic, and other server-side business rules.], [Server-side validation and rule enforcement are checked automatically.],
-  [Testing evidence], [SwiftUI XCUITest], [Ongoing], [Extend UI automation for login, feed navigation, activity detail, and records flows on iPad.], [Main student-side iPad journeys are repeatedly verified through interface-level tests.],
-  [Testing evidence], [Teacher/admin web verification], [Ongoing], [Use browser-based checks on dashboard, activity management, student management, operations, and export workflows.], [Teacher/admin web workflows are verified alongside the mobile app rather than omitted from the evidence set.],
+
+  sc-header("1", "Account Registration"),
+  [Valid], [Complete registration], [Submit a new account with school email, password, name, class, and avatar.], [Account is created and can log in successfully.],
+  [Invalid], [Duplicate email], [Submit with a school email that is already registered.], [The server rejects the request and reports the duplicate.],
+  [Invalid], [Missing fields], [Submit with one or more required fields left empty.], [The form rejects the request with field-specific validation feedback.],
+
+  sc-header("2", "Authority-Based Access Control"),
+  [Valid], [Authority distinction], [Log in as volunteer, organiser, and administrator in turn.], [Each user only sees the screens and actions allowed by their assigned authority group.],
+  [Invalid], [Privilege escalation], [Attempt organiser or admin actions with a volunteer account.], [The restricted action is denied and does not change server data.],
+
+  sc-header("3", "Task Publication"),
+  [Valid], [Create activity], [Create an activity with complete title, date, location, duration, and capacity.], [The activity appears correctly in the feed and detail view.],
+  [Invalid], [Missing required values], [Submit the create form with missing required fields.], [The form highlights missing values and prevents submission.],
+  [Boundary], [Maximum title length], [Enter a title at the maximum allowed character length.], [The title is stored and displayed without truncation or error.],
+
+  sc-header("4", "Task Management"),
+  [Valid], [Edit and cancel], [Update an existing activity and cancel another one.], [Changes propagate to the interface and canceled activities no longer accept applications.],
+  [Invalid], [Unauthorised management], [Attempt to edit or cancel an activity without organiser rights.], [The request is rejected and the activity remains unchanged.],
+
+  sc-header("5", "Apply with Capacity Protection"),
+  [Valid], [Normal application], [Apply to an open activity with places remaining.], [One participation record is created and the volunteer count increases by one.],
+  [Invalid], [Duplicate application], [Apply twice to the same activity.], [The second request is rejected; no duplicate record is created.],
+  [Invalid], [Full activity], [Apply to an activity that has already reached its capacity.], [The request is rejected with a capacity-full error.],
+  [Boundary], [Concurrent last place], [Two users apply simultaneously for the final remaining place.], [Only one application succeeds; capacity is not exceeded.],
+
+  sc-header("6", "Communication"),
+  [Valid], [Send message], [A channel member sends and reloads a message in the activity channel.], [The message persists and is visible to all channel members.],
+  [Invalid], [Non-member access], [A non-member attempts to read or send messages in a channel.], [The request is rejected and no new message is stored.],
+
+  sc-header("7", "Hour Tracking"),
+  [Valid], [Confirm hours], [Organiser confirms participation minutes after an activity ends.], [The record moves to the completed state and stores the confirmed minutes.],
+  [Invalid], [Premature confirmation], [Attempt to confirm participation before the activity has ended.], [The system blocks the confirmation.],
+  [Invalid], [Wrong role], [A volunteer attempts to confirm hours for another user.], [The request is rejected.],
+
+  sc-header("8", "Leaderboard"),
+  [Valid], [Ranking display], [Open the leaderboard after several completed records exist.], [Users are ranked by confirmed participation minutes in descending order.],
+  [Invalid], [Unconfirmed hours], [Check whether unconfirmed records affect ranking totals.], [Unconfirmed participation does not change rankings.],
+  [Boundary], [Tied totals], [Give two volunteers equal confirmed totals.], [Tie ordering remains stable and predictable.],
+
+  sc-header("9", "Export"),
+  [Valid], [Generate export], [Generate a batch export for confirmed records.], [The exported file contains the required fields for school reporting.],
+  [Invalid], [Permission denied], [Generate an export without the required authority.], [The request is blocked.],
+
+  sc-header("10", "Platform Compatibility"),
+  [Valid], [iPad orientations], [Run the app on iPad in portrait and landscape.], [Core screens remain usable with visible controls and readable content.],
+  [Invalid], [Extreme content], [Open screens with very long titles or very long message history.], [The interface scrolls or truncates safely instead of breaking layout.],
+  [Boundary], [Mid-action rotation], [Rotate the device during text input and navigation.], [The current screen remains stable and interactive.],
+)
+
+=== Testing Evidence Streams
+
+#table(
+  columns: (1fr, 2fr),
+  table.header(
+    text(fill: white, weight: "bold")[Evidence stream],
+    text(fill: white, weight: "bold")[Coverage],
+  ),
+  [Backend unit tests], [Participation records, ranking logic, export generation, and server-side validation rules are checked automatically.],
+  [SwiftUI XCUITest], [Login, feed navigation, activity detail, and records flows are verified through UI automation on iPad.],
+  [Teacher/admin web verification], [Dashboard, activity management, student management, operations, and export workflows are verified through browser-based checks.],
 )

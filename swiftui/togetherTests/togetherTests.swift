@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import XCTest
 @testable import together
 
 struct togetherTests {
@@ -265,5 +266,36 @@ struct togetherTests {
         let data = try JSONEncoder().encode(value)
         let object = try JSONSerialization.jsonObject(with: data)
         return try #require(object as? [String: Any])
+    }
+}
+
+final class StudentAppXCTests: XCTestCase {
+    func testVolunteerFixtureProvidesFeedDetailContent() {
+        let demoData = AppDemoData.volunteer()
+
+        XCTAssertEqual(demoData.feedActivities.count, 2)
+        XCTAssertEqual(demoData.feedActivities.first?.id, AppDemoData.primaryActivityID)
+        XCTAssertEqual(demoData.activityDetails[AppDemoData.primaryActivityID]?.name, "Library Reading Drive")
+        XCTAssertEqual(demoData.commentsByActivity[AppDemoData.primaryActivityID]?.count, 2)
+        XCTAssertEqual(demoData.channelsByActivity[AppDemoData.primaryActivityID]?.id, AppDemoData.channelID)
+        XCTAssertEqual(demoData.messagesByChannel[AppDemoData.channelID]?.count, 2)
+    }
+
+    func testRecordsOverviewSummarizesVolunteerFixture() {
+        let demoData = AppDemoData.volunteer()
+        let overview = RecordsOverview(records: demoData.userRecords)
+
+        XCTAssertEqual(overview.pendingCount, 1)
+        XCTAssertEqual(overview.approvedCount, 0)
+        XCTAssertEqual(overview.confirmedCount, 1)
+        XCTAssertEqual(overview.completedMinutes, 120)
+    }
+
+    func testVolunteerFixtureRecordHistorySupportsStudentRecordsScreen() {
+        let demoData = AppDemoData.volunteer()
+
+        XCTAssertEqual(demoData.userRecords.map(\.activityName), ["Library Reading Drive", "River Cleanup"])
+        XCTAssertEqual(demoData.userRecords.map(\.state), [.pendingApproval, .confirmed])
+        XCTAssertEqual(DisplayText.hours(minutes: demoData.userRecords.last?.confirmedMinutes ?? 0), "2.0 hrs")
     }
 }

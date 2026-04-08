@@ -125,18 +125,18 @@ struct AuthFlowView: View {
 
     private var guidancePanel: some View {
         CardPanel {
-            VStack(alignment: .leading, spacing: 24) {
-                VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 8) {
                     Text("For Students")
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .textCase(.uppercase)
 
-                    Text("Sign in with your school account")
-                        .font(.system(size: 34, weight: .bold))
+                    Text("School volunteer access")
+                        .font(.system(size: 30, weight: .bold))
                         .foregroundStyle(.primary)
 
-                    Text("Join activities and check confirmed service hours in one place.")
+                    Text("Sign in, join activities, and track confirmed hours.")
                         .font(.body)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -144,21 +144,16 @@ struct AuthFlowView: View {
 
                 Divider()
 
-                VStack(spacing: 16) {
+                VStack(spacing: 12) {
                     AuthGuidanceRow(
                         systemImage: "envelope",
                         title: "School email",
-                        detail: "Use the email address provided by your school."
+                        detail: "Use your school account."
                     )
                     AuthGuidanceRow(
                         systemImage: "link",
                         title: "Service address",
-                        detail: "Enter the address your teacher or school office gave you."
-                    )
-                    AuthGuidanceRow(
-                        systemImage: "arrow.trianglehead.clockwise",
-                        title: "Change it later",
-                        detail: "You can update the address again from Account if it changes."
+                        detail: "Enter the address from school."
                     )
                 }
             }
@@ -621,21 +616,21 @@ private struct AuthGuidanceRow: View {
     let detail: String
 
     var body: some View {
-        HStack(alignment: .top, spacing: 14) {
+        HStack(alignment: .center, spacing: 12) {
             Image(systemName: systemImage)
                 .font(.body.weight(.semibold))
                 .foregroundStyle(AppTheme.accentTint)
-                .frame(width: 34, height: 34)
+                .frame(width: 32, height: 32)
                 .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .fill(Color(uiColor: .systemBackground))
                 )
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.headline)
                 Text(detail)
-                    .font(.subheadline)
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }

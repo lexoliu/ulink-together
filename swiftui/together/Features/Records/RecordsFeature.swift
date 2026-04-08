@@ -1,5 +1,23 @@
 import SwiftUI
 
+struct RecordsOverview: Equatable {
+    let pendingCount: Int
+    let approvedCount: Int
+    let confirmedCount: Int
+    let completedMinutes: Int
+
+    init(records: [RecordEntry]) {
+        pendingCount = records.filter { $0.state == .pendingApproval }.count
+        approvedCount = records.filter { $0.state == .approved }.count
+        confirmedCount = records.filter { $0.state == .confirmed }.count
+        completedMinutes = records
+            .filter { $0.state == .confirmed }
+            .reduce(into: 0) { partialResult, record in
+                partialResult += record.confirmedMinutes
+            }
+    }
+}
+
 private enum RecordsFilter: String, CaseIterable, Identifiable {
     case all
     case pendingApproval
@@ -38,6 +56,7 @@ struct RecordsHomeView: View {
     var body: some View {
         PageWidthReader {
             summaryCard
+            statusOverview
 
             Picker("Filter", selection: $filter) {
                 ForEach(RecordsFilter.allCases) { item in
@@ -47,12 +66,52 @@ struct RecordsHomeView: View {
             .pickerStyle(.segmented)
 
             if isLoading {
-                LoadingCard(title: "Loading participation records")
+                ComposedStateCard(
+                    title: "Loading participation records",
+                    message: "We are collecting organiser decisions and confirmed hours so your record book stays current.",
+                    systemImage: "clock.badge.checkmark",
+                    minHeight: 260,
+                    highlights: [
+                        ComposedStateHighlight(
+                            title: "Pending review",
+                            detail: "Fresh submissions appear here before organisers approve or cancel them.",
+                            systemImage: "hourglass"
+                        ),
+                        ComposedStateHighlight(
+                            title: "Approved hours",
+                            detail: "Approved entries remain visible until the final confirmed minutes arrive.",
+                            systemImage: "checkmark.circle"
+                        ),
+                        ComposedStateHighlight(
+                            title: "Export-ready history",
+                            detail: "Confirmed time feeds the official hour export used by organisers.",
+                            systemImage: "doc.badge.clock"
+                        ),
+                    ]
+                )
             } else if filteredRecords.isEmpty {
-                EmptyStateCard(
+                ComposedStateCard(
                     title: "No records yet",
-                    message: "Your pending, approved, and confirmed volunteer work will appear here.",
-                    systemImage: "clock.badge.questionmark"
+                    message: "Your pending, approved, and confirmed volunteer work will collect here once you begin joining activities.",
+                    systemImage: "clock.badge.questionmark",
+                    minHeight: 248,
+                    highlights: [
+                        ComposedStateHighlight(
+                            title: "Join an activity",
+                            detail: "Open the feed and apply for a live opportunity to start your record trail.",
+                            systemImage: "person.crop.circle.badge.plus"
+                        ),
+                        ComposedStateHighlight(
+                            title: "Watch approval progress",
+                            detail: "Organiser review moves records from pending to approved and then confirmed.",
+                            systemImage: "list.clipboard"
+                        ),
+                        ComposedStateHighlight(
+                            title: "Build your total",
+                            detail: "Confirmed minutes accumulate into the hour total used on school reports.",
+                            systemImage: "chart.bar"
+                        ),
+                    ]
                 )
             } else {
                 ForEach(filteredRecords) { record in
@@ -113,23 +172,53 @@ struct RecordsHomeView: View {
         }
     }
 
-    private var summaryCard: some View {
-        let completedMinutes = records
-            .filter { $0.state == .confirmed }
-            .reduce(into: 0) { partialResult, record in
-                partialResult += record.confirmedMinutes
-            }
+    private var overview: RecordsOverview {
+        RecordsOverview(records: records)
+    }
 
+    private var summaryCard: some View {
         return CardPanel {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Volunteer Hours")
-                    .font(.headline)
-                Text(DisplayText.hours(minutes: completedMinutes))
-                    .font(.system(.largeTitle, design: .rounded).weight(.bold))
-                Text("Confirmed school-report time across all completed activities.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+            HStack(alignment: .top, spacing: 18) {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(AppTheme.accentTint.opacity(0.12))
+                    .frame(width: 58, height: 58)
+                    .overlay {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.title2.weight(.semibold))
+                            .foregroundStyle(AppTheme.accentTint)
+                    }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Volunteer Hours")
+                        .font(.headline)
+                    Text(DisplayText.hours(minutes: overview.completedMinutes))
+                        .font(.system(.largeTitle, design: .rounded).weight(.bold))
+                    Text("Confirmed school-report time across all completed activities.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
             }
+        }
+    }
+
+    private var statusOverview: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 14)], spacing: 14) {
+            InsightMetricTile(
+                eyebrow: "Pending",
+                value: "\(overview.pendingCount)",
+                detail: "Waiting for organiser approval."
+            )
+            InsightMetricTile(
+                eyebrow: "Approved",
+                value: "\(overview.approvedCount)",
+                detail: "Accepted and awaiting final confirmation."
+            )
+            InsightMetricTile(
+                eyebrow: "Confirmed",
+                value: "\(overview.confirmedCount)",
+                detail: "Already counted toward official hours."
+            )
         }
     }
 
