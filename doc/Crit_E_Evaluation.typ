@@ -24,9 +24,11 @@
 
 #v(1em)
 
-#emph[NOTE: Please refer to Appendix 2 (Feedback) for the transcript of the client's full impression --- comments, evaluations, and remarks --- of the final product.]
+#emph[NOTE: Please refer to Appendix 2 (Feedback) for the full transcript of the client's evaluation of the final product. Each success criterion below is assessed based on the client's remarks during that interview.]
 
 = Evaluation Against Success Criteria
+
+#let partial-amber = rgb("#e65100")
 
 #table(
   columns: (2.6fr, 2.8fr, 0.8fr),
@@ -44,105 +46,99 @@
     [#text(weight: "bold", fill: white)[STATUS]],
   ),
   [[1] Registration with school email, name, class, and avatar; passwords stored using bcrypt hashing.],
-  [Registration worked with all required fields and avatar upload. Database inspection confirmed passwords were stored as bcrypt hashes, not plaintext.],
-  [#text(fill: success-green, weight: "bold")[✓]],
+  [Registration worked with all required fields and avatar upload. Database inspection confirmed passwords were stored as bcrypt hashes, not plaintext.
 
-  [#image("assets/auth-preview-compact.png", width: 100%)],
-  [#image("assets/auth-preview-compact.png", width: 100%)],
-  [#image("assets/auth-preview-compact.png", width: 100%)],
+  #emph[(Appendix 2, Q4: "The password is stored securely as a hash rather than as the original text.")]],
+  [#text(fill: success-green, weight: "bold")[✓]],
 
   [[2] Authority-based access control distinguishes volunteers from organisers and administrators, so volunteers browse and apply, organisers create, manage, approve, and confirm activities, and administrators manage users, groups, and permissions through the web panel.],
-  [Each access level showed distinct interfaces: students could only browse and apply, organisers could publish and confirm, and administrators could manage users and permissions through the web panel.],
-  [#text(fill: success-green, weight: "bold")[✓]],
+  [Each access level showed distinct interfaces: students could only browse and apply, organisers could publish and confirm, and administrators could manage users and permissions through the web panel.
 
-  [#image("assets/manage-preview.png", width: 100%)],
-  [#image("assets/manage-preview.png", width: 100%)],
-  [#image("assets/manage-preview.png", width: 100%)],
+  #emph[(Appendix 2, Q4: "The account roles clearly separate what students can do from what organisers can do.")]],
+  [#text(fill: success-green, weight: "bold")[✓]],
 
   [[3] Organisers can publish activities with a title, date, location, capacity, duration, and description, and published activities appear in the volunteer feed.],
-  [A test activity published with all required fields appeared immediately in the volunteer feed with correct details.],
-  [#text(fill: success-green, weight: "bold")[✓]],
+  [A test activity published with all required fields appeared immediately in the volunteer feed with correct details.
 
-  [#image("assets/ipad-feed-landscape-final.png", width: 100%)],
-  [#image("assets/ipad-feed-landscape-final.png", width: 100%)],
-  [#image("assets/ipad-feed-landscape-final.png", width: 100%)],
+  #emph[(Appendix 2, Q4: "When creating activities, all of the information I said I needed is present in the form.")]],
+  [#text(fill: success-green, weight: "bold")[✓]],
 
   [[4] Organisers can edit or cancel published activities, with changes propagated to all affected volunteers.],
-  [Editing location and time propagated correctly to enrolled volunteers. Cancellation updated the activity status consistently.],
-  [#text(fill: success-green, weight: "bold")[✓]],
+  [Editing location and time propagated correctly to enrolled volunteers. Cancellation updated the activity status consistently.
 
-  [#image("assets/admin-activities-viewport.png", width: 100%)],
-  [#image("assets/admin-activities-viewport.png", width: 100%)],
-  [#image("assets/admin-activities-viewport.png", width: 100%)],
+  #emph[(Appendix 2, Q4: "When I edited an activity, the updated details were reflected correctly.")]],
+  [#text(fill: success-green, weight: "bold")[✓]],
 
   [[5] Volunteers can apply to activities, organisers approve or reject applications, and server-enforced capacity protection prevents overbooking under concurrent access.],
-  [Application and approval worked as expected; full-capacity activities rejected further requests. Concurrent testing was limited to a small number of simultaneous requests, so capacity safety under heavy load has not been fully stress-tested.],
-  [#text(fill: success-green, weight: "bold")[✓]],
+  [Application and approval worked as expected; full-capacity activities rejected further requests. Concurrent testing was limited to a small number of simultaneous requests, so capacity safety under heavy load has not been fully stress-tested.
 
-  [#image("assets/admin-activities-viewport.png", width: 100%)],
-  [#image("assets/admin-activities-viewport.png", width: 100%)],
-  [#image("assets/admin-activities-viewport.png", width: 100%)],
+  #emph[(Appendix 2, Q2: "I like that I can set a capacity limit and the system enforces it automatically --- this solves the overbooking problem we had with the spreadsheet.")]],
+  [#text(fill: success-green, weight: "bold")[✓]],
 
   [[6] Each activity has a scoped messaging channel where participants and the organiser can coordinate.],
-  [Each activity had its own message thread, keeping logistics separate. However, there are no push notifications for new messages yet, so users must open the channel manually.],
-  [#text(fill: success-green, weight: "bold")[✓]],
+  [Each activity had its own message thread, keeping logistics separate. However, there are no push notifications for new messages yet, so users must open the channel manually.
 
-  [#image("assets/ipad-feed-landscape-final.png", width: 100%)],
-  [#image("assets/ipad-feed-landscape-final.png", width: 100%)],
-  [#image("assets/ipad-feed-landscape-final.png", width: 100%)],
+  #emph[(Appendix 2, Q2: "Having a dedicated channel for each activity is excellent. Previously, coordination messages were scattered across personal WeChat chats.")]],
+  [#text(fill: success-green, weight: "bold")[✓]],
 
   [[7] Organisers can confirm volunteer participation after an activity completes, converting participation records to completed status.],
-  [After an activity ended, the organiser confirmed attendees and their records moved to completed status with the correct duration stored.],
-  [#text(fill: success-green, weight: "bold")[✓]],
+  [After an activity ended, the organiser confirmed attendees and their records moved to completed status with the correct duration stored.
 
-  [#image("assets/records-preview.png", width: 100%)],
-  [#image("assets/records-preview.png", width: 100%)],
-  [#image("assets/records-preview.png", width: 100%)],
+  #emph[(Appendix 2, Q2: "I can confirm participation directly in the app after an activity ends, and the hours are immediately reflected in the leaderboard.")]],
+  [#text(fill: success-green, weight: "bold")[✓]],
 
   [[8] A leaderboard ranks volunteers by total confirmed hours, computed from participation records rather than stored totals.],
-  [The leaderboard ranking updated correctly as new hours were confirmed, reflecting actual participation records rather than a manually maintained total.],
-  [#text(fill: success-green, weight: "bold")[✓]],
+  [The leaderboard ranking updated correctly as new hours were confirmed, reflecting actual participation records rather than a manually maintained total.
 
-  [#image("assets/ipad-feed-landscape-final.png", width: 100%)],
-  [#image("assets/ipad-feed-landscape-final.png", width: 100%)],
-  [#image("assets/ipad-feed-landscape-final.png", width: 100%)],
+  #emph[(Appendix 2, Q4: "Their hours were counted in the leaderboard.")]],
+  [#text(fill: success-green, weight: "bold")[✓]],
 
   [[9] The system provides a configurable export that generates confirmed-hours data in a format compatible with the school's ISMAS import workflow.],
-  [The export produced a file matching the ISMAS column structure, replacing the manual copy-paste process.],
-  [#text(fill: success-green, weight: "bold")[✓]],
+  [The export produced a file matching the ISMAS column structure, replacing the manual copy-paste process.
 
-  [#image("assets/admin-operations-viewport.png", width: 100%)],
-  [#image("assets/admin-operations-viewport.png", width: 100%)],
-  [#image("assets/admin-operations-viewport.png", width: 100%)],
+  #emph[(Appendix 2, Q2: "The CSV export for ISMAS is exactly what I needed. No more copying values from a spreadsheet into a template.")]],
+  [#text(fill: success-green, weight: "bold")[✓]],
 
   [[10] The application runs on iPad with iPadOS 17+ in both portrait and landscape orientations, with no layout breakage or blocked controls.],
-  [Both orientations were usable with no hidden controls. Portrait mode required more scrolling due to lower information density; the app is clearly optimised for landscape.],
-  [#text(fill: success-green, weight: "bold")[✓]],
+  [Landscape mode worked well with no layout issues. However, portrait mode required noticeably more scrolling due to lower information density, and some management screens felt cramped. The app is clearly optimised for landscape use, and a student using the iPad upright between classes would have a less efficient experience.
 
-  [#image("assets/auth-preview-compact.png", width: 100%)],
-  [#image("assets/auth-preview-compact.png", width: 100%)],
-  [#image("assets/auth-preview-compact.png", width: 100%)],
+  #emph[(Appendix 2, Q3: "iPad support in both orientations --- partially confirmed; landscape is good but portrait mode needs more scrolling and feels less polished.") \ (Appendix 2, Q4: "The interface worked properly when the iPad orientation changed ... although portrait is less comfortable for management tasks.")]],
+  [#text(fill: partial-amber, weight: "bold")[~]],
 )
 
 = Recommendations for Future Improvements
 
-#emph[NOTE: Please refer to Q6 of Appendix 2 (Feedback) for further information on the client's suggestions.]
+#emph[NOTE: The following recommendations are drawn from the client's suggestions during the final evaluation interview (Appendix 2, Q6).]
 
 1. #text(weight: "bold")[Automated activity reminders]
 
 Adding reminder notifications before an activity starts would reduce the risk of students forgetting events they have already joined. The system already stores activity dates and participant records, so this extension is technically straightforward.
 
+#emph[(Appendix 2, Q6: "It would be helpful if the system could automatically remind students about upcoming activities ... some students forget even after being approved.")]
+
 2. #text(weight: "bold")[Volunteer hour targets and progress tracking]
 
 The system records confirmed hours but does not compare them against graduation or department targets. Configurable hour goals per student or year group would turn the records screen into a progress tracker and help staff identify students falling behind.
+
+#emph[(Appendix 2, Q6: "If each student could see how many hours they still need to complete for the graduation requirement, that would be very motivating.")]
 
 3. #text(weight: "bold")[Multi-language support]
 
 The interface is currently in one language. Since the school includes English-speaking and Chinese-speaking users, adding localisation would improve accessibility. The existing component structure supports connecting a string-localisation layer without redesign.
 
+#emph[(Appendix 2, Q6: "Our school has both Chinese and English speaking students. Having the interface available in both languages would help.")]
+
 4. #text(weight: "bold")[School calendar integration]
 
 Integrating with the school calendar would reduce timetable clashes and surface activities in students' normal planning workflow, building directly on the existing activity date model.
+
+#emph[(Appendix 2, Q6: "If the activity dates could sync with the school calendar, it would help avoid scheduling conflicts with exams or school events.")]
+
+5. #text(weight: "bold")[Portrait-mode optimisation]
+
+The current layout works best in landscape. Improving information density in portrait mode --- for example, by using compact list styles and collapsible sections --- would make the app more comfortable for students who hold the iPad upright between classes.
+
+#emph[(Appendix 2, Q3/Q4: The client noted portrait mode requires more scrolling and is less polished than landscape.)]
 
 #block(fill: rgb("#1d5d99"), inset: 8pt, width: 32%)[
   #text(fill: white)[Word Count: #total-words]

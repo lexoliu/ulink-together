@@ -61,11 +61,11 @@ The following transcript records the final meeting with the client, the deputy h
 + Participation confirmation to completed status --- confirmed ☑
 + Leaderboard based on confirmed volunteer hours --- confirmed ☑
 + ISMAS-compatible export --- confirmed ☑
-+ iPad support in both portrait and landscape orientations --- confirmed ☑
++ iPad support in both orientations --- partially confirmed; landscape is good but portrait mode needs more scrolling and feels less polished ◐
 
 #text(style: "italic", weight: "bold")[Q4] - Can you explain the rationale behind your decisions?
 
-#text(weight: "bold")[Client:] Yes. I can see evidence for each of the criteria in the system itself. The password is stored securely as a hash rather than as the original text. The account roles clearly separate what students can do from what organisers can do. When creating activities, all of the information I said I needed is present in the form. When I edited an activity, the updated details were reflected correctly. When I tried to approve more volunteers than the stated capacity, the system prevented it. The activity chat is separated by event, which keeps communication relevant. After confirming attendance, the volunteer's record changed appropriately and their hours were counted in the leaderboard. The export file also matches the structure I need for ISMAS. Finally, the interface worked properly when the iPad orientation changed, so it is practical for real use on school devices.
+#text(weight: "bold")[Client:] Yes. I can see evidence for each of the criteria in the system itself. The password is stored securely as a hash rather than as the original text. The account roles clearly separate what students can do from what organisers can do. When creating activities, all of the information I said I needed is present in the form. When I edited an activity, the updated details were reflected correctly. When I tried to approve more volunteers than the stated capacity, the system prevented it. The activity chat is separated by event, which keeps communication relevant. After confirming attendance, the volunteer's record changed appropriately and their hours were counted in the leaderboard. The export file also matches the structure I need for ISMAS. Finally, the interface worked properly when the iPad orientation changed, although portrait is less comfortable for management tasks --- the information density drops and I found myself scrolling more. Landscape is clearly the better experience, and for real classroom use on school devices I would probably tell students to keep it in landscape.
 
 #text(style: "italic", weight: "bold")[Q5] - With this developed system, do you feel that it can aid and improve the efficiency of your work?
 

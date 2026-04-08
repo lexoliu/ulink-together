@@ -61,7 +61,7 @@
   [28], [Build the student-side SwiftUI records, notifications, messaging, leaderboard, and account screens], [Complete the main volunteer journey and personal-management workflows.], [7 hours], [15 Jan 2026], [C],
   [29], [Build the organiser tools in SwiftUI], [Deliver organiser creation, management, and export-related workflows on iPad.], [6 hours], [22 Jan 2026], [C],
   [30], [Build the teacher/admin web interface], [Deliver dashboard, activity management, student management, operations, and export workflows in the browser.], [5 hours], [28 Jan 2026], [C],
-  [31], [Expand backend unit tests and SwiftUI XCUITest], [Automate business-rule verification and key iPad user journeys.], [4 hours], [6 Feb 2026], [C],
+  [31], [Develop testing strategy and expand test coverage], [Define the layered testing approach (unit, integration, XCUITest, alpha/beta user testing), automate business-rule verification and key iPad user journeys, and document the debugging process.], [4 hours], [6 Feb 2026], [C],
   [32], [Document technologies and notable techniques], [Prepare the Criterion C explanation of implementation choices and computational thinking.], [2 hours], [8 Feb 2026], [C],
   [33], [Complete the Criterion C document], [Show how the implemented product meets the success criteria through development evidence.], [5 hours], [12 Feb 2026], [C],
 
