@@ -2,7 +2,7 @@
 #set page(paper: "a4", margin: (x: 1.6cm, y: 2cm))
 #set text(font: "New Computer Modern", size: 9pt)
 #set heading(numbering: none)
-#set par(leading: 0.55em, justify: true)
+#set par(leading: 0.68em, spacing: 0.9em, justify: true)
 #set table(
   stroke: 0.45pt + luma(170),
   inset: 4pt,

@@ -203,14 +203,14 @@ function displayLines(table: Table): string[] {
 }
 
 const lines: string[] = [];
-lines.push("%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '18px', 'primaryColor': '#ffffff', 'primaryBorderColor': '#183153', 'primaryTextColor': '#183153', 'lineColor': '#5f6b7a'}, 'flowchart': {'nodeSpacing': 50, 'rankSpacing': 90, 'curve': 'basis'}}}%%");
-lines.push("flowchart TB");
+lines.push("%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '18px', 'primaryColor': '#ffffff', 'primaryBorderColor': '#183153', 'primaryTextColor': '#183153', 'lineColor': '#5f6b7a'}, 'flowchart': {'nodeSpacing': 70, 'rankSpacing': 120, 'curve': 'basis'}}}%%");
+lines.push("flowchart LR");
 lines.push("  classDef table fill:#ffffff,stroke:#183153,stroke-width:1.4px,color:#183153;");
 lines.push("  classDef layer fill:none,stroke:none;");
 
 for (const level of [...tablesByLevel.keys()].sort((a, b) => a - b)) {
   lines.push(`  subgraph LEVEL_${level}[" "]`);
-  lines.push("    direction LR");
+  lines.push("    direction TB");
   for (const table of tablesByLevel.get(level) ?? []) {
     const label = displayLines(table).map(escapeLabel).join("<br/>");
     lines.push(`    ${nodeId(table.name)}["${label}"]:::table`);

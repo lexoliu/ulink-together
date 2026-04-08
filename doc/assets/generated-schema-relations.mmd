@@ -1,21 +1,22 @@
-flowchart TB
-  classDef table fill:#ffffff,stroke:#183153,stroke-width:1px,color:#183153;
+%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '18px', 'primaryColor': '#ffffff', 'primaryBorderColor': '#183153', 'primaryTextColor': '#183153', 'lineColor': '#5f6b7a'}, 'flowchart': {'nodeSpacing': 70, 'rankSpacing': 120, 'curve': 'basis'}}}%%
+flowchart LR
+  classDef table fill:#ffffff,stroke:#183153,stroke-width:1.4px,color:#183153;
   classDef layer fill:none,stroke:none;
   subgraph LEVEL_0[" "]
-    direction LR
+    direction TB
     GROUPS["GROUPS<br/>PK id<br/>UK code"]:::table
   end
   class LEVEL_0 layer
   style LEVEL_0 fill:none,stroke:none
   subgraph LEVEL_1[" "]
-    direction LR
+    direction TB
     GROUP_AUTHORITIES["GROUP_AUTHORITIES<br/>PK/FK group_id<br/>PK authority"]:::table
     USERS["USERS<br/>PK id<br/>UK email<br/>FK group_id"]:::table
   end
   class LEVEL_1 layer
   style LEVEL_1 fill:none,stroke:none
   subgraph LEVEL_2[" "]
-    direction LR
+    direction TB
     SESSIONS["SESSIONS<br/>PK id<br/>FK user_id"]:::table
     ACTIVITIES["ACTIVITIES<br/>PK id<br/>FK promoter_id"]:::table
     EXPORT_BATCHES["EXPORT_BATCHES<br/>PK id<br/>FK creator_id"]:::table
@@ -23,7 +24,7 @@ flowchart TB
   class LEVEL_2 layer
   style LEVEL_2 fill:none,stroke:none
   subgraph LEVEL_3[" "]
-    direction LR
+    direction TB
     ACTIVITY_COMMENTS["ACTIVITY_COMMENTS<br/>PK id<br/>FK activity_id<br/>FK author_id"]:::table
     CHANNELS["CHANNELS<br/>PK id<br/>FK owner_id<br/>FK activity_id"]:::table
     RECORDS["RECORDS<br/>PK id<br/>FK activity_id<br/>FK user_id<br/>FK confirmed_by"]:::table
@@ -32,7 +33,7 @@ flowchart TB
   class LEVEL_3 layer
   style LEVEL_3 fill:none,stroke:none
   subgraph LEVEL_4[" "]
-    direction LR
+    direction TB
     CHANNEL_MEMBERS["CHANNEL_MEMBERS<br/>PK/FK channel_id<br/>PK/FK user_id"]:::table
     MESSAGES["MESSAGES<br/>PK id<br/>FK channel_id<br/>FK sender_id"]:::table
   end

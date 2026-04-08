@@ -2,7 +2,7 @@
 #set page(paper: "a4", margin: (x: 2.5cm, y: 2.5cm))
 #set text(font: "New Computer Modern", size: 12pt)
 #set heading(numbering: none)
-#set par(leading: 0.85em, spacing: 1.4em, justify: true)
+#set par(leading: 0.98em, spacing: 1.8em, justify: true)
 #set enum(spacing: 1.2em)
 
 #let navy = rgb("#183153")

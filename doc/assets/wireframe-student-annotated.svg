@@ -1,4 +1,4 @@
-<svg width="1500" height="760" viewBox="150 60 1260 690" xmlns="http://www.w3.org/2000/svg">
+<svg width="1500" height="760" viewBox="172 78 1196 628" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <style>
       .frame { fill: #ffffff; stroke: #2d2d2d; stroke-width: 3; }
@@ -7,11 +7,11 @@
       .line { stroke: #2d2d2d; stroke-width: 2; }
       .muted { stroke: #777; stroke-width: 1.5; }
       .label-box { fill: rgba(255,255,255,0.92); stroke: #d65a5a; stroke-width: 1.5; rx: 10; }
-      .label { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 18px; font-weight: 600; fill: #b23a3a; }
+      .label { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 20px; font-weight: 600; fill: #b23a3a; }
       .caption { font-family: 'Times New Roman', serif; font-size: 28px; fill: #7c7c7c; font-style: italic; }
-      .ui { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 20px; fill: #111; }
-      .title { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 30px; fill: #111; font-weight: 600; }
-      .tiny { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 16px; fill: #666; }
+      .ui { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 21px; fill: #111; }
+      .title { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 31px; fill: #111; font-weight: 600; }
+      .tiny { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 17px; fill: #666; }
       .arrow { stroke: #b23a3a; stroke-width: 3; fill: none; marker-end: url(#arrowhead); }
     </style>
     <marker id="arrowhead" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">

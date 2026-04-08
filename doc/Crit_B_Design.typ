@@ -1,8 +1,8 @@
 #set document(title: "Criterion B: Design")
 #set page(paper: "a4", margin: (x: 2.3cm, y: 2.3cm))
-#set text(font: "New Computer Modern", size: 10.8pt)
+#set text(font: "New Computer Modern", size: 11.1pt)
 #set heading(numbering: "1.1")
-#set par(leading: 0.74em, spacing: 0.9em, justify: true)
+#set par(leading: 0.9em, spacing: 1.35em, justify: true)
 #set table(
   stroke: 0.5pt + luma(180),
   inset: 6.5pt,
@@ -57,43 +57,69 @@
 )
 
 #pagebreak()
+#set page(flipped: true)
 
 == System Decomposition
 
 #figure(
-  mermaid(
-    "%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '18px', 'primaryColor': '#ffffff', 'primaryBorderColor': '#183153', 'primaryTextColor': '#183153', 'lineColor': '#5f6b7a'}, 'flowchart': {'nodeSpacing': 38, 'rankSpacing': 62, 'curve': 'basis'}}}%%
-    graph TD
-    Together --> Account
-    Together --> Activity
-    Together --> Participation
-    Together --> Communication
-    Together --> Administration
+  diagram(
+    spacing: (26pt, 28pt),
+    node-stroke: 0.8pt + navy,
+    node-fill: white,
+    node-inset: 10pt,
+    edge-stroke: 0.7pt + luma(145),
 
-    Account --> Register
-    Account --> Login_Profile[\"Login / Profile\"]
+    node((4.8, 0.1), text(weight: "bold", size: 10pt)[Together System], name: <together>, shape: rect, corner-radius: 4pt),
 
-    Activity --> Publish
-    Activity --> Browse_Detail[\"Browse / Detail\"]
+    node((1.5, 2.2), text(weight: "bold", size: 9pt)[Account], name: <account>, shape: rect, corner-radius: 4pt),
+    node((3.2, 2.2), text(weight: "bold", size: 9pt)[Activity], name: <activity>, shape: rect, corner-radius: 4pt),
+    node((4.8, 2.2), text(weight: "bold", size: 9pt)[Participation], name: <participation>, shape: rect, corner-radius: 4pt),
+    node((6.4, 2.2), text(weight: "bold", size: 9pt)[Communication], name: <communication>, shape: rect, corner-radius: 4pt),
+    node((8.1, 2.2), text(weight: "bold", size: 9pt)[Administration], name: <administration>, shape: rect, corner-radius: 4pt),
 
-    Participation --> Apply
-    Participation --> Confirm_Hours[\"Confirm Hours\"]
+    node((0.9, 4.5), text(size: 8.5pt)[Register], name: <register>, shape: rect, corner-radius: 4pt),
+    node((2.0, 4.5), text(size: 8.5pt)[Login / Profile], name: <login_profile>, shape: rect, corner-radius: 4pt),
 
-    Communication --> Comments
-    Communication --> Channel
+    node((2.6, 4.5), text(size: 8.5pt)[Publish], name: <publish>, shape: rect, corner-radius: 4pt),
+    node((3.7, 4.5), text(size: 8.5pt)[Browse / Detail], name: <browse_detail>, shape: rect, corner-radius: 4pt),
 
-    Administration --> Manage_Users[\"Manage Users\"]
-    Administration --> Exports
-"
+    node((4.3, 4.5), text(size: 8.5pt)[Apply], name: <apply>, shape: rect, corner-radius: 4pt),
+    node((5.4, 4.5), text(size: 8.5pt)[Confirm Hours], name: <confirm_hours>, shape: rect, corner-radius: 4pt),
+
+    node((6.0, 4.5), text(size: 8.5pt)[Comments], name: <comments>, shape: rect, corner-radius: 4pt),
+    node((7.1, 4.5), text(size: 8.5pt)[Channel], name: <channel>, shape: rect, corner-radius: 4pt),
+
+    node((7.7, 4.5), text(size: 8.5pt)[Manage Users], name: <manage_users>, shape: rect, corner-radius: 4pt),
+    node((8.8, 4.5), text(size: 8.5pt)[Exports], name: <exports>, shape: rect, corner-radius: 4pt),
+
+    edge(<together>, <account>),
+    edge(<together>, <activity>),
+    edge(<together>, <participation>),
+    edge(<together>, <communication>),
+    edge(<together>, <administration>),
+
+    edge(<account>, <register>),
+    edge(<account>, <login_profile>),
+    edge(<activity>, <publish>),
+    edge(<activity>, <browse_detail>),
+    edge(<participation>, <apply>),
+    edge(<participation>, <confirm_hours>),
+    edge(<communication>, <comments>),
+    edge(<communication>, <channel>),
+    edge(<administration>, <manage_users>),
+    edge(<administration>, <exports>),
   ),
   caption: [System decomposition diagram],
 )
+
+#pagebreak()
+#set page(flipped: false)
 
 == System Architecture
 
 #figure(
   mermaid(
-    "%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '18px', 'primaryColor': '#ffffff', 'primaryBorderColor': '#183153', 'primaryTextColor': '#183153', 'lineColor': '#5f6b7a'}, 'flowchart': {'nodeSpacing': 48, 'rankSpacing': 72, 'curve': 'basis'}}}%%
+    "%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '22px', 'primaryColor': '#ffffff', 'primaryBorderColor': '#183153', 'primaryTextColor': '#183153', 'lineColor': '#5f6b7a'}, 'flowchart': {'nodeSpacing': 60, 'rankSpacing': 92, 'curve': 'basis'}}}%%
     flowchart TB
     Volunteer[\"Volunteer / Organiser\\nSwiftUI iPad App\"]
     Admin[\"Administrator\\nReact Admin Panel\"]
@@ -295,12 +321,18 @@ The table definitions below use logical database types for clarity. In the curre
 
 == Entity-Relationship Diagram
 
+#pagebreak()
+#set page(flipped: true)
+
 #figure(
   mermaid(
-    read("assets/generated-schema-relations.mmd")
+    "%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '20px', 'primaryColor': '#ffffff', 'primaryBorderColor': '#183153', 'primaryTextColor': '#183153', 'lineColor': '#5f6b7a'}, 'flowchart': {'nodeSpacing': 82, 'rankSpacing': 118, 'curve': 'basis'}}}%%\n" + read("assets/generated-schema-relations.mmd")
   ),
   caption: [Automatically generated schema relationship diagram],
 )
+
+#pagebreak()
+#set page(flipped: false)
 
 == Key Data Rules
 
@@ -348,9 +380,9 @@ The table definitions below use logical database types for clarity. In the curre
 
 #figure(
   mermaid(
-    "%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '20px', 'primaryColor': '#ffffff', 'primaryBorderColor': '#183153', 'primaryTextColor': '#183153', 'lineColor': '#5f6b7a'}}}%%
+    "%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '22px', 'primaryColor': '#ffffff', 'primaryBorderColor': '#183153', 'primaryTextColor': '#183153', 'lineColor': '#5f6b7a'}}}%%
     stateDiagram-v2
-    direction LR
+    direction TB
     [*] --> NeedVolunteer
     NeedVolunteer --> Going: start
     NeedVolunteer --> Canceled: cancel
@@ -364,6 +396,7 @@ The table definitions below use logical database types for clarity. In the curre
 )
 
 #pagebreak()
+#set page(flipped: true)
 
 = Use Case Diagram
 
@@ -371,30 +404,30 @@ The following UML use case diagram shows the three main actors and the functions
 
 #figure(
   diagram(
-    spacing: (44pt, 28pt),
+    spacing: (30pt, 24pt),
     node-stroke: 0.8pt + navy,
     node-fill: white,
     node-inset: 10pt,
     edge-stroke: 0.6pt + luma(140),
 
     // Actors (stick-figure placeholders on the left)
-    node((0, 1), text(weight: "bold", size: 9pt)[Volunteer], name: <volunteer>, shape: rect, corner-radius: 3pt),
-    node((0, 3.8), text(weight: "bold", size: 9pt)[Organiser], name: <organiser>, shape: rect, corner-radius: 3pt),
-    node((0, 6.6), text(weight: "bold", size: 9pt)[Administrator], name: <admin>, shape: rect, corner-radius: 3pt),
+    node((1.2, 1.0), text(weight: "bold", size: 9pt)[Volunteer], name: <volunteer>, shape: rect, corner-radius: 3pt),
+    node((1.2, 3.8), text(weight: "bold", size: 9pt)[Organiser], name: <organiser>, shape: rect, corner-radius: 3pt),
+    node((1.2, 6.6), text(weight: "bold", size: 9pt)[Administrator], name: <admin>, shape: rect, corner-radius: 3pt),
 
     // Use cases (ellipses in the centre)
-    node((4.1, 0), text(size: 8pt)[Browse Activity Feed], shape: fletcher.shapes.ellipse, name: <feed>),
-    node((4.1, 1.4), text(size: 8pt)[View Activity Detail], shape: fletcher.shapes.ellipse, name: <detail>),
-    node((4.1, 2.8), text(size: 8pt)[Apply to Activity], shape: fletcher.shapes.ellipse, name: <apply>),
-    node((4.1, 4.2), text(size: 8pt)[View Personal Records], shape: fletcher.shapes.ellipse, name: <records>),
-    node((4.1, 5.6), text(size: 8pt)[Use Activity Chat], shape: fletcher.shapes.ellipse, name: <channel>),
-    node((4.1, 7.0), text(size: 8pt)[View Leaderboard], shape: fletcher.shapes.ellipse, name: <leaderboard>),
+    node((4.3, 0), text(size: 8.5pt)[Browse Activity Feed], shape: fletcher.shapes.ellipse, name: <feed>),
+    node((4.3, 1.4), text(size: 8.5pt)[View Activity Detail], shape: fletcher.shapes.ellipse, name: <detail>),
+    node((4.3, 2.8), text(size: 8.5pt)[Apply to Activity], shape: fletcher.shapes.ellipse, name: <apply>),
+    node((4.3, 4.2), text(size: 8.5pt)[View Personal Records], shape: fletcher.shapes.ellipse, name: <records>),
+    node((4.3, 5.6), text(size: 8.5pt)[Use Activity Chat], shape: fletcher.shapes.ellipse, name: <channel>),
+    node((4.3, 7.0), text(size: 8.5pt)[View Leaderboard], shape: fletcher.shapes.ellipse, name: <leaderboard>),
 
-    node((8.6, 1.4), text(size: 8pt)[Create / Edit Activity], shape: fletcher.shapes.ellipse, name: <create>),
-    node((8.6, 3.8), text(size: 8pt)[Confirm Participation], shape: fletcher.shapes.ellipse, name: <confirm>),
+    node((7.5, 1.4), text(size: 8.5pt)[Create / Edit Activity], shape: fletcher.shapes.ellipse, name: <create>),
+    node((7.5, 3.8), text(size: 8.5pt)[Confirm Participation], shape: fletcher.shapes.ellipse, name: <confirm>),
 
-    node((8.6, 6.2), text(size: 8pt)[Manage Users / Groups], shape: fletcher.shapes.ellipse, name: <manage>),
-    node((8.6, 7.8), text(size: 8pt)[Generate Export], shape: fletcher.shapes.ellipse, name: <export>),
+    node((7.5, 6.2), text(size: 8.5pt)[Manage Users / Groups], shape: fletcher.shapes.ellipse, name: <manage>),
+    node((7.5, 7.8), text(size: 8.5pt)[Generate Export], shape: fletcher.shapes.ellipse, name: <export>),
 
     // Volunteer associations
     edge(<volunteer>, <feed>, "--"),
@@ -420,12 +453,15 @@ The following UML use case diagram shows the three main actors and the functions
   caption: [UML use case diagram mapping actors to system functions],
 )
 
+#pagebreak()
+#set page(flipped: false)
+
 = User Interface Design
 
 == Student-side SwiftUI iPad Interface
 
 #figure(
-  image("assets/wireframe-student-annotated.svg", width: 94%),
+  image("assets/wireframe-student-annotated.svg", width: 100%),
   caption: [Student-side annotated wireframe showing the planned feed and activity-detail workspace],
 )
 
@@ -480,21 +516,21 @@ The export feature is also intentionally limited. Because ISMAS does not provide
 )
 
 #figure(
-  image("assets/wireframe-admin-activity.svg", width: 94%),
+  image("assets/wireframe-admin-activity.svg", width: 100%),
   caption: [Teacher/admin annotated wireframe for the activity management workspace],
 )
 
 #pagebreak()
 
 #figure(
-  image("assets/wireframe-admin-students.svg", width: 94%),
+  image("assets/wireframe-admin-students.svg", width: 100%),
   caption: [Teacher/admin annotated wireframe for the student management workspace],
 )
 
 #pagebreak()
 
 #figure(
-  image("assets/wireframe-admin-operations.svg", width: 94%),
+  image("assets/wireframe-admin-operations.svg", width: 100%),
   caption: [Teacher/admin annotated wireframe for the operations and permissions workspace],
 )
 

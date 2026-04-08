@@ -2,7 +2,8 @@
 #set page(paper: "a4", margin: (x: 2.5cm, y: 2.5cm))
 #set text(font: "New Computer Modern", size: 12pt)
 #set heading(numbering: none)
-#set par(leading: 0.85em, spacing: 1.4em, justify: true)
+#set par(leading: 0.98em, spacing: 1.8em, justify: true)
+#set raw(block: true, theme: auto)
 #set enum(spacing: 2em)
 
 #import "@preview/wordometer:0.1.5": word-count, total-words
@@ -14,6 +15,18 @@
   text(size: 14pt, weight: "bold", fill: navy, upper(it.body))
   v(0.4em)
 }
+
+#show raw.where(block: true): it => block(
+  breakable: false,
+  width: 100%,
+  inset: 12pt,
+  fill: rgb("#05070a"),
+  stroke: 0.5pt + rgb("#1a2433"),
+  radius: 4pt,
+)[
+  #set text(fill: rgb("#f5f7fa"))
+  #it
+]
 
 #show: word-count.with(exclude: (heading, figure, raw, <no-wc>))
 
@@ -110,7 +123,7 @@ if promoter_hex == auth.uid().to_string()
 #align(center)[#emph[Code snippet: Allowing activity management only to the owner or a privileged organiser]]
 
 #figure(
-  image("assets/manage-preview.png", width: 94%),
+  image("assets/manage-preview.png", width: 100%),
   caption: [The organiser workspace exposes management actions that are not available to ordinary volunteers],
 )
 
@@ -146,7 +159,7 @@ if let Some(max) = row.try_get::<Option<i64>, _>("max_volunteer_num").expect("Da
 #align(center)[#emph[Code snippet: Rejecting applications when capacity has been reached]]
 
 #figure(
-  image("assets/admin-activities-viewport.png", width: 94%),
+  image("assets/admin-activities-viewport.png", width: 100%),
   caption: [Organiser-facing workflow for managing published activities and their lifecycle],
 )
 
@@ -177,7 +190,7 @@ pub async fn subscribe(&self, user: Id) -> Sse {
 #align(center)[#emph[Code snippet: Registering an SSE stream for real-time updates]]
 
 #figure(
-  image("assets/ipad-feed-landscape-final.png", width: 94%),
+  image("assets/ipad-feed-landscape-final.png", width: 100%),
   caption: [The native iPad client provides the shared communication and activity experience in one interface],
 )
 
@@ -214,7 +227,7 @@ let mut csv = String::from(
 #align(center)[#emph[Code snippet: Building an ISMAS-compatible export file]]
 
 #figure(
-  image("assets/admin-operations-viewport.png", width: 94%),
+  image("assets/admin-operations-viewport.png", width: 100%),
   caption: [Administrative export workflow supporting school reporting requirements],
 )
 
