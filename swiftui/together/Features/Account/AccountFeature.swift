@@ -549,7 +549,7 @@ private struct PendingAvatarUpload {
     let mimeType: String?
 }
 
-#Preview("Account") {
+#Preview("Account", traits: .landscapeLeft) {
     NavigationStack {
         AccountHomeView()
     }

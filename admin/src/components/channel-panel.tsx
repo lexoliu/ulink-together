@@ -189,8 +189,8 @@ export function ChannelPanel({
                   onChange={(event) => setComposer(event.target.value)}
                   placeholder={
                     readOnly
-                      ? 'This room is archived after the activity ended'
-                      : 'Write an update for the activity team'
+                      ? 'Archived'
+                      : 'Message'
                   }
                   disabled={readOnly}
                   className="w-full resize-none border-0 bg-transparent px-1 py-1 text-sm leading-6 text-slate-950 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed"

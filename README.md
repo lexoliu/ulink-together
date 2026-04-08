@@ -208,9 +208,9 @@ Generate the IB source-code appendix Typst source and PDF from the current repos
 ```
 
 This regenerates:
-- `Appendix_3_Source_Code.typ`
+- `doc/Appendix_3_Source_Code.typ`
 - `appendix/source-code-manifest.json`
-- `Appendix_3_Source_Code.pdf`
+- `doc/Appendix_3_Source_Code.pdf`
 
 If you only want to regenerate the source appendix inputs without compiling the PDF, run:
 
@@ -218,7 +218,7 @@ If you only want to regenerate the source appendix inputs without compiling the 
 python3 scripts/generate-source-appendix.py \
   --root . \
   --manifest-output appendix/source-code-manifest.json \
-  --typst-output Appendix_3_Source_Code.typ
+  --typst-output doc/Appendix_3_Source_Code.typ
 ```
 
 ## 7. Verification Commands

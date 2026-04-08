@@ -28,7 +28,7 @@ import { ChannelStatusCard } from '@/components/channel-status-card'
 import { CommandPalette } from '@/components/command-palette'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
@@ -1191,11 +1191,6 @@ function App() {
         <ActivityFormDialog
           open={formOpen}
           title={editingActivity ? 'Edit activity' : 'Create activity'}
-          description={
-            editingActivity
-              ? 'Refine the activity plan without leaving the dashboard.'
-              : 'Publish a new volunteer opportunity with clean, complete details.'
-          }
           initialValue={draftFromActivity(editingActivity)}
           onOpenChange={(open) => {
             setFormOpen(open)
@@ -1251,7 +1246,6 @@ function HomePage({
       <Card className="overflow-hidden border-white/70 bg-white/88 shadow-xl shadow-slate-200/45">
         <CardHeader className="gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <CardDescription>Home</CardDescription>
             <CardTitle className="mt-1 text-3xl font-semibold tracking-tight text-slate-950">
               Welcome back, {user?.realname ?? 'admin'}
             </CardTitle>
@@ -1303,7 +1297,7 @@ function HomePage({
               ))
             ) : (
               <div className="rounded-2xl border border-dashed border-border bg-muted/20 p-6 text-sm text-muted-foreground">
-                No activities have been published yet.
+                No activities.
               </div>
             )}
           </CardContent>
@@ -1402,7 +1396,7 @@ function ActivitiesPage({
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Activities</p>
               <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">
-                Manage publishing, records, and readiness
+                Activities
               </h2>
             </div>
             {canCreateActivity ? (
@@ -1418,8 +1412,7 @@ function ActivitiesPage({
           <div className="grid h-full min-h-0 gap-2 xl:grid-cols-[340px_minmax(0,1fr)]">
             <aside className="flex min-h-0 flex-col rounded-[2rem] bg-[linear-gradient(180deg,rgba(240,245,250,0.98),rgba(234,240,246,0.84))] p-5">
               <div className="shrink-0">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Activity rail</p>
-                <h3 className="mt-2 text-lg font-semibold text-slate-950">Pick the event you want to work on.</h3>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Activities</p>
               </div>
 
               <div className="mt-5 shrink-0 grid gap-3">
@@ -1509,7 +1502,7 @@ function ActivitiesPage({
                       ))
                     ) : (
                       <div className="rounded-[1.5rem] border border-dashed border-slate-200 bg-white/80 p-6 text-sm text-slate-500">
-                        No activities match the current filters.
+                        No activities.
                       </div>
                     )}
                   </div>
@@ -1653,9 +1646,6 @@ function ActivitiesPage({
                         <Card className="border-slate-200/70 bg-slate-50/65 shadow-none">
                           <CardHeader className="p-5">
                             <CardTitle>Activity comments</CardTitle>
-                            <CardDescription>
-                              Moderate public comments for this activity.
-                            </CardDescription>
                           </CardHeader>
                           <CardContent className="grid gap-3 px-5 pb-5 pt-0">
                             {comments.length > 0 ? (
@@ -1722,9 +1712,6 @@ function ActivitiesPage({
                     </div>
                     <div>
                       <h2 className="text-xl font-semibold text-slate-950">Choose an activity</h2>
-                      <p className="mt-2 max-w-md text-sm leading-6 text-slate-600">
-                        Activity detail, participant records, channel traffic, and export controls appear here.
-                      </p>
                     </div>
                   </CardContent>
                 </Card>
@@ -1830,7 +1817,7 @@ function StudentsPage({
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Students</p>
             <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">
-              Review and manage volunteer accounts
+              Students
             </h2>
           </div>
         </div>
@@ -1840,10 +1827,6 @@ function StudentsPage({
         <Card className="border-white/70 bg-white/88 shadow-lg shadow-slate-200/40">
           <CardHeader className="p-5">
             <CardTitle className="text-lg">Batch Import (CSV)</CardTitle>
-            <CardDescription>
-              Required headers: <code>email,realname,gender,classname</code>.
-              Optional headers: <code>description,avatar,password</code>.
-            </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3 px-5 pb-5 pt-0">
             <Input
@@ -1889,9 +1872,6 @@ function StudentsPage({
         <Card className="border-white/70 bg-white/88 shadow-lg shadow-slate-200/40">
           <CardHeader className="p-5">
             <CardTitle className="text-lg">Batch By Class</CardTitle>
-            <CardDescription>
-              Rename or delete all student accounts in one class.
-            </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3 px-5 pb-5 pt-0">
             <Select
@@ -2022,11 +2002,11 @@ function StudentsPage({
                         </div>
                       </button>
                     ))
-                  ) : (
-                    <div className="rounded-[1.5rem] border border-dashed border-slate-200 bg-white/80 p-6 text-sm text-slate-500">
-                      No students match the current filters.
-                    </div>
-                  )}
+                    ) : (
+                      <div className="rounded-[1.5rem] border border-dashed border-slate-200 bg-white/80 p-6 text-sm text-slate-500">
+                      No students.
+                      </div>
+                    )}
                 </div>
               </ScrollArea>
             </div>
@@ -2230,9 +2210,6 @@ function StudentsPage({
                   </div>
                   <div>
                     <h2 className="text-xl font-semibold text-slate-950">Choose a student</h2>
-                    <p className="mt-2 max-w-md text-sm leading-6 text-slate-600">
-                      Profile details and account controls appear here.
-                    </p>
                   </div>
                 </CardContent>
               </Card>
@@ -2304,7 +2281,7 @@ function OperationsPage({
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Operations</p>
             <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">
-              Notification and permission controls
+              Operations
             </h2>
           </div>
         </div>
@@ -2320,7 +2297,6 @@ function OperationsPage({
                     <BellRing className="size-4" />
                     Notify by Activity
                   </CardTitle>
-                  <CardDescription>Send one message to all active participants in an activity.</CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-3 px-5 pb-5 pt-0">
                   <Select value={effectiveActivityId || undefined} onValueChange={setActivityId}>
@@ -2372,7 +2348,6 @@ function OperationsPage({
                     <BellRing className="size-4" />
                     Notify by Class
                   </CardTitle>
-                  <CardDescription>Broadcast to all students in one class.</CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-3 px-5 pb-5 pt-0">
                   <Select
@@ -2431,9 +2406,6 @@ function OperationsPage({
                   <ShieldCheck className="size-4" />
                   Group Authorities
                 </CardTitle>
-                <CardDescription>
-                  Configure authority grants for each group code.
-                </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-3 px-5 pb-5 pt-0">
                 <Select

@@ -5,7 +5,8 @@
       .panel { fill: #f2f2f2; stroke: #2d2d2d; stroke-width: 2.5; }
       .soft { fill: #dcdcdc; stroke: #2d2d2d; stroke-width: 2; }
       .muted { stroke: #777; stroke-width: 1.5; }
-      .label { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 20px; fill: #b23a3a; }
+      .label-box { fill: rgba(255,255,255,0.92); stroke: #d65a5a; stroke-width: 1.5; rx: 10; }
+      .label { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 18px; font-weight: 600; fill: #b23a3a; }
       .caption { font-family: 'Times New Roman', serif; font-size: 28px; fill: #7c7c7c; font-style: italic; }
       .ui { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 20px; fill: #111; }
       .title { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 28px; fill: #111; font-weight: 600; }
@@ -55,13 +56,16 @@
   <rect x="1168" y="538" width="118" height="28" rx="14" class="soft"/>
   <rect x="1168" y="580" width="136" height="28" rx="14" class="soft"/>
 
-  <text x="304" y="232" class="label">Rail</text>
-  <path d="M 348 234 C 318 232, 278 228, 198 222" class="arrow"/>
+  <rect x="188" y="210" width="204" height="34" class="label-box"/>
+  <text x="206" y="232" class="label">Activity rail supports switching</text>
+  <path d="M 402 244 C 430 250, 454 264, 482 306" class="arrow"/>
 
-  <text x="968" y="130" class="label">Review panel</text>
-  <path d="M 1056 134 C 1070 154, 1082 180, 1096 220" class="arrow"/>
+  <rect x="944" y="96" width="234" height="34" class="label-box"/>
+  <text x="962" y="118" class="label">Selected activity stays in focus</text>
+  <path d="M 1106 130 C 1112 154, 1110 180, 1092 220" class="arrow"/>
 
-  <text x="948" y="420" class="label">Actions by records</text>
-  <path d="M 1060 424 C 1100 444, 1150 478, 1236 530" class="arrow"/>
+  <rect x="870" y="398" width="274" height="34" class="label-box"/>
+  <text x="888" y="420" class="label">Participation actions stay beside records</text>
+  <path d="M 1126 432 C 1162 450, 1200 480, 1232 530" class="arrow"/>
 
 </svg>

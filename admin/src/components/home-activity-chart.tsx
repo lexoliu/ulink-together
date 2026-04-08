@@ -156,7 +156,7 @@ export function HomeActivityChart({ activities }: HomeActivityChartProps) {
               </ResponsiveContainer>
             ) : (
               <div className="flex h-full items-center justify-center text-sm text-slate-500">
-                Scheduled activities will appear here once dates are set.
+                No dated activities.
               </div>
             )}
           </div>

@@ -21,15 +21,6 @@ private enum AuthMode: String, CaseIterable, Identifiable {
         }
     }
 
-    var subtitle: String {
-        switch self {
-        case .login:
-            "Use your school email and password."
-        case .register:
-            "Set up your volunteer profile."
-        }
-    }
-
     var actionTitle: String {
         switch self {
         case .login:
@@ -45,10 +36,6 @@ private enum AuthStep: Int, CaseIterable, Identifiable {
     case credentials
 
     var id: Int { rawValue }
-
-    var indexTitle: String {
-        "Step \(rawValue + 1)"
-    }
 
     var title: String {
         switch self {
@@ -100,7 +87,7 @@ struct AuthFlowView: View {
     ]
 
     init() {
-        _step = State(initialValue: .serviceAddress)
+        _step = State(initialValue: AppEnvironment.hasBundledServerURL ? .credentials : .serviceAddress)
         _mode = State(initialValue: .login)
     }
 
@@ -151,6 +138,11 @@ struct AuthFlowView: View {
                 await session.revalidateServiceAddressIfNeeded()
             }
         }
+        .onAppear {
+            if session.usesBundledServerURL && step == .serviceAddress {
+                step = .credentials
+            }
+        }
         .sheet(isPresented: $showingPasswordReset) {
             PasswordResetSheet()
                 .environmentObject(session)
@@ -158,16 +150,20 @@ struct AuthFlowView: View {
     }
 
     private var stepIndicator: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 14) {
-                ForEach(AuthStep.allCases) { authStep in
-                    authStepBadge(for: authStep)
-                }
-            }
+        Group {
+            if visibleSteps.count > 1 {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 14) {
+                        ForEach(visibleSteps) { authStep in
+                            authStepBadge(for: authStep)
+                        }
+                    }
 
-            VStack(spacing: 12) {
-                ForEach(AuthStep.allCases) { authStep in
-                    authStepBadge(for: authStep)
+                    VStack(spacing: 12) {
+                        ForEach(visibleSteps) { authStep in
+                            authStepBadge(for: authStep)
+                        }
+                    }
                 }
             }
         }
@@ -177,11 +173,13 @@ struct AuthFlowView: View {
         CardPanel {
             VStack(alignment: .leading, spacing: 24) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(step.indexTitle)
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(AppTheme.accentTint)
-                        .textCase(.uppercase)
-                        .tracking(1.1)
+                    if let stepIndexTitle {
+                        Text(stepIndexTitle)
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(AppTheme.accentTint)
+                            .textCase(.uppercase)
+                            .tracking(1.1)
+                    }
 
                     Text(step.title)
                         .font(.title2.weight(.bold))
@@ -234,7 +232,9 @@ struct AuthFlowView: View {
 
     private var credentialsStep: some View {
         VStack(alignment: .leading, spacing: 20) {
-            confirmedAddressPanel
+            if session.usesBundledServerURL == false {
+                confirmedAddressPanel
+            }
 
             Picker("Authentication", selection: $mode) {
                 ForEach(AuthMode.allCases) { authMode in
@@ -274,12 +274,14 @@ struct AuthFlowView: View {
 
             Spacer(minLength: 0)
 
-            Button("Change") {
-                localError = nil
-                session.clearLastError()
-                step = .serviceAddress
+            if session.usesBundledServerURL == false {
+                Button("Change") {
+                    localError = nil
+                    session.clearLastError()
+                    step = .serviceAddress
+                }
+                .buttonStyle(.bordered)
             }
-            .buttonStyle(.bordered)
         }
         .padding(18)
         .background(
@@ -567,6 +569,18 @@ struct AuthFlowView: View {
         session.clearLastError()
         step = .credentials
         focusedField = mode == .login ? .loginEmail : .registerEmail
+    }
+
+    private var visibleSteps: [AuthStep] {
+        session.usesBundledServerURL ? [.credentials] : AuthStep.allCases
+    }
+
+    private var stepIndexTitle: String? {
+        guard visibleSteps.count > 1,
+              let index = visibleSteps.firstIndex(of: step) else {
+            return nil
+        }
+        return "Step \(index + 1)"
     }
 
     private func authStepBadge(for authStep: AuthStep) -> some View {

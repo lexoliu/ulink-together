@@ -83,7 +83,7 @@ struct LeaderboardHomeView: View {
     }
 }
 
-#Preview("Leaderboard") {
+#Preview("Leaderboard", traits: .landscapeLeft) {
     NavigationStack {
         LeaderboardHomeView()
     }

@@ -210,7 +210,7 @@ private struct FeedDetailPlaceholderView: View {
     var body: some View {
         PageWidthReader {
             ComposedStateCard(
-                title: isLoading ? "Preparing your activity workspace" : "Choose an activity from the feed",
+                title: isLoading ? "Loading activity" : "Choose activity",
                 systemImage: isLoading ? "hourglass.circle" : "rectangle.and.text.magnifyingglass",
                 minHeight: 276,
                 highlights: [
@@ -742,9 +742,11 @@ struct ActivityDetailView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.headline)
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                if subtitle.isEmpty == false {
+                    Text(subtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
             }
             Spacer()
             Image(systemName: "chevron.right")
@@ -803,12 +805,12 @@ struct ActivityDetailView: View {
     }
 }
 
-#Preview("Feed") {
+#Preview("Feed", traits: .landscapeLeft) {
     FeedHomeView()
         .environmentObject(SessionStore.previewVolunteer())
 }
 
-#Preview("Activity Detail") {
+#Preview("Activity Detail", traits: .landscapeLeft) {
     NavigationStack {
         ActivityDetailView(activityID: AppDemoData.primaryActivityID)
     }

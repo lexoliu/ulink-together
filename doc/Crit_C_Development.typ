@@ -110,7 +110,7 @@ if promoter_hex == auth.uid().to_string()
 #align(center)[#emph[Code snippet: Allowing activity management only to the owner or a privileged organiser]]
 
 #figure(
-  image("assets/manage-preview.png", width: 100%),
+  image("assets/manage-preview.png", width: 94%),
   caption: [The organiser workspace exposes management actions that are not available to ordinary volunteers],
 )
 
@@ -146,7 +146,7 @@ if let Some(max) = row.try_get::<Option<i64>, _>("max_volunteer_num").expect("Da
 #align(center)[#emph[Code snippet: Rejecting applications when capacity has been reached]]
 
 #figure(
-  image("assets/admin-activities-viewport.png", width: 100%),
+  image("assets/admin-activities-viewport.png", width: 94%),
   caption: [Organiser-facing workflow for managing published activities and their lifecycle],
 )
 
@@ -177,7 +177,7 @@ pub async fn subscribe(&self, user: Id) -> Sse {
 #align(center)[#emph[Code snippet: Registering an SSE stream for real-time updates]]
 
 #figure(
-  image("assets/ipad-feed-landscape-final.png", width: 100%),
+  image("assets/ipad-feed-landscape-final.png", width: 94%),
   caption: [The native iPad client provides the shared communication and activity experience in one interface],
 )
 
@@ -214,9 +214,19 @@ let mut csv = String::from(
 #align(center)[#emph[Code snippet: Building an ISMAS-compatible export file]]
 
 #figure(
-  image("assets/admin-operations-viewport.png", width: 100%),
+  image("assets/admin-operations-viewport.png", width: 94%),
   caption: [Administrative export workflow supporting school reporting requirements],
 )
+
+== _6. Use of third-party libraries_
+
+The project also relies on several third-party libraries so that standard infrastructure does not need to be reimplemented manually. This keeps the codebase shorter, more reliable, and easier to maintain.
+
++ `bcrypt` is used for password hashing and verification rather than implementing a custom credential-storage algorithm.
++ `sqlx` is used for asynchronous database queries, transaction handling, and parameter binding across SQLite and PostgreSQL backends.
++ `csv` is used to generate the export spreadsheet format required for the ISMAS import workflow.
++ `utoipa` is used to derive OpenAPI schema information from Rust types and handlers instead of maintaining separate API documentation by hand.
++ `@tanstack/react-query` is used in the admin interface to manage server state and keep organiser/admin screens synchronized with backend data.
 
 = Sources
 

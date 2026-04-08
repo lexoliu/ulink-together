@@ -1,0 +1,59 @@
+flowchart TB
+  classDef table fill:#ffffff,stroke:#183153,stroke-width:1px,color:#183153;
+  classDef layer fill:none,stroke:none;
+  subgraph LEVEL_0[" "]
+    direction LR
+    GROUPS["GROUPS<br/>PK id<br/>UK code"]:::table
+  end
+  class LEVEL_0 layer
+  style LEVEL_0 fill:none,stroke:none
+  subgraph LEVEL_1[" "]
+    direction LR
+    GROUP_AUTHORITIES["GROUP_AUTHORITIES<br/>PK/FK group_id<br/>PK authority"]:::table
+    USERS["USERS<br/>PK id<br/>UK email<br/>FK group_id"]:::table
+  end
+  class LEVEL_1 layer
+  style LEVEL_1 fill:none,stroke:none
+  subgraph LEVEL_2[" "]
+    direction LR
+    SESSIONS["SESSIONS<br/>PK id<br/>FK user_id"]:::table
+    ACTIVITIES["ACTIVITIES<br/>PK id<br/>FK promoter_id"]:::table
+    EXPORT_BATCHES["EXPORT_BATCHES<br/>PK id<br/>FK creator_id"]:::table
+  end
+  class LEVEL_2 layer
+  style LEVEL_2 fill:none,stroke:none
+  subgraph LEVEL_3[" "]
+    direction LR
+    ACTIVITY_COMMENTS["ACTIVITY_COMMENTS<br/>PK id<br/>FK activity_id<br/>FK author_id"]:::table
+    CHANNELS["CHANNELS<br/>PK id<br/>FK owner_id<br/>FK activity_id"]:::table
+    RECORDS["RECORDS<br/>PK id<br/>FK activity_id<br/>FK user_id<br/>FK confirmed_by"]:::table
+    EXPORT_ITEMS["EXPORT_ITEMS<br/>PK id<br/>FK batch_id<br/>FK user_id<br/>FK activity_id"]:::table
+  end
+  class LEVEL_3 layer
+  style LEVEL_3 fill:none,stroke:none
+  subgraph LEVEL_4[" "]
+    direction LR
+    CHANNEL_MEMBERS["CHANNEL_MEMBERS<br/>PK/FK channel_id<br/>PK/FK user_id"]:::table
+    MESSAGES["MESSAGES<br/>PK id<br/>FK channel_id<br/>FK sender_id"]:::table
+  end
+  class LEVEL_4 layer
+  style LEVEL_4 fill:none,stroke:none
+  GROUPS -->|group_id| GROUP_AUTHORITIES
+  GROUPS -->|group_id| USERS
+  USERS -->|user_id| SESSIONS
+  USERS -->|promoter_id| ACTIVITIES
+  ACTIVITIES -->|activity_id| ACTIVITY_COMMENTS
+  USERS -->|author_id| ACTIVITY_COMMENTS
+  USERS -->|owner_id| CHANNELS
+  ACTIVITIES -->|activity_id| CHANNELS
+  CHANNELS -->|channel_id| CHANNEL_MEMBERS
+  USERS -->|user_id| CHANNEL_MEMBERS
+  CHANNELS -->|channel_id| MESSAGES
+  USERS -->|sender_id| MESSAGES
+  ACTIVITIES -->|activity_id| RECORDS
+  USERS -->|user_id| RECORDS
+  USERS -->|confirmed_by| RECORDS
+  USERS -->|creator_id| EXPORT_BATCHES
+  EXPORT_BATCHES -->|batch_id| EXPORT_ITEMS
+  USERS -->|user_id| EXPORT_ITEMS
+  ACTIVITIES -->|activity_id| EXPORT_ITEMS

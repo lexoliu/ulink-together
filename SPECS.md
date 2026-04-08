@@ -4,7 +4,7 @@
 
 This document is the implementation spec for the new SwiftUI client in `swiftui/`.
 
-It exists to turn `Criterion A.md` and `Criterion B.typ` into an actionable engineering plan for future agents.
+It exists to turn `doc/Crit_A_Planning.typ` and `doc/Crit_B_Design.typ` into an actionable engineering plan for future agents.
 
 ## 1. Scope
 

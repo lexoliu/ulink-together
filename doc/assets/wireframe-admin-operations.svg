@@ -5,7 +5,8 @@
       .panel { fill: #f2f2f2; stroke: #2d2d2d; stroke-width: 2.5; }
       .soft { fill: #dcdcdc; stroke: #2d2d2d; stroke-width: 2; }
       .muted { stroke: #777; stroke-width: 1.5; }
-      .label { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 20px; fill: #b23a3a; }
+      .label-box { fill: rgba(255,255,255,0.92); stroke: #d65a5a; stroke-width: 1.5; rx: 10; }
+      .label { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 18px; font-weight: 600; fill: #b23a3a; }
       .caption { font-family: 'Times New Roman', serif; font-size: 28px; fill: #7c7c7c; font-style: italic; }
       .ui { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 20px; fill: #111; }
       .title { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 28px; fill: #111; font-weight: 600; }
@@ -47,8 +48,9 @@
   <rect x="1072" y="344" width="254" height="28" rx="12" class="soft"/>
   <rect x="1072" y="386" width="254" height="114" rx="12" class="frame"/>
 
-  <text x="1120" y="332" class="label">Permission edit</text>
-  <path d="M 1180 338 C 1182 352, 1184 370, 1188 402" class="arrow"/>
+  <rect x="1086" y="292" width="182" height="34" class="label-box"/>
+  <text x="1104" y="314" class="label">Permissions stay separate</text>
+  <path d="M 1200 326 C 1204 346, 1208 368, 1210 402" class="arrow"/>
 
 
 </svg>

@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -57,9 +56,6 @@ export function ExportBatchDialog({
       <DialogContent className="max-w-5xl p-0 sm:max-w-5xl">
         <DialogHeader className="px-6 pt-6">
           <DialogTitle>Export batch</DialogTitle>
-          <DialogDescription>
-            Review the generated school-report batch before downloading or copying it.
-          </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-6 px-6 pb-6">

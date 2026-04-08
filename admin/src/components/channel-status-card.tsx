@@ -64,7 +64,7 @@ export function ChannelStatusCard({
               <p className="text-xs text-slate-500">{formatDateTime(lastMessage.datetime)}</p>
             </div>
           ) : (
-            <p className="mt-3 text-sm leading-7 text-slate-500">No updates yet.</p>
+            <p className="mt-3 text-sm leading-7 text-slate-500">No messages.</p>
           )}
         </div>
       </CardContent>

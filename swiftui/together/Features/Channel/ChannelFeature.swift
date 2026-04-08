@@ -30,11 +30,11 @@ struct ActivityChannelView: View {
                         channelHeader(channel: channel)
 
                         if activity.state.channelIsReadOnly {
-                            InlineErrorBanner(message: "This room is archived because the activity has already ended.")
+                            InlineErrorBanner(message: "Archived")
                         }
 
                         if !session.canViewUserDetails {
-                            InlineErrorBanner(message: "Sender names are limited on this account.")
+                            InlineErrorBanner(message: "Limited names")
                         }
                     }
 
@@ -171,7 +171,7 @@ struct ActivityChannelView: View {
                     .font(.headline)
 
                 TextField(
-                    activity.state.channelIsReadOnly ? "This room is archived" : "Write an update for this activity",
+                    activity.state.channelIsReadOnly ? "Archived" : "Message",
                     text: $composer,
                     axis: .vertical
                 )

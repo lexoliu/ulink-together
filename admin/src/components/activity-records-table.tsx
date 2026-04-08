@@ -1,6 +1,6 @@
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Table,
   TableBody,
@@ -39,14 +39,11 @@ export function ActivityRecordsTable({
     <Card className="border-border/70 shadow-none">
       <CardHeader>
         <CardTitle>Participant records</CardTitle>
-        <CardDescription>
-          Review pending applications, approved participants, and confirmed hours.
-        </CardDescription>
       </CardHeader>
       <CardContent>
         {records.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border bg-muted/20 p-6 text-sm text-muted-foreground">
-            No participant records have been created for this activity yet.
+            No participant records.
           </div>
         ) : (
           <Table>
@@ -93,7 +90,7 @@ export function ActivityRecordsTable({
                           disabled={pendingActionId === record.id || !canConfirmHours}
                           onClick={() => {
                             const input = window.prompt(
-                              'Confirmed minutes (leave empty to use activity duration).',
+                              'Confirmed minutes',
                               '',
                             )
                             if (input === null) {

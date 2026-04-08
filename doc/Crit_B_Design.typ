@@ -1,11 +1,11 @@
 #set document(title: "Criterion B: Design")
-#set page(paper: "a4", margin: (x: 2cm, y: 2cm))
-#set text(font: "New Computer Modern", size: 10pt)
+#set page(paper: "a4", margin: (x: 2.3cm, y: 2.3cm))
+#set text(font: "New Computer Modern", size: 10.8pt)
 #set heading(numbering: "1.1")
-#set par(leading: 0.58em, justify: true)
+#set par(leading: 0.74em, spacing: 0.9em, justify: true)
 #set table(
   stroke: 0.5pt + luma(180),
-  inset: 5pt,
+  inset: 6.5pt,
   fill: (_, y) => if y == 0 { rgb("#183153") } else if calc.rem(y, 2) == 0 { rgb("#f8fafc") } else { white },
 )
 
@@ -21,21 +21,21 @@
 )
 
 #show heading.where(level: 1): it => {
-  v(0.8em)
-  text(size: 16pt, weight: "bold", fill: navy, it)
-  v(0.3em)
+  v(1.0em)
+  text(size: 17pt, weight: "bold", fill: navy, it)
+  v(0.45em)
 }
 
 #show heading.where(level: 2): it => {
-  v(0.6em)
-  text(size: 12pt, weight: "bold", fill: navy, it)
-  v(0.15em)
+  v(0.9em)
+  text(size: 13.2pt, weight: "bold", fill: navy, it)
+  v(0.25em)
 }
 
 #show heading.where(level: 3): it => {
-  v(0.4em)
-  text(size: 10.5pt, weight: "bold", fill: sky, it)
-  v(0.1em)
+  v(0.6em)
+  text(size: 11.4pt, weight: "bold", fill: sky, it)
+  v(0.15em)
 }
 
 #align(center)[
@@ -56,11 +56,14 @@
   [Short-session interface], [Students use the iPad app between lessons, so the feed, detail page, and records screens are designed for quick scanning and low-friction actions.],
 )
 
+#pagebreak()
+
 == System Decomposition
 
 #figure(
   mermaid(
-    "graph TD
+    "%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '18px', 'primaryColor': '#ffffff', 'primaryBorderColor': '#183153', 'primaryTextColor': '#183153', 'lineColor': '#5f6b7a'}, 'flowchart': {'nodeSpacing': 38, 'rankSpacing': 62, 'curve': 'basis'}}}%%
+    graph TD
     Together --> Account
     Together --> Activity
     Together --> Participation
@@ -90,7 +93,19 @@
 
 #figure(
   mermaid(
-    "flowchart LR\n    Volunteer[\"Volunteer / Organiser\\nSwiftUI iPad App\"]\n    Admin[\"Administrator\\nReact Admin Panel\"]\n    Server[\"Rust Server\\nAuthentication, permissions, activity lifecycle, messaging, export\"]\n    DB[(\"PostgreSQL\\nusers, activities, records, channels, messages, exports\")]\n    Storage[\"File storage\\navatars and attachments\"]\n\n    Volunteer -->|\"HTTPS / JSON API\"| Server\n    Admin -->|\"HTTPS / JSON API\"| Server\n    Server -->|\"SQL queries / transactions\"| DB\n    Server -->|\"Read / write\"| Storage\n"
+    "%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '18px', 'primaryColor': '#ffffff', 'primaryBorderColor': '#183153', 'primaryTextColor': '#183153', 'lineColor': '#5f6b7a'}, 'flowchart': {'nodeSpacing': 48, 'rankSpacing': 72, 'curve': 'basis'}}}%%
+    flowchart TB
+    Volunteer[\"Volunteer / Organiser\\nSwiftUI iPad App\"]
+    Admin[\"Administrator\\nReact Admin Panel\"]
+    Server[\"Rust Server\\nAuthentication, permissions, activity lifecycle, messaging, export\"]
+    DB[(\"PostgreSQL\\nusers, activities, records, channels, messages, exports\")]
+    Storage[\"File storage\\navatars and attachments\"]
+
+    Volunteer -->|\"HTTPS / JSON API\"| Server
+    Admin -->|\"HTTPS / JSON API\"| Server
+    Server -->|\"SQL queries / transactions\"| DB
+    Server -->|\"Read / write\"| Storage
+"
   ),
   caption: [System architecture diagram],
 )
@@ -108,7 +123,11 @@
   [Database], [Persistent storage and constraints], [Stores the data permanently and enforces core relationships such as user-to-record and activity-to-record links.],
 )
 
+#pagebreak()
+
 = Database Design
+
+The table definitions below use logical database types for clarity. In the current portable implementation some UUID and timestamp values are serialized as strings internally, but the design treats them as `UUID`, `TIMESTAMP`, `BOOLEAN`, and bounded text fields where appropriate rather than describing everything as generic `TEXT`.
 
 == Database Tables
 
@@ -131,15 +150,15 @@
 #table(
   columns: (1fr, 0.8fr, 1.8fr, 1.2fr),
   field-header,
-  [id], [TEXT], [Unique identifier for the user], [Primary key (UUID)],
-  [email], [TEXT], [The user's school email address], [Unique; required],
-  [realname], [TEXT], [Full display name], [Required],
-  [gender], [TEXT], [Gender of the user], [-],
+  [id], [UUID], [Unique identifier for the user], [Primary key],
+  [email], [VARCHAR], [The user's school email address], [Unique; required],
+  [realname], [VARCHAR], [Full display name], [Required],
+  [gender], [VARCHAR], [Gender of the user], [Required],
   [description], [TEXT], [Short biography or personal statement], [-],
-  [classname], [TEXT], [Class or homeroom identifier], [Required],
-  [avatar_path], [TEXT], [File path to uploaded avatar image], [Nullable],
-  [password_hash], [TEXT], [Bcrypt hash of the account password], [Required],
-  [group_id], [TEXT], [Foreign key to the groups table], [Required; FK → groups.id],
+  [classname], [VARCHAR], [Class or homeroom identifier], [Required],
+  [avatar_path], [VARCHAR], [File path to uploaded avatar image], [Nullable],
+  [password_hash], [VARCHAR], [Bcrypt hash of the account password], [Required],
+  [group_id], [UUID], [Foreign key to the groups table], [Required; FK → groups.id],
 )
 
 #db-table-header("activities", "Stores each volunteer opportunity published by an organiser")
@@ -147,15 +166,15 @@
 #table(
   columns: (1fr, 0.8fr, 1.8fr, 1.2fr),
   field-header,
-  [id], [TEXT], [Unique identifier for the activity], [Primary key (UUID)],
-  [promoter_id], [TEXT], [The organiser who created this activity], [FK → users.id],
-  [name], [TEXT], [Title of the activity], [Required],
-  [location], [TEXT], [Where the activity takes place], [Required],
-  [state], [TEXT], [Current lifecycle state], [One of: need_volunteer, going, ended, canceled],
+  [id], [UUID], [Unique identifier for the activity], [Primary key],
+  [promoter_id], [UUID], [The organiser who created this activity], [FK → users.id],
+  [name], [VARCHAR], [Title of the activity], [Required],
+  [location], [VARCHAR], [Where the activity takes place], [Required],
+  [state], [VARCHAR], [Current lifecycle state], [One of: need_volunteer, going, ended, canceled],
   [volunteer_num], [INTEGER], [Number of volunteers currently signed up], [Default 0],
   [max_volunteer_num], [INTEGER], [Maximum capacity for volunteers], [Nullable (unlimited if null)],
-  [date], [TEXT], [Scheduled date of the activity], [Nullable],
-  [brief_description], [TEXT], [Short summary shown in the feed], [Required],
+  [date], [TIMESTAMP], [Scheduled date of the activity], [Nullable],
+  [brief_description], [VARCHAR], [Short summary shown in the feed], [Required],
   [description], [TEXT], [Full details shown in the detail view], [Required],
   [duration_minutes], [INTEGER], [Expected duration in minutes], [Required],
 )
@@ -165,14 +184,14 @@
 #table(
   columns: (1fr, 0.8fr, 1.8fr, 1.2fr),
   field-header,
-  [id], [TEXT], [Unique identifier for the record], [Primary key (UUID)],
-  [activity_id], [TEXT], [The activity this record belongs to], [FK → activities.id],
-  [user_id], [TEXT], [The volunteer who applied], [FK → users.id],
-  [state], [TEXT], [Current record state], [One of: todo, done, canceled],
+  [id], [UUID], [Unique identifier for the record], [Primary key],
+  [activity_id], [UUID], [The activity this record belongs to], [FK → activities.id],
+  [user_id], [UUID], [The volunteer who applied], [FK → users.id],
+  [state], [VARCHAR], [Current record state], [One of: todo, done, canceled],
   [confirmed_minutes], [INTEGER], [Minutes confirmed by the organiser], [Default 0],
-  [confirmed_at], [TEXT], [Timestamp of confirmation], [Nullable],
-  [confirmed_by], [TEXT], [User who confirmed the hours], [Nullable; FK → users.id],
-  [updated_at], [TEXT], [Last modification timestamp], [Required],
+  [confirmed_at], [TIMESTAMP], [Timestamp of confirmation], [Nullable],
+  [confirmed_by], [UUID], [User who confirmed the hours], [Nullable; FK → users.id],
+  [updated_at], [TIMESTAMP], [Last modification timestamp], [Required],
 )
 
 #db-table-header("channels", "Communication rooms, each linked to one activity")
@@ -180,11 +199,11 @@
 #table(
   columns: (1fr, 0.8fr, 1.8fr, 1.2fr),
   field-header,
-  [id], [TEXT], [Unique identifier for the channel], [Primary key (UUID)],
-  [name], [TEXT], [Display name of the channel], [Required],
-  [owner_id], [TEXT], [The organiser who owns the channel], [FK → users.id],
-  [activity_id], [TEXT], [The activity this channel is linked to], [Nullable; FK → activities.id],
-  [created_at], [TEXT], [Creation timestamp], [Required],
+  [id], [UUID], [Unique identifier for the channel], [Primary key],
+  [name], [VARCHAR], [Display name of the channel], [Required],
+  [owner_id], [UUID], [The organiser who owns the channel], [FK → users.id],
+  [activity_id], [UUID], [The activity this channel is linked to], [Nullable; FK → activities.id],
+  [created_at], [TIMESTAMP], [Creation timestamp], [Required],
 )
 
 #db-table-header("messages", "Individual messages sent within activity channels")
@@ -192,11 +211,11 @@
 #table(
   columns: (1fr, 0.8fr, 1.8fr, 1.2fr),
   field-header,
-  [id], [TEXT], [Unique identifier for the message], [Primary key (UUID)],
-  [channel_id], [TEXT], [The channel this message belongs to], [FK → channels.id],
-  [sender_id], [TEXT], [The user who sent this message], [FK → users.id],
+  [id], [UUID], [Unique identifier for the message], [Primary key],
+  [channel_id], [UUID], [The channel this message belongs to], [FK → channels.id],
+  [sender_id], [UUID], [The user who sent this message], [FK → users.id],
   [content], [TEXT], [Message body text], [Required],
-  [sent_at], [TEXT], [Timestamp when the message was sent], [Required],
+  [sent_at], [TIMESTAMP], [Timestamp when the message was sent], [Required],
 )
 
 #db-table-header("export_batches", "Tracks each batch export request for school reporting")
@@ -204,11 +223,11 @@
 #table(
   columns: (1fr, 0.8fr, 1.8fr, 1.2fr),
   field-header,
-  [id], [TEXT], [Unique identifier for the batch], [Primary key (UUID)],
-  [creator_id], [TEXT], [User who initiated the export], [FK → users.id],
-  [target_format], [TEXT], [Output format (e.g. CSV)], [Required],
-  [status], [TEXT], [Processing status], [Required],
-  [created_at], [TEXT], [Creation timestamp], [Required],
+  [id], [UUID], [Unique identifier for the batch], [Primary key],
+  [creator_id], [UUID], [User who initiated the export], [FK → users.id],
+  [target_format], [VARCHAR], [Output format (e.g. CSV)], [Required],
+  [status], [VARCHAR], [Processing status], [Required],
+  [created_at], [TIMESTAMP], [Creation timestamp], [Required],
 )
 
 #db-table-header("export_items", "Individual rows within an export batch")
@@ -216,10 +235,10 @@
 #table(
   columns: (1fr, 0.8fr, 1.8fr, 1.2fr),
   field-header,
-  [id], [TEXT], [Unique identifier for the item], [Primary key (UUID)],
-  [batch_id], [TEXT], [The batch this item belongs to], [FK → export_batches.id],
-  [user_id], [TEXT], [The volunteer being reported], [FK → users.id],
-  [activity_id], [TEXT], [The activity being reported], [FK → activities.id],
+  [id], [UUID], [Unique identifier for the item], [Primary key],
+  [batch_id], [UUID], [The batch this item belongs to], [FK → export_batches.id],
+  [user_id], [UUID], [The volunteer being reported], [FK → users.id],
+  [activity_id], [UUID], [The activity being reported], [FK → activities.id],
   [confirmed_minutes], [INTEGER], [Confirmed hours for this record], [Required],
 )
 
@@ -228,9 +247,9 @@
 #table(
   columns: (1fr, 0.8fr, 1.8fr, 1.2fr),
   field-header,
-  [id], [TEXT], [Unique identifier for the group], [Primary key (UUID)],
-  [code], [TEXT], [Short code such as "admin" or "student"], [Unique; required],
-  [allow_all_authorities], [INTEGER], [Whether this group bypasses individual authority checks], [Default 0],
+  [id], [UUID], [Unique identifier for the group], [Primary key],
+  [code], [VARCHAR], [Short code such as "admin" or "student"], [Unique; required],
+  [allow_all_authorities], [BOOLEAN], [Whether this group bypasses individual authority checks], [Default false],
 )
 
 #db-table-header("group_authorities", "Maps specific permissions to groups that do not have blanket access")
@@ -238,8 +257,8 @@
 #table(
   columns: (1fr, 0.8fr, 1.8fr, 1.2fr),
   field-header,
-  [group_id], [TEXT], [The group receiving this authority], [PK (composite); FK → groups.id],
-  [authority], [TEXT], [The permission string such as "manage_activity_anyway"], [PK (composite)],
+  [group_id], [UUID], [The group receiving this authority], [PK (composite); FK → groups.id],
+  [authority], [VARCHAR], [The permission string such as "manage_activity_anyway"], [PK (composite)],
 )
 
 #db-table-header("sessions", "Tracks active login sessions for cookie-based authentication")
@@ -247,10 +266,10 @@
 #table(
   columns: (1fr, 0.8fr, 1.8fr, 1.2fr),
   field-header,
-  [id], [TEXT], [Unique session identifier], [Primary key (UUID)],
-  [user_id], [TEXT], [The user who owns this session], [FK → users.id],
-  [generated_at], [TEXT], [When the session was created], [Required],
-  [ip], [TEXT], [IP address at login time], [Required],
+  [id], [UUID], [Unique session identifier], [Primary key],
+  [user_id], [UUID], [The user who owns this session], [FK → users.id],
+  [generated_at], [TIMESTAMP], [When the session was created], [Required],
+  [ip], [VARCHAR], [IP address at login time], [Required],
 )
 
 #db-table-header("channel_members", "Junction table linking users to the channels they have joined")
@@ -258,8 +277,8 @@
 #table(
   columns: (1fr, 0.8fr, 1.8fr, 1.2fr),
   field-header,
-  [channel_id], [TEXT], [The channel], [PK (composite); FK → channels.id],
-  [user_id], [TEXT], [The member], [PK (composite); FK → users.id],
+  [channel_id], [UUID], [The channel], [PK (composite); FK → channels.id],
+  [user_id], [UUID], [The member], [PK (composite); FK → users.id],
 )
 
 #db-table-header("activity_comments", "Public comments attached to an activity for open discussion")
@@ -267,20 +286,20 @@
 #table(
   columns: (1fr, 0.8fr, 1.8fr, 1.2fr),
   field-header,
-  [id], [TEXT], [Unique identifier for the comment], [Primary key (UUID)],
-  [activity_id], [TEXT], [The activity this comment belongs to], [FK → activities.id],
-  [author_id], [TEXT], [The user who wrote the comment], [FK → users.id],
+  [id], [UUID], [Unique identifier for the comment], [Primary key],
+  [activity_id], [UUID], [The activity this comment belongs to], [FK → activities.id],
+  [author_id], [UUID], [The user who wrote the comment], [FK → users.id],
   [content], [TEXT], [Comment body text], [Required],
-  [created_at], [TEXT], [Timestamp when the comment was posted], [Required],
+  [created_at], [TIMESTAMP], [Timestamp when the comment was posted], [Required],
 )
 
 == Entity-Relationship Diagram
 
 #figure(
   mermaid(
-    "erDiagram\n    GROUPS ||--o{ USERS : assigns\n    GROUPS ||--o{ GROUP_AUTHORITIES : grants\n    USERS ||--o{ SESSIONS : owns\n    USERS ||--o{ ACTIVITIES : creates\n    USERS ||--o{ RECORDS : holds\n    ACTIVITIES ||--o{ RECORDS : contains\n    ACTIVITIES ||--o| CHANNELS : opens\n    CHANNELS ||--o{ CHANNEL_MEMBERS : includes\n    USERS ||--o{ CHANNEL_MEMBERS : joins\n    CHANNELS ||--o{ MESSAGES : stores\n    USERS ||--o{ MESSAGES : sends\n    ACTIVITIES ||--o{ ACTIVITY_COMMENTS : receives\n    USERS ||--o{ ACTIVITY_COMMENTS : writes\n    USERS ||--o{ EXPORT_BATCHES : triggers\n    EXPORT_BATCHES ||--o{ EXPORT_ITEMS : contains\n    USERS ||--o{ EXPORT_ITEMS : references\n    ACTIVITIES ||--o{ EXPORT_ITEMS : references\n\n    GROUPS {\n        string id PK\n        string code UK\n        bool allow_all_authorities\n    }\n    GROUP_AUTHORITIES {\n        string group_id FK\n        string authority PK\n    }\n    USERS {\n        uuid id PK\n        string email UK\n        string realname\n        string classname\n        string group_id FK\n    }\n    SESSIONS {\n        uuid id PK\n        uuid user_id FK\n        datetime generated_at\n        string ip\n    }\n    ACTIVITIES {\n        uuid id PK\n        uuid promoter_id FK\n        string name\n        string state\n        int volunteer_num\n        int max_volunteer_num\n    }\n    RECORDS {\n        uuid id PK\n        uuid activity_id FK\n        uuid user_id FK\n        string state\n        int confirmed_minutes\n        datetime confirmed_at\n    }\n    CHANNELS {\n        uuid id PK\n        uuid owner_id FK\n        uuid activity_id FK\n    }\n    CHANNEL_MEMBERS {\n        uuid channel_id PK\n        uuid user_id PK\n    }\n    MESSAGES {\n        uuid id PK\n        uuid channel_id FK\n        uuid sender_id FK\n        text content\n        datetime sent_at\n    }\n    ACTIVITY_COMMENTS {\n        uuid id PK\n        uuid activity_id FK\n        uuid author_id FK\n        text content\n    }\n    EXPORT_BATCHES {\n        uuid id PK\n        uuid creator_id FK\n        string target_format\n        string status\n    }\n    EXPORT_ITEMS {\n        uuid id PK\n        uuid batch_id FK\n        uuid user_id FK\n        uuid activity_id FK\n        int confirmed_minutes\n    }\n"
+    read("assets/generated-schema-relations.mmd")
   ),
-  caption: [Crow's foot entity-relationship diagram],
+  caption: [Automatically generated schema relationship diagram],
 )
 
 == Key Data Rules
@@ -329,7 +348,9 @@
 
 #figure(
   mermaid(
-    "stateDiagram-v2
+    "%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '20px', 'primaryColor': '#ffffff', 'primaryBorderColor': '#183153', 'primaryTextColor': '#183153', 'lineColor': '#5f6b7a'}}}%%
+    stateDiagram-v2
+    direction LR
     [*] --> NeedVolunteer
     NeedVolunteer --> Going: start
     NeedVolunteer --> Canceled: cancel
@@ -342,36 +363,38 @@
   caption: [Activity lifecycle state diagram],
 )
 
+#pagebreak()
+
 = Use Case Diagram
 
 The following UML use case diagram shows the three main actors and the functions each actor can access within the system.
 
 #figure(
   diagram(
-    spacing: (32pt, 18pt),
+    spacing: (44pt, 28pt),
     node-stroke: 0.8pt + navy,
     node-fill: white,
-    node-inset: 8pt,
+    node-inset: 10pt,
     edge-stroke: 0.6pt + luma(140),
 
     // Actors (stick-figure placeholders on the left)
-    node((0, 1), text(weight: "bold", size: 8pt)[Volunteer], name: <volunteer>, shape: rect, corner-radius: 3pt),
-    node((0, 3.5), text(weight: "bold", size: 8pt)[Organiser], name: <organiser>, shape: rect, corner-radius: 3pt),
-    node((0, 6), text(weight: "bold", size: 8pt)[Administrator], name: <admin>, shape: rect, corner-radius: 3pt),
+    node((0, 1), text(weight: "bold", size: 9pt)[Volunteer], name: <volunteer>, shape: rect, corner-radius: 3pt),
+    node((0, 3.8), text(weight: "bold", size: 9pt)[Organiser], name: <organiser>, shape: rect, corner-radius: 3pt),
+    node((0, 6.6), text(weight: "bold", size: 9pt)[Administrator], name: <admin>, shape: rect, corner-radius: 3pt),
 
     // Use cases (ellipses in the centre)
-    node((3.5, 0), text(size: 7pt)[Browse Activity Feed], shape: fletcher.shapes.ellipse, name: <feed>),
-    node((3.5, 1), text(size: 7pt)[View Activity Detail], shape: fletcher.shapes.ellipse, name: <detail>),
-    node((3.5, 2), text(size: 7pt)[Apply to Activity], shape: fletcher.shapes.ellipse, name: <apply>),
-    node((3.5, 3), text(size: 7pt)[View Personal Records], shape: fletcher.shapes.ellipse, name: <records>),
-    node((3.5, 4), text(size: 7pt)[Use Activity Chat], shape: fletcher.shapes.ellipse, name: <channel>),
-    node((3.5, 5), text(size: 7pt)[View Leaderboard], shape: fletcher.shapes.ellipse, name: <leaderboard>),
+    node((4.1, 0), text(size: 8pt)[Browse Activity Feed], shape: fletcher.shapes.ellipse, name: <feed>),
+    node((4.1, 1.4), text(size: 8pt)[View Activity Detail], shape: fletcher.shapes.ellipse, name: <detail>),
+    node((4.1, 2.8), text(size: 8pt)[Apply to Activity], shape: fletcher.shapes.ellipse, name: <apply>),
+    node((4.1, 4.2), text(size: 8pt)[View Personal Records], shape: fletcher.shapes.ellipse, name: <records>),
+    node((4.1, 5.6), text(size: 8pt)[Use Activity Chat], shape: fletcher.shapes.ellipse, name: <channel>),
+    node((4.1, 7.0), text(size: 8pt)[View Leaderboard], shape: fletcher.shapes.ellipse, name: <leaderboard>),
 
-    node((7, 1.5), text(size: 7pt)[Create / Edit Activity], shape: fletcher.shapes.ellipse, name: <create>),
-    node((7, 3), text(size: 7pt)[Confirm Participation], shape: fletcher.shapes.ellipse, name: <confirm>),
+    node((8.6, 1.4), text(size: 8pt)[Create / Edit Activity], shape: fletcher.shapes.ellipse, name: <create>),
+    node((8.6, 3.8), text(size: 8pt)[Confirm Participation], shape: fletcher.shapes.ellipse, name: <confirm>),
 
-    node((7, 4.5), text(size: 7pt)[Manage Users / Groups], shape: fletcher.shapes.ellipse, name: <manage>),
-    node((7, 6), text(size: 7pt)[Generate Export], shape: fletcher.shapes.ellipse, name: <export>),
+    node((8.6, 6.2), text(size: 8pt)[Manage Users / Groups], shape: fletcher.shapes.ellipse, name: <manage>),
+    node((8.6, 7.8), text(size: 8pt)[Generate Export], shape: fletcher.shapes.ellipse, name: <export>),
 
     // Volunteer associations
     edge(<volunteer>, <feed>, "--"),
@@ -402,7 +425,7 @@ The following UML use case diagram shows the three main actors and the functions
 == Student-side SwiftUI iPad Interface
 
 #figure(
-  image("assets/wireframe-student-annotated.svg", width: 100%),
+  image("assets/wireframe-student-annotated.svg", width: 94%),
   caption: [Student-side annotated wireframe showing the planned feed and activity-detail workspace],
 )
 
@@ -416,7 +439,7 @@ The following UML use case diagram shows the three main actors and the functions
   [Feed and detail], [The student journey is built around quick scanning first and deeper detail second, so status, location, date, and capacity appear before long descriptions.],
   [Records and leaderboard], [Personal progress is separated from the browse flow so confirmed hours and ranking can be checked without cluttering the activity feed.],
   [Comments and messaging], [Each activity has one shared chat for the organiser and the participating volunteers. The chat is created with the activity and remains tied to it throughout that activity's lifetime, so reminders, schedule changes, and questions stay attached to the correct event instead of private chats.],
-  [Account and organiser tools], [Profile management and organiser-only controls are separated from student browsing actions to avoid role confusion.],
+  [Account], [Profile management is separated from browsing and records, so the student-facing navigation stays clear and role-specific.],
 )
 
 == Communication and Export Boundaries
@@ -457,21 +480,21 @@ The export feature is also intentionally limited. Because ISMAS does not provide
 )
 
 #figure(
-  image("assets/wireframe-admin-activity.svg", width: 100%),
+  image("assets/wireframe-admin-activity.svg", width: 94%),
   caption: [Teacher/admin annotated wireframe for the activity management workspace],
 )
 
 #pagebreak()
 
 #figure(
-  image("assets/wireframe-admin-students.svg", width: 100%),
+  image("assets/wireframe-admin-students.svg", width: 94%),
   caption: [Teacher/admin annotated wireframe for the student management workspace],
 )
 
 #pagebreak()
 
 #figure(
-  image("assets/wireframe-admin-operations.svg", width: 100%),
+  image("assets/wireframe-admin-operations.svg", width: 94%),
   caption: [Teacher/admin annotated wireframe for the operations and permissions workspace],
 )
 

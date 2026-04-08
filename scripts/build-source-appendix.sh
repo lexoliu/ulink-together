@@ -17,9 +17,9 @@ fi
 python3 "$ROOT_DIR/scripts/generate-source-appendix.py" \
   --root "$ROOT_DIR" \
   --manifest-output "$ROOT_DIR/appendix/source-code-manifest.json" \
-  --typst-output "$ROOT_DIR/Appendix_3_Source_Code.typ"
+  --typst-output "$ROOT_DIR/doc/Appendix_3_Source_Code.typ"
 
 typst compile \
   --root "$ROOT_DIR" \
-  "$ROOT_DIR/Appendix_3_Source_Code.typ" \
-  "$ROOT_DIR/Appendix_3_Source_Code.pdf"
+  "$ROOT_DIR/doc/Appendix_3_Source_Code.typ" \
+  "$ROOT_DIR/doc/Appendix_3_Source_Code.pdf"

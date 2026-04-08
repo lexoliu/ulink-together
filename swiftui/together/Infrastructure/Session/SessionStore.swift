@@ -32,6 +32,7 @@ final class SessionStore: ObservableObject {
     let apiClient = APIClient()
     let pushClient = PushClient()
     let runtimeMode: RuntimeMode
+    let bundledServerURLText: String?
 
     @Published var phase: Phase = .launching
     @Published var currentUser: UserProfile?
@@ -45,11 +46,12 @@ final class SessionStore: ObservableObject {
     init(defaultServerURL: String? = nil, runtimeMode: RuntimeMode? = nil) {
         let resolvedMode = runtimeMode ?? Self.runtimeModeFromProcessInfo()
         self.runtimeMode = resolvedMode
+        self.bundledServerURLText = resolvedMode == .live ? Self.resolveBundledServerURLText() : nil
         switch resolvedMode {
         case .live:
-            self.serverURLText = UserDefaults.standard.string(forKey: Self.serverURLDefaultsKey)
+            self.serverURLText = bundledServerURLText
+                ?? UserDefaults.standard.string(forKey: Self.serverURLDefaultsKey)
                 ?? defaultServerURL
-                ?? AppEnvironment.bundledServerURL()
                 ?? ""
             self.demoData = nil
         case .demoSignedOut:
@@ -77,6 +79,10 @@ final class SessionStore: ObservableObject {
 
     var hasConfiguredServerURL: Bool {
         serverURLText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    }
+
+    var usesBundledServerURL: Bool {
+        bundledServerURLText != nil
     }
 
     var usesFixtureData: Bool {
@@ -373,6 +379,9 @@ final class SessionStore: ObservableObject {
     }
 
     func updateServerURL(_ value: String) {
+        guard usesBundledServerURL == false else {
+            preconditionFailure("Bundled server URL cannot be changed at runtime.")
+        }
         guard runtimeMode == .live else {
             serverURLText = value.trimmingCharacters(in: .whitespacesAndNewlines)
             clearLastError()
@@ -517,6 +526,17 @@ final class SessionStore: ObservableObject {
             return .demoOrganizer
         }
         return .live
+    }
+
+    private static func resolveBundledServerURLText() -> String? {
+        guard let bundledServerURL = AppEnvironment.bundledServerURL() else {
+            return nil
+        }
+        do {
+            return try normalizeServerURL(from: bundledServerURL).absoluteString
+        } catch {
+            fatalError("Invalid \(AppEnvironment.infoKey): \(bundledServerURL)")
+        }
     }
 
     private static let serverURLDefaultsKey = "server_base_url"

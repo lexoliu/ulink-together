@@ -144,7 +144,7 @@ TYPST_TEMPLATE_LINES = (
     "",
     "#let render-file(file) = {",
     "  heading(level: 2)[#file.path]",
-    "  raw(read(file.path), block: true, lang: file.lang)",
+    "  raw(read(\"../\" + file.path), block: true, lang: file.lang)",
     "}",
     "",
     "#align(center)[",
@@ -189,7 +189,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--typst-output",
         type=Path,
-        default=Path(__file__).resolve().parent.parent / "Appendix_3_Source_Code.typ",
+        default=Path(__file__).resolve().parent.parent / "doc" / "Appendix_3_Source_Code.typ",
         help="Generated Typst output path.",
     )
     return parser.parse_args()

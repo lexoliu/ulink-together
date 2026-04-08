@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -43,7 +42,6 @@ type ActivityDraftForm = z.infer<typeof activityDraftSchema>
 interface ActivityFormDialogProps {
   open: boolean
   title: string
-  description: string
   initialValue: ActivityDraft
   onOpenChange: (open: boolean) => void
   onSubmit: (draft: ActivityDraft) => Promise<void>
@@ -52,7 +50,6 @@ interface ActivityFormDialogProps {
 export function ActivityFormDialog({
   open,
   title,
-  description,
   initialValue,
   onOpenChange,
   onSubmit,
@@ -80,7 +77,6 @@ export function ActivityFormDialog({
       <DialogContent className="flex max-h-[calc(100dvh-2rem)] max-w-2xl flex-col overflow-hidden p-0 sm:max-w-2xl">
         <DialogHeader className="shrink-0 px-6 pt-6">
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
 
         <form
@@ -99,12 +95,7 @@ export function ActivityFormDialog({
 
               <div className="grid gap-3 rounded-xl border border-border/70 bg-muted/20 p-4 sm:col-span-2">
                 <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-medium">Scheduled date</p>
-                    <p className="text-xs text-muted-foreground">
-                      Leave this off for drafts that are still being coordinated.
-                    </p>
-                  </div>
+                  <p className="text-sm font-medium">Scheduled date</p>
                   <Switch
                     checked={dateEnabled}
                     onCheckedChange={(checked) => form.setValue('dateEnabled', checked)}
@@ -143,12 +134,7 @@ export function ActivityFormDialog({
 
               <div className="grid gap-3 rounded-xl border border-border/70 bg-muted/20 p-4 sm:col-span-2">
                 <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-medium">Participant limit</p>
-                    <p className="text-xs text-muted-foreground">
-                      Turn this on when the activity has a fixed capacity.
-                    </p>
-                  </div>
+                  <p className="text-sm font-medium">Participant limit</p>
                   <Switch
                     checked={hasParticipantLimit}
                     onCheckedChange={(checked) => form.setValue('hasParticipantLimit', checked)}

@@ -208,7 +208,7 @@ struct RecordsHomeView: View {
     }
 }
 
-#Preview("Records") {
+#Preview("Records", traits: .landscapeLeft) {
     NavigationStack {
         RecordsHomeView()
     }

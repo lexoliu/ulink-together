@@ -1,7 +1,7 @@
 import { ShieldCheck } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
@@ -35,15 +35,6 @@ export function LoginScreen({
             <h1 className="mt-4 max-w-xl text-5xl font-semibold tracking-tight text-slate-950">
               Volunteer operations
             </h1>
-            <p className="mt-4 max-w-xl text-lg leading-8 text-slate-600">
-              Sign in to manage activities, participant records, and reporting.
-            </p>
-          </div>
-
-          <div className="mt-10 rounded-2xl border border-slate-200/80 bg-slate-50/80 p-5">
-            <p className="text-sm leading-7 text-slate-600">
-              Use an organiser or administrator account that already exists in the backend.
-            </p>
           </div>
         </section>
 
@@ -54,9 +45,6 @@ export function LoginScreen({
             </div>
             <div>
               <CardTitle>Sign in</CardTitle>
-              <CardDescription>
-                Use an organiser or admin account that already exists in the backend.
-              </CardDescription>
             </div>
           </CardHeader>
           <CardContent>

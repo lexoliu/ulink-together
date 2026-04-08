@@ -10,7 +10,7 @@ import {
 import { ChannelPanel } from '@/components/channel-panel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
@@ -88,7 +88,6 @@ export function ChatWorkspace({
       <Card className="flex min-h-0 flex-col border-white/70 bg-white/90 shadow-lg shadow-slate-200/40">
         <CardHeader className="gap-4">
           <div>
-            <CardDescription>Chats</CardDescription>
             <CardTitle className="text-2xl font-semibold tracking-tight text-slate-950">
               Activity rooms
             </CardTitle>
@@ -153,7 +152,7 @@ export function ChatWorkspace({
                 ))
               ) : (
                 <div className="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50/70 p-6 text-sm text-slate-500">
-                  No rooms match the current search.
+                  No rooms.
                 </div>
               )}
             </div>

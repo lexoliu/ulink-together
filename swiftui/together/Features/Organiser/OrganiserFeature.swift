@@ -162,7 +162,7 @@ struct OrganiserHomeView: View {
     }
 }
 
-#Preview("Manage") {
+#Preview("Manage", traits: .landscapeLeft) {
     NavigationStack {
         OrganiserHomeView()
     }

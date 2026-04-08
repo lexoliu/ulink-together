@@ -5,7 +5,8 @@
       .panel { fill: #f2f2f2; stroke: #2d2d2d; stroke-width: 2.5; }
       .soft { fill: #dcdcdc; stroke: #2d2d2d; stroke-width: 2; }
       .muted { stroke: #777; stroke-width: 1.5; }
-      .label { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 20px; fill: #b23a3a; }
+      .label-box { fill: rgba(255,255,255,0.92); stroke: #d65a5a; stroke-width: 1.5; rx: 10; }
+      .label { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 18px; font-weight: 600; fill: #b23a3a; }
       .caption { font-family: 'Times New Roman', serif; font-size: 28px; fill: #7c7c7c; font-style: italic; }
       .ui { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 20px; fill: #111; }
       .title { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 28px; fill: #111; font-weight: 600; }
@@ -50,10 +51,12 @@
   <rect x="874" y="408" width="180" height="178" rx="16" class="frame"/>
   <rect x="1080" y="408" width="216" height="178" rx="16" class="frame"/>
 
-  <text x="972" y="214" class="label">Profile beside list</text>
-  <path d="M 1042 220 C 1046 238, 1052 262, 1060 298" class="arrow"/>
+  <rect x="924" y="194" width="250" height="34" class="label-box"/>
+  <text x="942" y="216" class="label">Profile stays beside the student list</text>
+  <path d="M 1084 228 C 1090 248, 1092 268, 1086 300" class="arrow"/>
 
-  <text x="276" y="314" class="label">Batch first</text>
-  <path d="M 346 316 C 378 316, 408 316, 448 314" class="arrow"/>
+  <rect x="206" y="294" width="246" height="34" class="label-box"/>
+  <text x="224" y="316" class="label">Batch tools stay separate from profiles</text>
+  <path d="M 440 328 C 454 328, 470 322, 482 312" class="arrow"/>
 
 </svg>
