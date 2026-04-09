@@ -57,63 +57,48 @@
 )
 
 #pagebreak()
-#set page(flipped: true)
 
 == System Decomposition
 
 #figure(
-  diagram(
-    spacing: (26pt, 28pt),
-    node-stroke: 0.8pt + navy,
-    node-fill: white,
-    node-inset: 10pt,
-    edge-stroke: 0.7pt + luma(145),
+  scale(x: 82%, y: 82%, diagram(
+    spacing: (18pt, 56pt),
+    node-stroke: 0.9pt + navy,
+    node-fill: rgb("#f8fafc"),
+    node-inset: 8pt,
+    edge-stroke: 0.8pt + luma(130),
 
-    node((4.8, 0.1), text(weight: "bold", size: 10pt)[Together System], name: <together>, shape: rect, corner-radius: 4pt),
+    node((3, 0), text(weight: "bold", size: 11pt)[Together System], name: <root>, shape: rect, corner-radius: 5pt),
 
-    node((1.5, 2.2), text(weight: "bold", size: 9pt)[Account], name: <account>, shape: rect, corner-radius: 4pt),
-    node((3.2, 2.2), text(weight: "bold", size: 9pt)[Activity], name: <activity>, shape: rect, corner-radius: 4pt),
-    node((4.8, 2.2), text(weight: "bold", size: 9pt)[Participation], name: <participation>, shape: rect, corner-radius: 4pt),
-    node((6.4, 2.2), text(weight: "bold", size: 9pt)[Communication], name: <communication>, shape: rect, corner-radius: 4pt),
-    node((8.1, 2.2), text(weight: "bold", size: 9pt)[Administration], name: <administration>, shape: rect, corner-radius: 4pt),
+    node((0.4, 2), text(weight: "bold", size: 10pt)[Account], name: <acc>, shape: rect, corner-radius: 5pt),
+    node((1.8, 2), text(weight: "bold", size: 10pt)[Activity], name: <act>, shape: rect, corner-radius: 5pt),
+    node((3, 2), text(weight: "bold", size: 10pt)[Participation], name: <par>, shape: rect, corner-radius: 5pt),
+    node((4.4, 2), text(weight: "bold", size: 10pt)[Communication], name: <com>, shape: rect, corner-radius: 5pt),
+    node((5.8, 2), text(weight: "bold", size: 10pt)[Administration], name: <adm>, shape: rect, corner-radius: 5pt),
 
-    node((0.9, 4.5), text(size: 8.5pt)[Register], name: <register>, shape: rect, corner-radius: 4pt),
-    node((2.0, 4.5), text(size: 8.5pt)[Login / Profile], name: <login_profile>, shape: rect, corner-radius: 4pt),
+    node((-0.2, 4), text(size: 8.5pt)[Register], name: <a1>, shape: rect, corner-radius: 4pt),
+    node((0.9, 4), text(size: 8.5pt)[Login / Profile], name: <a2>, shape: rect, corner-radius: 4pt),
+    node((1.6, 4), text(size: 8.5pt)[Publish], name: <b1>, shape: rect, corner-radius: 4pt),
+    node((2.3, 4), text(size: 8.5pt)[Browse / Detail], name: <b2>, shape: rect, corner-radius: 4pt),
+    node((2.9, 4), text(size: 8.5pt)[Apply], name: <c1>, shape: rect, corner-radius: 4pt),
+    node((3.5, 4), text(size: 8.5pt)[Confirm Hours], name: <c2>, shape: rect, corner-radius: 4pt),
+    node((4.2, 4), text(size: 8.5pt)[Comments], name: <d1>, shape: rect, corner-radius: 4pt),
+    node((5.0, 4), text(size: 8.5pt)[Channel], name: <d2>, shape: rect, corner-radius: 4pt),
+    node((5.7, 4), text(size: 8.5pt)[Manage Users], name: <e1>, shape: rect, corner-radius: 4pt),
+    node((6.5, 4), text(size: 8.5pt)[Exports], name: <e2>, shape: rect, corner-radius: 4pt),
 
-    node((2.6, 4.5), text(size: 8.5pt)[Publish], name: <publish>, shape: rect, corner-radius: 4pt),
-    node((3.7, 4.5), text(size: 8.5pt)[Browse / Detail], name: <browse_detail>, shape: rect, corner-radius: 4pt),
-
-    node((4.3, 4.5), text(size: 8.5pt)[Apply], name: <apply>, shape: rect, corner-radius: 4pt),
-    node((5.4, 4.5), text(size: 8.5pt)[Confirm Hours], name: <confirm_hours>, shape: rect, corner-radius: 4pt),
-
-    node((6.0, 4.5), text(size: 8.5pt)[Comments], name: <comments>, shape: rect, corner-radius: 4pt),
-    node((7.1, 4.5), text(size: 8.5pt)[Channel], name: <channel>, shape: rect, corner-radius: 4pt),
-
-    node((7.7, 4.5), text(size: 8.5pt)[Manage Users], name: <manage_users>, shape: rect, corner-radius: 4pt),
-    node((8.8, 4.5), text(size: 8.5pt)[Exports], name: <exports>, shape: rect, corner-radius: 4pt),
-
-    edge(<together>, <account>),
-    edge(<together>, <activity>),
-    edge(<together>, <participation>),
-    edge(<together>, <communication>),
-    edge(<together>, <administration>),
-
-    edge(<account>, <register>),
-    edge(<account>, <login_profile>),
-    edge(<activity>, <publish>),
-    edge(<activity>, <browse_detail>),
-    edge(<participation>, <apply>),
-    edge(<participation>, <confirm_hours>),
-    edge(<communication>, <comments>),
-    edge(<communication>, <channel>),
-    edge(<administration>, <manage_users>),
-    edge(<administration>, <exports>),
-  ),
+    edge(<root>, <acc>), edge(<root>, <act>), edge(<root>, <par>),
+    edge(<root>, <com>), edge(<root>, <adm>),
+    edge(<acc>, <a1>), edge(<acc>, <a2>),
+    edge(<act>, <b1>), edge(<act>, <b2>),
+    edge(<par>, <c1>), edge(<par>, <c2>),
+    edge(<com>, <d1>), edge(<com>, <d2>),
+    edge(<adm>, <e1>), edge(<adm>, <e2>),
+  )),
   caption: [System decomposition diagram],
 )
 
 #pagebreak()
-#set page(flipped: false)
 
 == System Architecture
 
@@ -322,17 +307,13 @@ The table definitions below use logical database types for clarity. In the curre
 == Entity-Relationship Diagram
 
 #pagebreak()
-#set page(flipped: true)
 
 #figure(
-  mermaid(
-    "%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '20px', 'primaryColor': '#ffffff', 'primaryBorderColor': '#183153', 'primaryTextColor': '#183153', 'lineColor': '#5f6b7a'}, 'flowchart': {'nodeSpacing': 82, 'rankSpacing': 118, 'curve': 'basis'}}}%%\n" + read("assets/generated-schema-relations.mmd")
-  ),
-  caption: [Automatically generated schema relationship diagram],
+  image("assets/er-diagram.jpg", width: 100%),
+  caption: [Crow's foot entity-relationship diagram],
 )
 
 #pagebreak()
-#set page(flipped: false)
 
 == Key Data Rules
 
@@ -396,65 +377,49 @@ The table definitions below use logical database types for clarity. In the curre
 )
 
 #pagebreak()
-#set page(flipped: true)
 
 = Use Case Diagram
 
-The following UML use case diagram shows the three main actors and the functions each actor can access within the system.
+The following use case diagram shows the three main actors and the functions each actor can access within the system. Solid lines indicate direct access; shared use cases appear where multiple actors connect to them.
 
 #figure(
-  diagram(
-    spacing: (30pt, 24pt),
-    node-stroke: 0.8pt + navy,
-    node-fill: white,
-    node-inset: 10pt,
-    edge-stroke: 0.6pt + luma(140),
-
-    // Actors (stick-figure placeholders on the left)
-    node((1.2, 1.0), text(weight: "bold", size: 9pt)[Volunteer], name: <volunteer>, shape: rect, corner-radius: 3pt),
-    node((1.2, 3.8), text(weight: "bold", size: 9pt)[Organiser], name: <organiser>, shape: rect, corner-radius: 3pt),
-    node((1.2, 6.6), text(weight: "bold", size: 9pt)[Administrator], name: <admin>, shape: rect, corner-radius: 3pt),
-
-    // Use cases (ellipses in the centre)
-    node((4.3, 0), text(size: 8.5pt)[Browse Activity Feed], shape: fletcher.shapes.ellipse, name: <feed>),
-    node((4.3, 1.4), text(size: 8.5pt)[View Activity Detail], shape: fletcher.shapes.ellipse, name: <detail>),
-    node((4.3, 2.8), text(size: 8.5pt)[Apply to Activity], shape: fletcher.shapes.ellipse, name: <apply>),
-    node((4.3, 4.2), text(size: 8.5pt)[View Personal Records], shape: fletcher.shapes.ellipse, name: <records>),
-    node((4.3, 5.6), text(size: 8.5pt)[Use Activity Chat], shape: fletcher.shapes.ellipse, name: <channel>),
-    node((4.3, 7.0), text(size: 8.5pt)[View Leaderboard], shape: fletcher.shapes.ellipse, name: <leaderboard>),
-
-    node((7.5, 1.4), text(size: 8.5pt)[Create / Edit Activity], shape: fletcher.shapes.ellipse, name: <create>),
-    node((7.5, 3.8), text(size: 8.5pt)[Confirm Participation], shape: fletcher.shapes.ellipse, name: <confirm>),
-
-    node((7.5, 6.2), text(size: 8.5pt)[Manage Users / Groups], shape: fletcher.shapes.ellipse, name: <manage>),
-    node((7.5, 7.8), text(size: 8.5pt)[Generate Export], shape: fletcher.shapes.ellipse, name: <export>),
-
-    // Volunteer associations
-    edge(<volunteer>, <feed>, "--"),
-    edge(<volunteer>, <detail>, "--"),
-    edge(<volunteer>, <apply>, "--"),
-    edge(<volunteer>, <records>, "--"),
-    edge(<volunteer>, <channel>, "--"),
-    edge(<volunteer>, <leaderboard>, "--"),
-
-    // Organiser associations
-    edge(<organiser>, <feed>, "--"),
-    edge(<organiser>, <detail>, "--"),
-    edge(<organiser>, <channel>, "--"),
-    edge(<organiser>, <create>, "--"),
-    edge(<organiser>, <confirm>, "--"),
-    edge(<organiser>, <leaderboard>, "--"),
-
-    // Administrator associations
-    edge(<admin>, <manage>, "--"),
-    edge(<admin>, <export>, "--"),
-    edge(<admin>, <create>, "--"),
-  ),
-  caption: [UML use case diagram mapping actors to system functions],
+  mermaid("
+flowchart LR
+    V[Volunteer]
+    O[Organiser]
+    A[Administrator]
+    subgraph Together System
+        UC3([Apply to Activity])
+        UC4([View Personal Records])
+        UC1([Browse Activity Feed])
+        UC2([View Activity Detail])
+        UC5([Use Activity Chat])
+        UC6([View Leaderboard])
+        UC8([Confirm Participation])
+        UC7([Create / Edit Activity])
+        UC9([Manage Users / Groups])
+        UC10([Generate Export])
+    end
+    V --- UC3
+    V --- UC4
+    V --- UC1
+    V --- UC2
+    V --- UC5
+    V --- UC6
+    O --- UC1
+    O --- UC2
+    O --- UC5
+    O --- UC6
+    O --- UC8
+    O --- UC7
+    A --- UC7
+    A --- UC9
+    A --- UC10
+  "),
+  caption: [Use case diagram mapping actors to system functions],
 )
 
 #pagebreak()
-#set page(flipped: false)
 
 = User Interface Design
 

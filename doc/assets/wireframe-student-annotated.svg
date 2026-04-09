@@ -77,18 +77,18 @@
 
   <rect x="218" y="118" width="224" height="34" class="label-box"/>
   <text x="236" y="140" class="label">Search and filters stay visible</text>
-  <path d="M 392 152 C 410 176, 432 204, 468 242" class="arrow"/>
+  <path d="M 340 152 C 350 170, 360 194, 364 212" class="arrow"/>
 
-  <rect x="218" y="306" width="248" height="34" class="label-box"/>
-  <text x="236" y="328" class="label">Cards show key details early</text>
-  <path d="M 468 324 C 506 324, 530 344, 548 390" class="arrow"/>
+  <rect x="218" y="296" width="248" height="34" class="label-box"/>
+  <text x="236" y="318" class="label">Cards show key details early</text>
+  <path d="M 342 330 C 330 344, 310 360, 290 374" class="arrow"/>
 
   <rect x="930" y="206" width="284" height="34" class="label-box"/>
   <text x="948" y="228" class="label">Split view keeps details visible</text>
-  <path d="M 1182 240 C 1200 260, 1218 286, 1240 328" class="arrow"/>
+  <path d="M 1072 240 C 1050 264, 990 290, 938 310" class="arrow"/>
 
   <rect x="930" y="470" width="268" height="34" class="label-box"/>
   <text x="948" y="492" class="label">Activity chat stays with the event</text>
-  <path d="M 1132 504 C 1176 516, 1212 530, 1240 548" class="arrow"/>
+  <path d="M 1064 504 C 1040 520, 960 536, 890 548" class="arrow"/>
 
 </svg>
