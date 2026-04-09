@@ -42,60 +42,44 @@ struct FeedHomeView: View {
 
     var body: some View {
         NavigationSplitView {
-            Group {
+            List(selection: $selectedActivityID) {
                 if isLoading {
-                    List {
-                        LoadingCard(title: "Loading activities")
-                            .listRowSeparator(.hidden)
-                            .listRowBackground(Color.clear)
-                    }
-                    .listStyle(.plain)
-                } else if filteredActivities.isEmpty {
-                    List {
-                        EmptyStateCard(
-                            title: "No activities here yet",
-                            systemImage: "calendar.badge.exclamationmark"
-                        )
+                    ProgressView()
+                        .frame(maxWidth: .infinity, alignment: .center)
                         .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                    }
-                    .listStyle(.plain)
+                } else if filteredActivities.isEmpty {
+                    ContentUnavailableView(
+                        "No Activities",
+                        systemImage: "calendar.badge.exclamationmark",
+                        description: Text("Nothing matches the current filter.")
+                    )
+                    .listRowSeparator(.hidden)
                 } else {
-                    List {
-                        Section {
-                            ForEach(filteredActivities) { activity in
-                                Button {
-                                    selectedActivityID = activity.id
-                                } label: {
-                                    ActivityCard(
-                                        activity: activity,
-                                        action: nil,
-                                        isSelected: selectedActivityID == activity.id
-                                    )
-                                }
-                                .buttonStyle(.plain)
-                                .listRowSeparator(.hidden)
-                                .listRowBackground(Color.clear)
-                            }
-                        }
+                    ForEach(filteredActivities) { activity in
+                        ActivityListRow(activity: activity)
+                            .tag(activity.id)
                     }
-                    .listStyle(.plain)
                 }
             }
-            .scrollContentBackground(.hidden)
-            .background(AppBackgroundView())
+            .listStyle(.sidebar)
             .navigationTitle("Feed")
-            .navigationBarTitleDisplayMode(.large)
             .searchable(text: $searchText, prompt: "Search activities")
             .refreshable {
                 await loadFeed()
             }
-            .safeAreaInset(edge: .top) {
-                filterBar
-                    .padding(.horizontal, 20)
-                    .padding(.top, 12)
-                    .padding(.bottom, 8)
-                    .background(.clear)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Picker("Filter", selection: $filter) {
+                            ForEach(FeedFilter.allCases) { item in
+                                Text(item.title).tag(item)
+                            }
+                        }
+                    } label: {
+                        Label(filter == .all ? "Filter" : filter.title, systemImage: "line.3.horizontal.decrease.circle")
+                            .symbolVariant(filter == .all ? .none : .fill)
+                    }
+                }
             }
         } detail: {
             if let resolvedSelectedActivityID {
@@ -103,8 +87,11 @@ struct FeedHomeView: View {
                     ActivityDetailView(activityID: resolvedSelectedActivityID)
                 }
             } else {
-                FeedDetailPlaceholderView(filterTitle: filter.title, isLoading: isLoading)
-                    .background(AppBackgroundView())
+                ContentUnavailableView(
+                    "Select an Activity",
+                    systemImage: "rectangle.and.text.magnifyingglass",
+                    description: Text("Choose an activity from the list to view its details.")
+                )
             }
         }
         .navigationSplitViewStyle(.balanced)
@@ -154,22 +141,6 @@ struct FeedHomeView: View {
         }
     }
 
-    private var filterBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                ForEach(FeedFilter.allCases) { item in
-                    Button(item.title) {
-                        filter = item
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(filter == item ? .blue : .gray.opacity(0.25))
-                    .buttonBorderShape(.capsule)
-                    .foregroundStyle(filter == item ? .white : .primary)
-                }
-            }
-        }
-    }
-
     private func loadFeed() async {
         if let demoData = session.demoData {
             activities = demoData.feedActivities
@@ -203,51 +174,6 @@ struct FeedHomeView: View {
 
 }
 
-private struct FeedDetailPlaceholderView: View {
-    let filterTitle: String
-    let isLoading: Bool
-
-    var body: some View {
-        PageWidthReader {
-            ComposedStateCard(
-                title: isLoading ? "Loading activity" : "Choose activity",
-                systemImage: isLoading ? "hourglass.circle" : "rectangle.and.text.magnifyingglass",
-                minHeight: 276,
-                highlights: [
-                    ComposedStateHighlight(
-                        title: "Current lens",
-                        systemImage: "line.3.horizontal.decrease.circle"
-                    ),
-                    ComposedStateHighlight(
-                        title: "What opens here",
-                        systemImage: "doc.text.magnifyingglass"
-                    ),
-                    ComposedStateHighlight(
-                        title: "Keep it fresh",
-                        systemImage: "arrow.clockwise"
-                    ),
-                ]
-            )
-
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: 14)], spacing: 14) {
-                InsightMetricTile(
-                    eyebrow: "Browse",
-                    value: "Open plans"
-                )
-                InsightMetricTile(
-                    eyebrow: "Compare",
-                    value: "Dates + capacity"
-                )
-                InsightMetricTile(
-                    eyebrow: "Track",
-                    value: "Your status"
-                )
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    }
-}
-
 struct ActivityDetailView: View {
     @EnvironmentObject private var session: SessionStore
 
@@ -260,30 +186,20 @@ struct ActivityDetailView: View {
     @State private var isUpdating = false
     @State private var errorMessage: String?
     @State private var showingEditor = false
-    @State private var isManagementExpanded = false
-    @State private var isParticipantsExpanded = false
 
     var body: some View {
-        PageWidthReader {
+        Group {
             if isLoading {
-                LoadingCard(title: "Loading activity")
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let detail {
-                header(for: detail)
-                detailSummary(for: detail)
-                actionPanel(for: detail)
-                if canManage(detail: detail) {
-                    managementPanel(for: detail)
-                    participantPanel
-                }
+                detailList(for: detail)
             } else {
-                EmptyStateCard(
-                    title: "Activity unavailable",
-                    systemImage: "xmark.circle"
+                ContentUnavailableView(
+                    "Activity Unavailable",
+                    systemImage: "xmark.circle",
+                    description: Text(errorMessage ?? "This activity could not be loaded.")
                 )
-            }
-
-            if let message = errorMessage {
-                InlineErrorBanner(message: message)
             }
         }
         .navigationTitle(detail?.name ?? "Activity")
@@ -327,223 +243,140 @@ struct ActivityDetailView: View {
         }
     }
 
-    private var participantPanel: some View {
-        return CardPanel {
-            DisclosureGroup(isExpanded: $isParticipantsExpanded) {
-                VStack(alignment: .leading, spacing: 16) {
-                    if records.isEmpty {
-                        Text("No application or participation records yet.")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(records) { record in
-                            VStack(alignment: .leading, spacing: 10) {
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(participantTitle(for: record))
-                                            .font(.headline)
-                                        Text(record.activityName ?? "Untitled activity")
-                                            .font(.subheadline)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Spacer()
-                                    StateChip(title: record.state.title, tint: AppTheme.stateTint(for: record.state))
-                                }
-
-                                Text("Confirmed: \(DisplayText.hours(minutes: record.confirmedMinutes))")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-
-                                participantControls(for: record)
-                            }
-                            .padding(.top, 14)
-                            .padding(.bottom, record.id == records.last?.id ? 0 : 14)
-
-                            if record.id != (records.last?.id ?? "") {
-                                Divider()
-                            }
-                        }
-                    }
-                }
-                .padding(.top, 14)
-            } label: {
-                Text("Participants (\(records.count))")
-                    .font(.title3.weight(.semibold))
-            }
-            .tint(.primary)
-        }
-    }
-
-    private func header(for detail: ActivityDetail) -> some View {
-        CardPanel {
-            VStack(alignment: .leading, spacing: 16) {
+    private func detailList(for detail: ActivityDetail) -> some View {
+        List {
+            // MARK: - Header
+            Section {
                 VStack(alignment: .leading, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .firstTextBaseline) {
                         Text(detail.name)
-                            .font(.system(.largeTitle, design: .rounded).weight(.bold))
-                            .fixedSize(horizontal: false, vertical: true)
-                        Text(detail.description)
-                            .font(.body)
+                            .font(.title2.bold())
+                        Spacer()
+                        StateChip(title: detail.state.title, tint: AppTheme.stateTint(for: detail.state))
+                    }
+
+                    Text(detail.description)
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+
+                    Text(headerMetadata(for: detail))
+                        .font(.subheadline)
+                        .foregroundStyle(.tertiary)
+
+                    CapacityBar(current: detail.volunteerNum, limit: detail.maxVolunteerNum)
+                }
+            }
+
+            // MARK: - Participation
+            Section("Participation") {
+                HStack {
+                    Text("Your status")
+                    Spacer()
+                    if let recordState = detail.viewerRecordState {
+                        StateChip(title: recordState.title, tint: AppTheme.stateTint(for: recordState))
+                    } else {
+                        Text("Not applied")
                             .foregroundStyle(.secondary)
                     }
-                    StateChip(title: detail.state.title, tint: AppTheme.stateTint(for: detail.state))
-                }
-
-                Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 10) {
-                    GridRow {
-                        meta("Organiser", systemImage: "person.crop.circle")
-                        Text(detail.promoterName)
-                    }
-                    GridRow {
-                        meta("Date", systemImage: "calendar")
-                        Text(ServerDate.dateTimeText(detail.date))
-                    }
-                    GridRow {
-                        meta("Location", systemImage: "mappin.and.ellipse")
-                        Text(detail.location)
-                    }
-                    GridRow {
-                        meta("Duration", systemImage: "clock")
-                        Text(DisplayText.duration(minutes: detail.duration))
-                    }
-                }
-
-                CapacityBar(current: detail.volunteerNum, limit: detail.maxVolunteerNum)
-            }
-        }
-    }
-
-    private func detailSummary(for detail: ActivityDetail) -> some View {
-        CardPanel {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Participation")
-                    .font(.title3.weight(.semibold))
-
-                if let recordState = detail.viewerRecordState {
-                    StateChip(title: recordState.title, tint: AppTheme.stateTint(for: recordState))
-                } else {
-                    Text("Not applied")
-                        .foregroundStyle(.secondary)
                 }
 
                 if detail.viewerRecordState == .pendingApproval && detail.state == .needVolunteer {
                     Button(role: .destructive) {
-                        Task {
-                            await withdraw()
-                        }
+                        Task { await withdraw() }
                     } label: {
-                        if isUpdating {
-                            ProgressView()
-                                .frame(maxWidth: .infinity)
-                        } else {
-                            Text("Withdraw Application")
-                                .frame(maxWidth: .infinity)
+                        HStack {
+                            Spacer()
+                            if isUpdating { ProgressView() } else { Text("Withdraw Application") }
+                            Spacer()
                         }
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
                     .disabled(isUpdating)
                 } else if detail.state == .needVolunteer && !detail.viewerParticipating && detail.viewerRecordState != .pendingApproval {
                     Button {
-                        Task {
-                            await apply()
-                        }
+                        Task { await apply() }
                     } label: {
-                        if isUpdating {
-                            ProgressView()
-                                .frame(maxWidth: .infinity)
-                        } else {
-                            Text(detail.viewerRecordState == .canceled ? "Reapply Activity" : "Apply Activity")
-                                .frame(maxWidth: .infinity)
+                        HStack {
+                            Spacer()
+                            if isUpdating {
+                                ProgressView()
+                            } else {
+                                Text(detail.viewerRecordState == .canceled ? "Reapply" : "Apply")
+                            }
+                            Spacer()
                         }
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
                     .disabled(isUpdating)
                 }
             }
-        }
-    }
 
-    private func actionPanel(for detail: ActivityDetail) -> some View {
-        CardPanel {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Communication")
-                    .font(.title3.weight(.semibold))
+            // MARK: - Communication
+            Section("Communication") {
                 NavigationLink {
                     CommentsView(activityID: detail.id)
                 } label: {
-                    labelRow(
-                        title: "Public Notes",
-                        subtitle: "",
-                        systemImage: "text.bubble"
-                    )
+                    Label("Public Notes", systemImage: "text.bubble")
                 }
 
                 if canAccessChannel(detail: detail) {
                     NavigationLink {
                         ActivityChannelView(activity: detail)
                     } label: {
-                        labelRow(
-                            title: "Team Chat",
-                            subtitle: "",
-                            systemImage: "message"
-                        )
+                        Label("Team Chat", systemImage: "message")
                     }
                 } else {
-                    labelRow(
-                        title: "Team Chat",
-                        subtitle: "",
-                        systemImage: "lock.message"
-                    )
-                    .opacity(0.6)
+                    Label("Team Chat", systemImage: "lock.message")
+                        .foregroundStyle(.tertiary)
+                }
+            }
+
+            // MARK: - Management
+            if canManage(detail: detail) {
+                Section("Manage") {
+                    Button("Recruiting") { Task { await transition(path: "need_volunteer") } }
+                    Button("Start") { Task { await transition(path: "go") } }
+                    Button("End") { Task { await transition(path: "end") } }
+                    Button("Cancel", role: .destructive) { Task { await transition(path: "cancel") } }
+                }
+
+                // MARK: - Participants
+                Section("Participants (\(records.count))") {
+                    if records.isEmpty {
+                        Text("No records yet.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(records) { record in
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Text(participantTitle(for: record))
+                                        .font(.headline)
+                                    Spacer()
+                                    StateChip(title: record.state.title, tint: AppTheme.stateTint(for: record.state))
+                                }
+                                Text("Confirmed: \(DisplayText.hours(minutes: record.confirmedMinutes))")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                participantControls(for: record)
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
+                }
+            }
+
+            // MARK: - Error
+            if let message = errorMessage {
+                Section {
+                    InlineErrorBanner(message: message)
                 }
             }
         }
+        .listStyle(.insetGrouped)
     }
 
-    private func managementPanel(for detail: ActivityDetail) -> some View {
-        CardPanel {
-            DisclosureGroup(isExpanded: $isManagementExpanded) {
-                VStack(alignment: .leading, spacing: 14) {
-                    HStack {
-                        Button("Recruiting") {
-                            Task {
-                                await transition(path: "need_volunteer")
-                            }
-                        }
-                        .buttonStyle(.bordered)
-
-                        Button("Start") {
-                            Task {
-                                await transition(path: "go")
-                            }
-                        }
-                        .buttonStyle(.bordered)
-
-                        Button("End") {
-                            Task {
-                                await transition(path: "end")
-                            }
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
-
-                    HStack {
-                        Button("Cancel", role: .destructive) {
-                            Task {
-                                await transition(path: "cancel")
-                            }
-                        }
-                        .buttonStyle(.bordered)
-                    }
-                }
-                .padding(.top, 14)
-            } label: {
-                Text("Manage Activity")
-                    .font(.title3.weight(.semibold))
-            }
-            .tint(.primary)
-        }
+    private func headerMetadata(for detail: ActivityDetail) -> String {
+        let date = ServerDate.dateTimeText(detail.date)
+        let duration = DisplayText.duration(minutes: detail.duration)
+        return [detail.promoterName, date, detail.location, duration].joined(separator: " · ")
     }
 
     private var canEditCurrentActivity: Bool {
@@ -697,11 +530,6 @@ struct ActivityDetailView: View {
         showingEditor = false
     }
 
-    private func meta(_ title: String, systemImage: String) -> some View {
-        Label(title, systemImage: systemImage)
-            .foregroundStyle(.secondary)
-    }
-
     private func participantTitle(for record: RecordEntry) -> String {
         if let cached = participantNames[record.user] {
             return cached
@@ -731,27 +559,6 @@ struct ActivityDetailView: View {
             }
         }
         participantNames = nextNames
-    }
-
-    private func labelRow(title: String, subtitle: String, systemImage: String) -> some View {
-        HStack(spacing: 14) {
-            Image(systemName: systemImage)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(AppTheme.accentTint)
-                .frame(width: 28)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.headline)
-                if subtitle.isEmpty == false {
-                    Text(subtitle)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            Spacer()
-            Image(systemName: "chevron.right")
-                .foregroundStyle(.tertiary)
-        }
     }
 
     @ViewBuilder

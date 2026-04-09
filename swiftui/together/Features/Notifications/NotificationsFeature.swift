@@ -10,70 +10,69 @@ struct NotificationsHomeView: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        PageWidthReader {
+        List {
             if isLoading {
-                LoadingCard(title: "Loading notifications")
+                ProgressView()
+                    .frame(maxWidth: .infinity, alignment: .center)
             } else if notifications.isEmpty {
-                EmptyStateCard(
-                    title: "No notifications yet",
-                    systemImage: "bell.slash"
+                ContentUnavailableView(
+                    "No Notifications",
+                    systemImage: "bell.slash",
+                    description: Text("You're all caught up.")
                 )
             } else {
                 ForEach(notifications) { notification in
-                    CardPanel {
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack(alignment: .top) {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(notification.title)
-                                        .font(.headline)
-                                    Text(ServerDate.dateTimeText(notification.createdAt))
-                                        .font(.footnote)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                if notification.readAt == nil {
-                                    Button(markingID == notification.id ? "Marking..." : "Mark Read") {
-                                        Task {
-                                            await markRead(notificationID: notification.id)
-                                        }
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .disabled(markingID == notification.id)
-                                } else {
-                                    Label("Read", systemImage: "checkmark.circle.fill")
-                                        .font(.footnote.weight(.semibold))
-                                        .foregroundStyle(.green)
-                                }
-                            }
+                    HStack(alignment: .top, spacing: 12) {
+                        if notification.readAt == nil {
+                            Circle()
+                                .fill(AppTheme.accentTint)
+                                .frame(width: 8, height: 8)
+                                .padding(.top, 7)
+                        }
 
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(notification.title)
+                                .font(notification.readAt == nil ? .headline : .subheadline.weight(.medium))
                             Text(notification.content)
-                                .font(.body)
-                                .fixedSize(horizontal: false, vertical: true)
+                                .font(.subheadline)
+                                .foregroundStyle(notification.readAt == nil ? .primary : .secondary)
+                                .lineLimit(3)
+                            Text(ServerDate.dateTimeText(notification.createdAt))
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
                         }
                     }
-                }
-            }
-
-            CardPanel {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Notification Actions")
-                        .font(.headline)
-                    Button(markAllPending ? "Marking..." : "Mark All Read") {
-                        Task {
-                            await markAllRead()
+                    .swipeActions(edge: .trailing) {
+                        if notification.readAt == nil {
+                            Button {
+                                Task { await markRead(notificationID: notification.id) }
+                            } label: {
+                                Label("Read", systemImage: "envelope.open")
+                            }
+                            .tint(AppTheme.accentTint)
                         }
                     }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(markAllPending || notifications.isEmpty)
                 }
             }
 
             if let errorMessage {
-                InlineErrorBanner(message: errorMessage)
+                Section {
+                    InlineErrorBanner(message: errorMessage)
+                }
             }
         }
+        .listStyle(.insetGrouped)
         .navigationTitle("Notifications")
-        .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    Task { await markAllRead() }
+                } label: {
+                    Text(markAllPending ? "Marking..." : "Read All")
+                }
+                .disabled(markAllPending || notifications.isEmpty || notifications.allSatisfy { $0.readAt != nil })
+            }
+        }
         .task {
             await load()
         }

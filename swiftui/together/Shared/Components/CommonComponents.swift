@@ -158,15 +158,7 @@ struct EmptyStateCard: View {
     let systemImage: String
 
     var body: some View {
-        CardPanel {
-            VStack(alignment: .leading, spacing: 10) {
-                Image(systemName: systemImage)
-                    .font(.title2.weight(.semibold))
-                    .foregroundStyle(AppTheme.accentTint)
-                Text(title)
-                    .font(.title3.weight(.semibold))
-            }
-        }
+        ContentUnavailableView(title, systemImage: systemImage)
     }
 }
 
@@ -174,106 +166,14 @@ struct LoadingCard: View {
     let title: String
 
     var body: some View {
-        CardPanel {
-            HStack(spacing: 14) {
-                ProgressView()
-                    .controlSize(.large)
-                    .tint(AppTheme.accentTint)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
-                        .font(.headline)
-                }
-            }
-        }
-    }
-}
-
-struct InsightMetricTile: View {
-    let eyebrow: String
-    let value: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(eyebrow)
-                .font(.caption.weight(.semibold))
+        HStack(spacing: 14) {
+            ProgressView()
+            Text(title)
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
-                .textCase(.uppercase)
-                .tracking(1.2)
-            Text(value)
-                .font(.title2.weight(.bold))
-                .foregroundStyle(.primary)
         }
-        .padding(18)
-        .frame(maxWidth: .infinity, minHeight: 128, alignment: .topLeading)
-        .background(
-            RoundedRectangle(cornerRadius: AppTheme.compactCardRadius, style: .continuous)
-                .fill(Color(uiColor: .secondarySystemGroupedBackground))
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: AppTheme.compactCardRadius, style: .continuous)
-                .strokeBorder(Color(uiColor: .separator).opacity(0.12), lineWidth: 1)
-        }
-    }
-}
-
-struct ComposedStateHighlight: Identifiable {
-    let title: String
-    let systemImage: String
-
-    var id: String {
-        title
-    }
-}
-
-struct ComposedStateCard: View {
-    let title: String
-    let systemImage: String
-    var minHeight: CGFloat = 260
-    var highlights: [ComposedStateHighlight] = []
-
-    var body: some View {
-        CardPanel {
-            VStack(alignment: .leading, spacing: 22) {
-                HStack(alignment: .top, spacing: 18) {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(AppTheme.accentTint.opacity(0.12))
-                        .frame(width: 60, height: 60)
-                        .overlay {
-                            Image(systemName: systemImage)
-                                .font(.title2.weight(.semibold))
-                                .foregroundStyle(AppTheme.accentTint)
-                        }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(title)
-                            .font(.title2.weight(.bold))
-                    }
-                }
-
-                if !highlights.isEmpty {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 12)], spacing: 12) {
-                        ForEach(highlights) { highlight in
-                            VStack(alignment: .leading, spacing: 10) {
-                                Label(highlight.title, systemImage: highlight.systemImage)
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(.primary)
-                            }
-                            .padding(16)
-                            .frame(maxWidth: .infinity, minHeight: 108, alignment: .topLeading)
-                            .background(
-                                RoundedRectangle(cornerRadius: AppTheme.compactCardRadius, style: .continuous)
-                                    .fill(Color(uiColor: .systemBackground).opacity(0.58))
-                            )
-                            .overlay {
-                                RoundedRectangle(cornerRadius: AppTheme.compactCardRadius, style: .continuous)
-                                    .strokeBorder(Color(uiColor: .separator).opacity(0.10), lineWidth: 1)
-                            }
-                        }
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .topLeading)
-        }
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.vertical, 12)
     }
 }
 
@@ -353,103 +253,88 @@ struct RankingRow: View {
     }
 }
 
+/// Compact list row for displaying an activity in a native `List`.
+/// Designed for NavigationSplitView sidebars and standard list contexts.
+struct ActivityListRow: View {
+    let activity: ActivitySummary
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(activity.name)
+                    .font(.headline)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                StateChip(title: activity.state.title, tint: AppTheme.stateTint(for: activity.state))
+            }
+
+            Text(metadataLine)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+
+            CapacityBar(current: activity.volunteerNum, limit: activity.maxVolunteerNum)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var metadataLine: String {
+        let date = ServerDate.dateText(activity.date)
+        let parts = [date, activity.location, DisplayText.duration(minutes: activity.duration)]
+        return parts.joined(separator: " · ")
+    }
+}
+
+/// Full activity card with description, metadata grid, and optional action button.
+/// Use in Organiser workspace or contexts that need richer detail than `ActivityListRow`.
 struct ActivityCard: View {
     let activity: ActivitySummary
     let action: (() -> Void)?
     var isSelected: Bool = false
 
     var body: some View {
-        CardPanel {
-            VStack(alignment: .leading, spacing: 16) {
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(activity.name)
-                                .font(.title3.weight(.semibold))
-                                .foregroundStyle(.primary)
-                                .multilineTextAlignment(.leading)
-                            Text(activity.briefDescription)
-                                .font(.body)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(2)
-                        }
-                        Spacer(minLength: 16)
-                        StateChip(title: activity.state.title, tint: AppTheme.stateTint(for: activity.state))
-                    }
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text(activity.name)
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(.primary)
-                            .multilineTextAlignment(.leading)
-                        StateChip(title: activity.state.title, tint: AppTheme.stateTint(for: activity.state))
-                        Text(activity.briefDescription)
-                            .font(.body)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
-                }
-
-                Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 8) {
-                    GridRow {
-                        metadataLabel(title: "Date", systemImage: "calendar")
-                        Text(ServerDate.dateText(activity.date))
-                            .font(.subheadline.weight(.medium))
-                    }
-                    GridRow {
-                        metadataLabel(title: "Place", systemImage: "mappin.and.ellipse")
-                        Text(activity.location)
-                            .font(.subheadline.weight(.medium))
-                    }
-                    GridRow {
-                        metadataLabel(title: "Duration", systemImage: "clock")
-                        Text(DisplayText.duration(minutes: activity.duration))
-                            .font(.subheadline.weight(.medium))
-                    }
-                }
-
-                CapacityBar(current: activity.volunteerNum, limit: activity.maxVolunteerNum)
-
-                if let action {
-                    Button(activity.viewerParticipating ? "Participating" : "Apply Activity", action: action)
-                        .buttonStyle(.borderedProminent)
-                        .tint(activity.viewerParticipating ? .orange : AppTheme.accentTint)
-                        .disabled(activity.viewerParticipating || activity.state != .needVolunteer)
-                }
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(activity.name)
+                    .font(.title3.weight(.semibold))
+                    .lineLimit(2)
+                Spacer(minLength: 12)
+                StateChip(title: activity.state.title, tint: AppTheme.stateTint(for: activity.state))
             }
+
+            Text(activity.briefDescription)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+
+            Text(metadataLine)
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+
+            CapacityBar(current: activity.volunteerNum, limit: activity.maxVolunteerNum)
+
+            if let action {
+                Button(activity.viewerParticipating ? "Participating" : "Apply Activity", action: action)
+                    .buttonStyle(.borderedProminent)
+                    .tint(activity.viewerParticipating ? .orange : AppTheme.accentTint)
+                    .disabled(activity.viewerParticipating || activity.state != .needVolunteer)
+            }
+        }
+        .padding(16)
+        .background {
+            RoundedRectangle(cornerRadius: AppTheme.cardRadius, style: .continuous)
+                .fill(isSelected ? AppTheme.accentTint.opacity(0.08) : Color(uiColor: .secondarySystemGroupedBackground))
         }
         .overlay {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(isSelected ? AppTheme.accentTint : Color.clear, lineWidth: 2)
-        }
-        .background {
-            if isSelected {
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .fill(AppTheme.accentTint.opacity(0.08))
-            }
+            RoundedRectangle(cornerRadius: AppTheme.cardRadius, style: .continuous)
+                .strokeBorder(isSelected ? AppTheme.accentTint : Color(uiColor: .separator).opacity(0.14), lineWidth: 1)
         }
     }
 
-    private func metadataLabel(title: String, systemImage: String) -> some View {
-        Label(title, systemImage: systemImage)
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
+    private var metadataLine: String {
+        let date = ServerDate.dateText(activity.date)
+        let parts = [date, activity.location, DisplayText.duration(minutes: activity.duration)]
+        return parts.joined(separator: " · ")
     }
 }
 
-struct ContractNoteCard: View {
-    let title: String
-    let message: String
-
-    var body: some View {
-        CardPanel {
-            VStack(alignment: .leading, spacing: 8) {
-                Label(title, systemImage: "wrench.and.screwdriver")
-                    .font(.headline)
-                Text(message)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-}

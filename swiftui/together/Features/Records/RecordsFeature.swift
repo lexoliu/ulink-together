@@ -54,69 +54,105 @@ struct RecordsHomeView: View {
     @State private var filter: RecordsFilter = .all
 
     var body: some View {
-        PageWidthReader {
-            summaryCard
-            statusOverview
+        List {
+            // MARK: - Hero stat
+            Section {
+                VStack(spacing: 6) {
+                    Text(DisplayText.hours(minutes: overview.completedMinutes))
+                        .font(.system(.largeTitle, design: .rounded).bold())
+                    Text("Total Volunteer Hours")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.vertical, 12)
 
-            Picker("Filter", selection: $filter) {
-                ForEach(RecordsFilter.allCases) { item in
-                    Text(item.title).tag(item)
+                HStack(spacing: 0) {
+                    statusCount("Pending", count: overview.pendingCount, tint: AppTheme.stateTint(for: .pendingApproval))
+                    Divider().frame(height: 32)
+                    statusCount("Approved", count: overview.approvedCount, tint: AppTheme.stateTint(for: .approved))
+                    Divider().frame(height: 32)
+                    statusCount("Confirmed", count: overview.confirmedCount, tint: AppTheme.stateTint(for: .confirmed))
                 }
             }
-            .pickerStyle(.segmented)
 
+            // MARK: - Filter
+            Section {
+                Picker("Filter", selection: $filter) {
+                    ForEach(RecordsFilter.allCases) { item in
+                        Text(item.title).tag(item)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+            }
+
+            // MARK: - Records
             if isLoading {
-                ComposedStateCard(
-                    title: "Loading participation records",
-                    systemImage: "clock.badge.checkmark",
-                    minHeight: 220
-                )
+                Section {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
             } else if filteredRecords.isEmpty {
-                ComposedStateCard(
-                    title: "No records yet",
-                    systemImage: "clock.badge.questionmark",
-                    minHeight: 220
-                )
+                Section {
+                    ContentUnavailableView(
+                        "No Records",
+                        systemImage: "clock.badge.questionmark",
+                        description: Text("You have no participation records matching this filter.")
+                    )
+                }
             } else {
-                ForEach(filteredRecords) { record in
-                    CardPanel {
-                        VStack(alignment: .leading, spacing: 12) {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(record.activityName ?? "Untitled activity")
-                                        .font(.headline)
-                                    Text(ServerDate.dateText(record.activityDate))
-                                        .font(.subheadline)
+                Section {
+                    ForEach(filteredRecords) { record in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(record.activityName ?? "Untitled activity")
+                                    .font(.headline)
+                                Text([ServerDate.dateText(record.activityDate), DisplayText.duration(minutes: record.activityDuration ?? 0)].joined(separator: " · "))
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer(minLength: 8)
+                            VStack(alignment: .trailing, spacing: 4) {
+                                StateChip(title: record.state.title, tint: AppTheme.stateTint(for: record.state))
+                                if record.confirmedMinutes > 0 {
+                                    Text(DisplayText.hours(minutes: record.confirmedMinutes))
+                                        .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
-                                Spacer()
-                                StateChip(title: record.state.title, tint: AppTheme.stateTint(for: record.state))
                             }
-
-                            HStack {
-                                Label(DisplayText.duration(minutes: record.activityDuration ?? 0), systemImage: "clock")
-                                Spacer()
-                                Text("Confirmed \(DisplayText.hours(minutes: record.confirmedMinutes))")
-                            }
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
                         }
+                        .padding(.vertical, 2)
                     }
                 }
             }
 
             if let errorMessage {
-                InlineErrorBanner(message: errorMessage)
+                Section {
+                    InlineErrorBanner(message: errorMessage)
+                }
             }
         }
+        .listStyle(.insetGrouped)
         .navigationTitle("Records")
-        .navigationBarTitleDisplayMode(.large)
         .task {
             await load()
         }
         .refreshable {
             await load()
         }
+    }
+
+    private func statusCount(_ label: String, count: Int, tint: Color) -> some View {
+        VStack(spacing: 4) {
+            Text("\(count)")
+                .font(.title3.bold())
+                .foregroundStyle(tint)
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private var filteredRecords: [RecordEntry] {
@@ -138,46 +174,6 @@ struct RecordsHomeView: View {
 
     private var overview: RecordsOverview {
         RecordsOverview(records: records)
-    }
-
-    private var summaryCard: some View {
-        return CardPanel {
-            HStack(alignment: .top, spacing: 18) {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(AppTheme.accentTint.opacity(0.12))
-                    .frame(width: 58, height: 58)
-                    .overlay {
-                        Image(systemName: "clock.arrow.circlepath")
-                            .font(.title2.weight(.semibold))
-                            .foregroundStyle(AppTheme.accentTint)
-                    }
-
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Volunteer Hours")
-                        .font(.headline)
-                    Text(DisplayText.hours(minutes: overview.completedMinutes))
-                        .font(.system(.largeTitle, design: .rounded).weight(.bold))
-                }
-                Spacer(minLength: 0)
-            }
-        }
-    }
-
-    private var statusOverview: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 14)], spacing: 14) {
-            InsightMetricTile(
-                eyebrow: "Pending",
-                value: "\(overview.pendingCount)"
-            )
-            InsightMetricTile(
-                eyebrow: "Approved",
-                value: "\(overview.approvedCount)"
-            )
-            InsightMetricTile(
-                eyebrow: "Confirmed",
-                value: "\(overview.confirmedCount)"
-            )
-        }
     }
 
     private func load() async {

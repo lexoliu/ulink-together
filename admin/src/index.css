@@ -13,10 +13,7 @@ body,
 
 body {
   margin: 0;
-  background:
-    radial-gradient(circle at top, rgba(148, 163, 184, 0.1), transparent 24%),
-    radial-gradient(circle at bottom left, rgba(120, 137, 128, 0.1), transparent 28%),
-    linear-gradient(180deg, #f7f5f2 0%, #f1efe9 100%);
+  background: #f8f8f6;
 }
 
 :root {
@@ -43,7 +40,7 @@ body {
   --chart-3: oklch(0.546 0.245 262.881);
   --chart-4: oklch(0.488 0.243 264.376);
   --chart-5: oklch(0.424 0.199 265.638);
-  --radius: 0.625rem;
+  --radius: 0.5rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);

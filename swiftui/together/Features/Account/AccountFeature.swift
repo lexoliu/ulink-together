@@ -17,24 +17,93 @@ struct AccountHomeView: View {
     @State private var showingChangePassword = false
 
     var body: some View {
-        PageWidthReader {
-            if let currentUser = session.currentUser {
-                profileCard(for: currentUser)
-                profileDetails(for: currentUser)
-                actionCard
+        List {
+            if let user = session.currentUser {
+                // MARK: - Profile header
+                Section {
+                    HStack(spacing: 16) {
+                        AvatarBadge(
+                            title: user.realname,
+                            imageURL: session.serverURL.flatMap { session.apiClient.avatarURL(baseURL: $0, path: user.avatar) },
+                            size: 64
+                        )
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(user.realname)
+                                .font(.title3.bold())
+                            Text(user.email)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            Text(user.classname)
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+
+                // MARK: - Profile details
+                Section("Profile") {
+                    LabeledContent("Gender", value: user.gender)
+                    LabeledContent("Description") {
+                        Text(user.description.isEmpty ? "No description" : user.description)
+                            .foregroundStyle(user.description.isEmpty ? .tertiary : .primary)
+                    }
+                    Button("Edit Profile") {
+                        showingProfileEditor = true
+                    }
+                }
+
+                // MARK: - Settings
+                Section("Settings") {
+                    if AppEnvironment.hasBundledServerURL == false {
+                        LabeledContent("Server") {
+                            TextField(
+                                "https://volunteer.ulink.edu.cn",
+                                text: Binding(
+                                    get: { session.serverURLText },
+                                    set: { session.updateServerURL($0) }
+                                )
+                            )
+                            .textInputAutocapitalization(.never)
+                            .keyboardType(.URL)
+                            .autocorrectionDisabled()
+                            .multilineTextAlignment(.trailing)
+                        }
+                    }
+
+                    Button("Change Password") {
+                        showingChangePassword = true
+                    }
+                }
+
+                // MARK: - Sign out
+                Section {
+                    Button("Sign Out", role: .destructive) {
+                        Task {
+                            await session.logout()
+                        }
+                    }
+                }
             } else {
-                EmptyStateCard(
-                    title: "No profile loaded",
-                    systemImage: "person.crop.circle.badge.exclamationmark"
+                ContentUnavailableView(
+                    "No Profile",
+                    systemImage: "person.crop.circle.badge.exclamationmark",
+                    description: Text("Sign in to view your account.")
                 )
             }
 
             if let message = session.lastError {
-                InlineErrorBanner(message: message)
+                Section {
+                    InlineErrorBanner(message: message)
+                }
             }
         }
+        .listStyle(.insetGrouped)
         .navigationTitle("Account")
-        .navigationBarTitleDisplayMode(.large)
+        .refreshable {
+            await session.refreshCurrentUser()
+        }
         .sheet(isPresented: $showingProfileEditor) {
             if let currentUser = session.currentUser {
                 NavigationStack {
@@ -47,139 +116,6 @@ struct AccountHomeView: View {
                 ChangePasswordView()
             }
             .environmentObject(session)
-        }
-    }
-
-    private func profileCard(for user: UserProfile) -> some View {
-        CardPanel {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 16) {
-                    AvatarBadge(
-                        title: user.realname,
-                        imageURL: session.serverURL.flatMap { session.apiClient.avatarURL(baseURL: $0, path: user.avatar) },
-                        size: 72
-                    )
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(user.realname)
-                            .font(.title2.weight(.bold))
-                        Text(user.email)
-                            .font(.body)
-                            .foregroundStyle(.secondary)
-                        Text(user.classname)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer()
-
-                    Button("Edit") {
-                        showingProfileEditor = true
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
-
-                VStack(alignment: .leading, spacing: 14) {
-                    HStack(spacing: 14) {
-                        AvatarBadge(
-                            title: user.realname,
-                            imageURL: session.serverURL.flatMap { session.apiClient.avatarURL(baseURL: $0, path: user.avatar) },
-                            size: 72
-                        )
-
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(user.realname)
-                                .font(.title2.weight(.bold))
-                            Text(user.classname)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    Text(user.email)
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-
-                    Button("Edit Profile") {
-                        showingProfileEditor = true
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
-            }
-        }
-    }
-
-    private func profileDetails(for user: UserProfile) -> some View {
-        CardPanel {
-            Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 12) {
-                GridRow {
-                    Label("Gender", systemImage: "person")
-                        .foregroundStyle(.secondary)
-                    Text(user.gender)
-                }
-                GridRow {
-                    Label("Description", systemImage: "text.alignleft")
-                        .foregroundStyle(.secondary)
-                    Text(user.description.isEmpty ? "No profile description yet." : user.description)
-                }
-            }
-        }
-    }
-
-    private var actionCard: some View {
-        CardPanel {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Account")
-                    .font(.headline)
-                Text("Service address")
-                    .font(.subheadline.weight(.medium))
-                TextField(
-                    "https://volunteer.ulink.edu.cn",
-                    text: Binding(
-                        get: { session.serverURLText },
-                        set: { session.updateServerURL($0) }
-                    )
-                )
-                .textInputAutocapitalization(.never)
-                .keyboardType(.URL)
-                .autocorrectionDisabled()
-                .padding(.horizontal, 16)
-                .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(Color(uiColor: .systemBackground))
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(Color(uiColor: .separator).opacity(0.22), lineWidth: 1)
-                }
-
-                Button("Reconnect") {
-                    Task {
-                        await session.reconnect()
-                    }
-                }
-                .buttonStyle(.bordered)
-
-                Button("Refresh Details") {
-                    Task {
-                        await session.refreshCurrentUser()
-                    }
-                }
-                .buttonStyle(.bordered)
-
-                Button("Change Password") {
-                    showingChangePassword = true
-                }
-                .buttonStyle(.bordered)
-
-                Button("Sign Out", role: .destructive) {
-                    Task {
-                        await session.logout()
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-            }
         }
     }
 }

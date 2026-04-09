@@ -10,56 +10,10 @@ struct OrganiserHomeView: View {
     @State private var showingCreateSheet = false
 
     var body: some View {
-        PageWidthReader {
-            CardPanel {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Organiser Workspace")
-                        .font(.title3.weight(.semibold))
-
-                    if session.canCreateActivities || session.canGenerateExport {
-                        ViewThatFits(in: .horizontal) {
-                            HStack(spacing: 12) {
-                                if session.canCreateActivities {
-                                    Button("Create Activity") {
-                                        showingCreateSheet = true
-                                    }
-                                    .buttonStyle(.borderedProminent)
-                                }
-
-                                if session.canGenerateExport {
-                                    Button("Export Hours") {
-                                        Task {
-                                            await exportHours()
-                                        }
-                                    }
-                                    .buttonStyle(.bordered)
-                                }
-                            }
-
-                            VStack(alignment: .leading, spacing: 12) {
-                                if session.canCreateActivities {
-                                    Button("Create Activity") {
-                                        showingCreateSheet = true
-                                    }
-                                    .buttonStyle(.borderedProminent)
-                                }
-
-                                if session.canGenerateExport {
-                                    Button("Export Hours") {
-                                        Task {
-                                            await exportHours()
-                                        }
-                                    }
-                                    .buttonStyle(.bordered)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
+        List {
             if isLoading {
-                LoadingCard(title: "Loading managed activities")
+                ProgressView()
+                    .frame(maxWidth: .infinity, alignment: .center)
             } else if activities.isEmpty {
                 EmptyStateCard(
                     title: "No managed activities",
@@ -70,18 +24,41 @@ struct OrganiserHomeView: View {
                     NavigationLink {
                         ActivityDetailView(activityID: activity.id)
                     } label: {
-                        ActivityCard(activity: activity, action: nil)
+                        ActivityListRow(activity: activity)
                     }
-                    .buttonStyle(.plain)
                 }
             }
 
             if let errorMessage {
-                InlineErrorBanner(message: errorMessage)
+                Section {
+                    InlineErrorBanner(message: errorMessage)
+                }
             }
         }
+        .listStyle(.insetGrouped)
         .navigationTitle("Manage")
-        .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    if session.canCreateActivities {
+                        Button {
+                            showingCreateSheet = true
+                        } label: {
+                            Label("Create Activity", systemImage: "plus")
+                        }
+                    }
+                    if session.canGenerateExport {
+                        Button {
+                            Task { await exportHours() }
+                        } label: {
+                            Label("Export Hours", systemImage: "square.and.arrow.up")
+                        }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+            }
+        }
         .task {
             await load()
         }
