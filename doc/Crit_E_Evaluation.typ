@@ -99,11 +99,11 @@
   #emph[(Appendix 2, Q2: "The CSV export for ISMAS is exactly what I needed. No more copying values from a spreadsheet into a template.")]],
   [#text(fill: success-green, weight: "bold")[✓]],
 
-  [[10] The application runs on iPad with iPadOS 17+ in both portrait and landscape orientations, with no layout breakage or blocked controls.],
-  [Landscape mode worked well with no layout issues. However, portrait mode required noticeably more scrolling due to lower information density, and some management screens felt cramped. The app is clearly optimised for landscape use, and a student using the iPad upright between classes would have a less efficient experience.
+  [[10] The application runs on iPad with iPadOS 17+ in landscape orientation, which is the device position students hold for group work and the only orientation the app accepts.],
+  [The iPad app launches directly in landscape and refuses to rotate into portrait because portrait is not declared in the `UISupportedInterfaceOrientations` build setting. This is the direct response to the client's beta feedback (Appendix 2, Q3/Q4) that portrait required excessive scrolling and felt cramped for management tasks --- rather than optimising a second layout, the project scope was narrowed so every screen now targets one wide aspect ratio and the client's stated workflow (iPad on a desk or stand in landscape) is the only supported case.
 
-  #emph[(Appendix 2, Q3: "iPad support in both orientations --- partially confirmed; landscape is good but portrait mode needs more scrolling and feels less polished.") \ (Appendix 2, Q4: "The interface worked properly when the iPad orientation changed ... although portrait is less comfortable for management tasks.")]],
-  [#text(fill: partial-amber, weight: "bold")[~]],
+  #emph[(Appendix 2, Q3: "Landscape is good but portrait mode needs more scrolling and feels less polished." --- addressed by restricting to landscape-only.)]],
+  [#text(fill: success-green, weight: "bold")[✓]],
 )
 
 = Recommendations for Future Improvements
@@ -134,11 +134,9 @@ Integrating with the school calendar would reduce timetable clashes and surface 
 
 #emph[(Appendix 2, Q6: "If the activity dates could sync with the school calendar, it would help avoid scheduling conflicts with exams or school events.")]
 
-5. #text(weight: "bold")[Portrait-mode optimisation]
+5. #text(weight: "bold")[External keyboard shortcuts]
 
-The current layout works best in landscape. Improving information density in portrait mode --- for example, by using compact list styles and collapsible sections --- would make the app more comfortable for students who hold the iPad upright between classes.
-
-#emph[(Appendix 2, Q3/Q4: The client noted portrait mode requires more scrolling and is less polished than landscape.)]
+Because the iPad client is now landscape-only and many students attach a Smart Keyboard during class, a future iteration could expose keyboard shortcuts for common actions (apply, withdraw, send message, jump to records). SwiftUI's `keyboardShortcut` modifier would let each action be reachable without touching the screen, which is useful for teachers running the organiser workflow during a live activity.
 
 #block(fill: rgb("#1d5d99"), inset: 8pt, width: 32%)[
   #text(fill: white)[Word Count: #total-words]

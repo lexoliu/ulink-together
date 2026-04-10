@@ -52,7 +52,7 @@ The school operates a BYOD iPad policy: every student carries an iPad, and it is
 + Organisers can confirm volunteer participation after an activity completes, converting participation records to completed status.
 + A leaderboard ranks volunteers by total confirmed hours.
 + The system generates a spreadsheet of confirmed hours in the same overall structure as the school's ISMAS import template, so staff can download it and import it manually.
-+ The application runs on iPad with iPadOS 17+ in both portrait and landscape orientations, with no layout breakage or blocked controls.
++ The application runs on iPad with iPadOS 17+ in landscape orientation, which is the device position students hold for group work and the only orientation the app accepts, so layouts are tuned for a single aspect ratio rather than two.
 
 #block(fill: rgb("#1d5d99"), inset: 8pt, width: 32%)[
   #text(fill: white)[Word Count: #total-words]

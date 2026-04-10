@@ -186,9 +186,13 @@ if let Some(max) = row.try_get::<Option<i64>, _>("max_volunteer_num").expect("Da
 
 #align(center)[#emph[Code snippet: Rejecting applications when capacity has been reached]]
 
-#figure(
-  image("assets/admin-activities-viewport.png", width: 100%),
-  caption: [Organiser-facing workflow for managing published activities and their lifecycle],
+Both clients surface the same activity lifecycle through screens that fit the device. The React admin panel uses a wide 2-column workspace with a list on the left and the selected activity's detail + state controls on the right. The SwiftUI iPad client runs in landscape only (enforced via `UISupportedInterfaceOrientations`) and presents the detail as a native `List(.insetGrouped)` with Participation, Communication, Management, and Participants sections stacked vertically.
+
+#evidence-pair(
+  "assets/admin-activities-viewport.png",
+  "assets/ipad-activity-detail.png",
+  left-caption: [Admin-side: list + detail + records in one workspace],
+  right-caption: [iPad student-side: native grouped-list activity detail in landscape],
 )
 
 == _4. Activity-scoped messaging with live delivery_
@@ -219,9 +223,11 @@ pub async fn subscribe(&self, user: Id) -> Sse {
 
 The final rendering of the channel in the React admin panel is shown below. Consecutive messages from the same sender are grouped under one avatar and timestamp, teacher posts carry an explicit teacher badge so students can tell the organiser's announcements apart from peer replies, and the left rail lists the activity-bound channels the current user has access to. The timeline updates live through the SSE push stream, so the view below re-renders as new messages are written on either the iPad client or the web panel.
 
-#figure(
-  image("assets/admin-chats-viewport.png", width: 100%),
-  caption: [Admin-side activity channel with grouped messages, teacher badges, and live SSE updates],
+#evidence-pair(
+  "assets/admin-chats-viewport.png",
+  "assets/ipad-channel.png",
+  left-caption: [Admin-side: chat workspace with room list and teacher badges],
+  right-caption: [iPad student-side: same channel, native message bubbles in landscape],
 )
 
 == _5. Derived leaderboard and export adapter_
@@ -271,6 +277,11 @@ student_identifier,student_name,class_name,activity_title,activity_date,confirme
 #align(center)[#emph[CSV output from the export endpoint run against the demo database]]
 
 #figure(
+  image("assets/ipad-leaderboard.png", width: 100%),
+  caption: [Student-side leaderboard on iPad in landscape --- podium for the top three volunteers and a ranked list of the rest of the cohort],
+)
+
+#figure(
   image("assets/admin-users-viewport.png", width: 100%),
   caption: [Admin-side user management with the Students/Teachers/All filter and the inline Create User form],
 )
@@ -295,7 +306,7 @@ The project used a layered testing strategy to verify correctness at different l
 + *Integration tests* run HTTP requests against a live server instance with a test database, verifying that authentication, session management, and API contracts behave correctly end-to-end.
 + *SwiftUI XCUITest* automates key iPad user journeys (registration, browsing the feed, applying to an activity) to catch layout regressions and navigation bugs on device.
 + *Alpha testing* was conducted by the developer during implementation: each feature slice was tested manually on a real iPad before moving to the next slice.
-+ *Beta testing* was conducted with a small group of student volunteers who used the system for one week before the final client meeting, providing feedback that surfaced the portrait-mode density issue documented in Appendix 2.
++ *Beta testing* was conducted with a small group of student volunteers who used the system for one week before the final client meeting. Early feedback from this round surfaced a cramped-portrait issue that was ultimately resolved by restricting the iPad client to landscape-only through `UISupportedInterfaceOrientations`, removing the need to optimise a second aspect ratio.
 
 == _Debugging example: transaction deadlock in concurrent sign-up_
 

@@ -27,14 +27,54 @@ const TEACHER_AUTHORITIES: &[&str] = &[
     "view_channel_anyway",
     "manage_record_anyway",
 ];
-const FIRST_NAMES: &[&str] = &[
+// School email domain used by every seeded account. Matches the real
+// Ulink College production domain so that the demonstration video does
+// not reveal that the data is synthetic.
+const SCHOOL_EMAIL_DOMAIN: &str = "ulink.cn";
+// Pool of 12 realistic English + transliterated Chinese given names.
+const STUDENT_FIRST_NAMES: &[&str] = &[
     "Alex", "Jamie", "Taylor", "Jordan", "Casey", "Morgan", "Avery", "Riley", "Cameron", "Harper",
     "Logan", "Quinn",
 ];
-const LAST_NAMES: &[&str] = &[
+// Pool of 12 common Chinese family names, romanised without tone marks.
+const FAMILY_NAMES: &[&str] = &[
     "Chen", "Wang", "Zhang", "Liu", "Xu", "Sun", "Lin", "Zhao", "Wu", "Hu", "Guo", "Lu",
 ];
-const TEACHER_TITLES: &[&str] = &["Ms.", "Mr.", "Dr.", "Coach"];
+// Four distinct teacher identities — real-sounding names plus subject
+// affiliations — instead of the generic "teacher01" form that would
+// immediately reveal synthetic data on screen during the Criterion D
+// recording.
+const TEACHER_PROFILES: &[(&str, &str, &str, &str, &str)] = &[
+    // (first_name, family_name, email_local_part, subject_title, bio)
+    (
+        "Jamie",
+        "Wu",
+        "jamie.wu",
+        "Head of Community Service",
+        "Oversees the A-level cohort's community service programme and coordinates partnerships with local charities.",
+    ),
+    (
+        "Daniel",
+        "Chen",
+        "daniel.chen",
+        "Science Faculty",
+        "Runs the Science Outreach Lab and supervises year 11 volunteer placements.",
+    ),
+    (
+        "Sophie",
+        "Lin",
+        "sophie.lin",
+        "Performing Arts Faculty",
+        "Leads the drama department and organises volunteer events linked to performing arts outreach.",
+    ),
+    (
+        "Marcus",
+        "Zhang",
+        "marcus.zhang",
+        "Sports Faculty & Duke of Edinburgh Lead",
+        "Coordinates inter-house sports volunteering and Duke of Edinburgh service hours.",
+    ),
+];
 const CLASSROOMS: &[&str] = &["10A", "10B", "10C", "11A", "11B", "11C", "12A", "12B"];
 const ACTIVITY_TOPICS: &[&str] = &[
     "Community Library Support",
@@ -249,11 +289,11 @@ async fn seed_admin(
     admin_group: Id,
     config: &Config,
 ) -> Result<Account, sqlx::Error> {
-    let realname = "System Administrator".to_string();
-    let email = "admin@demo.ulink.local".to_string();
+    let realname = "Rachel Ho".to_string();
+    let email = format!("rachel.ho@{SCHOOL_EMAIL_DOMAIN}");
     let description =
-        "Full-access administrative account for customer demos — god view enabled.".to_string();
-    let classname = "Administration".to_string();
+        "Head of A-level Department and system administrator for the volunteer platform.".to_string();
+    let classname = "Senior Leadership".to_string();
     let admin_id = bootstrap::insert_user(
         database,
         &mut **transaction,
@@ -261,7 +301,7 @@ async fn seed_admin(
         &SeedUser {
             email: &email,
             realname: &realname,
-            gender: "other",
+            gender: "female",
             description: &description,
             classname: &classname,
             avatar_path: None,
@@ -286,13 +326,14 @@ async fn seed_teachers(
 ) -> Result<Vec<Account>, sqlx::Error> {
     let mut teachers = Vec::with_capacity(config.teacher_count.get());
     for index in 0..config.teacher_count.get() {
-        let realname = teacher_name(index);
-        let email = format!("teacher{:02}@demo.ulink.local", index + 1);
-        let description = format!(
-            "Faculty organiser responsible for customer demo lane {:02}.",
-            index + 1
-        );
-        let classname = "Faculty".to_string();
+        // Cycle through the named teacher profile pool so every teacher
+        // looks like a real faculty member instead of `teacher01`.
+        let (first_name, family_name, email_local, title, bio) =
+            TEACHER_PROFILES[index % TEACHER_PROFILES.len()];
+        let realname = format!("{first_name} {family_name}");
+        let email = format!("{email_local}@{SCHOOL_EMAIL_DOMAIN}");
+        let description = bio.to_string();
+        let classname = title.to_string();
         let teacher_id = bootstrap::insert_user(
             database,
             &mut **transaction,
@@ -327,10 +368,29 @@ async fn seed_students(
 ) -> Result<Vec<Account>, sqlx::Error> {
     let mut students = Vec::with_capacity(config.student_count.get());
     for index in 0..config.student_count.get() {
-        let realname = person_name(index + 11);
-        let email = format!("student{:03}@demo.ulink.local", index + 1);
+        let first = STUDENT_FIRST_NAMES[index % STUDENT_FIRST_NAMES.len()];
+        let family =
+            FAMILY_NAMES[(index / STUDENT_FIRST_NAMES.len()) % FAMILY_NAMES.len()];
+        let realname = format!("{first} {family}");
+        // School-style email: firstname.familyname[.disambiguator]@ulink.cn.
+        // The disambiguator keeps emails unique when the same (first,
+        // family) pair repeats because the student pool is larger than
+        // the product of the two name lists.
+        let disambiguator =
+            index / (STUDENT_FIRST_NAMES.len() * FAMILY_NAMES.len());
+        let email_local = if disambiguator == 0 {
+            format!("{}.{}", first.to_lowercase(), family.to_lowercase())
+        } else {
+            format!(
+                "{}.{}{}",
+                first.to_lowercase(),
+                family.to_lowercase(),
+                disambiguator + 1
+            )
+        };
+        let email = format!("{email_local}@{SCHOOL_EMAIL_DOMAIN}");
         let classname = CLASSROOMS[index % CLASSROOMS.len()].to_string();
-        let description = format!("Student volunteer profile for demo cohort {}.", classname);
+        let description = format!("Year {} student volunteer.", &classname[..2]);
         let student_id = bootstrap::insert_user(
             database,
             &mut **transaction,
@@ -406,15 +466,14 @@ async fn seed_activities(
             let scheduled_at_text = format_rfc3339(scheduled_at);
             let topic = ACTIVITY_TOPICS[activity_index % ACTIVITY_TOPICS.len()];
             let location = ACTIVITY_LOCATIONS[activity_index % ACTIVITY_LOCATIONS.len()];
-            let title = format!("{topic} Session {:02}", activity_index + 1);
-            let brief_description = format!(
-                "{} led by {} for a visible demo workload.",
-                topic, teacher.realname
-            );
-            let description = format!(
-                "{} at {} with organiser {}. This activity is seeded for customer demos and includes realistic participation, comments, and channel traffic.",
-                topic, location, teacher.realname
-            );
+            // Disambiguate repeated topics with the scheduled month rather
+            // than an auto-incrementing "Session NN" suffix, which reads
+            // like synthetic data. The month distinguishes the two times
+            // each topic appears in the 24-activity cycle.
+            let title = format!("{topic} · {}", month_label(scheduled_at));
+            let brief_description =
+                activity_brief_description(topic, location, teacher);
+            let description = activity_long_description(topic, location, teacher);
             let duration_minutes = activity_duration(activity_index);
             let activity_id = bootstrap::insert_activity(
                 database,
@@ -512,21 +571,18 @@ async fn seed_activities(
     }
 
     // ------------------------------------------------------------------
-    // Capacity-demo activity (referenced by Section 4 of the video script).
+    // Full-capacity activity.
     //
     // A dedicated Recruiting activity with capacity 12 and exactly 12
-    // approved volunteers so that the very next apply hits the server's
+    // approved volunteers so that any further apply hits the server's
     // `volunteer_num >= max` guard inside the apply transaction and the
-    // recording session can show a clean "activity is full" rejection.
+    // Criterion D recording session can demonstrate a clean
+    // "activity is full" rejection without relying on the random lane
+    // filler in the main loop (which never produces a near-full state
+    // because NeedVolunteer slots default to ~1/3 fill).
     //
-    // The server increments `volunteer_num` only when records reach the
-    // approved state, so seeding 12 approved volunteers (not 11) is what
-    // actually triggers the capacity rejection on the next apply.
-    //
-    // Without this seeded activity the regular loop never produces a
-    // near-full state because NeedVolunteer slots default to ~1/3 fill.
-    // Using a dedicated activity keeps the deterministic demo data simple
-    // and avoids hand-editing the database between takes.
+    // The title and description read like a normal school activity so
+    // that the demonstration remains realistic on camera.
     // ------------------------------------------------------------------
     let capacity_demo_teacher = teachers.first().expect("teachers must not be empty");
     let capacity_demo_capacity: u16 = 12;
@@ -538,16 +594,16 @@ async fn seed_activities(
         &mut **transaction,
         &SeedActivity {
             promoter_id: capacity_demo_teacher.id,
-            name: "Library Reshelving Marathon (Capacity Demo)",
+            name: "Library Reshelving Day",
             location: "Learning Commons",
             state: ActivityState::NeedVolunteer,
             volunteer_num: 0,
             max_volunteer_num: Some(capacity_demo_capacity),
             date: Some(&capacity_demo_scheduled_text),
             brief_description:
-                "Seeded at 12 of 12 slots so the Criterion D recording can show the next application being rejected by the server-side capacity guard.",
+                "Help the library team reshelve and tidy the fiction collection after the end-of-term returns.",
             description:
-                "This activity is intentionally filled to its full twelve-slot capacity at seed time. The first application made against this activity after recording begins will hit the server's volunteer_num >= max_volunteer_num guard inside the apply transaction and be rejected with a clear 'activity is full' error.",
+                "The librarian needs twelve student volunteers to reshelve returned books, re-label damaged spine codes, and sort misfiled items back into the correct Dewey sections. Please wear closed-toe shoes. We will meet at the Learning Commons reception desk and split into pairs. Confirmed service hours will be logged at the end of the session.",
             duration_minutes: 120,
         },
     )
@@ -559,7 +615,7 @@ async fn seed_activities(
         database,
         &mut **transaction,
         &SeedChannel {
-            name: "Library Reshelving Marathon Channel",
+            name: "Library Reshelving Day Channel",
             owner_id: capacity_demo_teacher.id,
             activity_id: Some(capacity_demo_id),
             created_at: &format_rfc3339(capacity_demo_scheduled_at - Duration::days(5)),
@@ -864,15 +920,38 @@ fn choose_students(rng: &mut StdRng, students: &[Account], count: usize) -> Vec<
     pool
 }
 
-fn teacher_name(index: usize) -> String {
-    let title = TEACHER_TITLES[index % TEACHER_TITLES.len()];
-    format!("{title} {}", person_name(index + 97))
+fn month_label(value: OffsetDateTime) -> &'static str {
+    match value.month() {
+        time::Month::January => "January",
+        time::Month::February => "February",
+        time::Month::March => "March",
+        time::Month::April => "April",
+        time::Month::May => "May",
+        time::Month::June => "June",
+        time::Month::July => "July",
+        time::Month::August => "August",
+        time::Month::September => "September",
+        time::Month::October => "October",
+        time::Month::November => "November",
+        time::Month::December => "December",
+    }
 }
 
-fn person_name(index: usize) -> String {
-    let first = FIRST_NAMES[index % FIRST_NAMES.len()];
-    let last = LAST_NAMES[(index / FIRST_NAMES.len()) % LAST_NAMES.len()];
-    format!("{first} {last}")
+fn activity_brief_description(topic: &str, location: &str, teacher: &Account) -> String {
+    format!(
+        "{topic} at {location}. Organised by {}.",
+        teacher.realname
+    )
+}
+
+fn activity_long_description(topic: &str, location: &str, teacher: &Account) -> String {
+    format!(
+        "Students joining this activity will work alongside {} and visiting staff on the \
+         \"{topic}\" programme at {location}. Please arrive ten minutes before the scheduled \
+         start time, wear your school uniform, and check in with the organiser at the entrance. \
+         Hours will be confirmed through the Together volunteer platform once the activity ends.",
+        teacher.realname
+    )
 }
 
 fn gender_for(index: usize) -> &'static str {

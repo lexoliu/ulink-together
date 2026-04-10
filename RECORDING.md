@@ -84,9 +84,9 @@ You can override any of the defaults with environment variables:
 | `DEMO_ACTIVITIES_PER_TEACHER` | `6` | Seed activities per teacher |
 | `DEMO_COMMENTS_PER_ACTIVITY` | `4` | Comments per activity |
 | `DEMO_MESSAGES_PER_ACTIVITY` | `8` | Channel messages per activity |
-| `DEMO_ADMIN_PASSWORD` | `DemoAdmin123!` | Password for `admin@demo.ulink.local` |
-| `DEMO_TEACHER_PASSWORD` | `DemoTeacher123!` | Password for every `teacherNN@demo.ulink.local` |
-| `DEMO_STUDENT_PASSWORD` | `DemoStudent123!` | Password for every `studentNNN@demo.ulink.local` |
+| `DEMO_ADMIN_PASSWORD` | `DemoAdmin123!` | Password for the administrator account (`rachel.ho@ulink.cn`) |
+| `DEMO_TEACHER_PASSWORD` | `DemoTeacher123!` | Password for every seeded teacher (Jamie Wu, Daniel Chen, Sophie Lin, Marcus Zhang) |
+| `DEMO_STUDENT_PASSWORD` | `DemoStudent123!` | Password for every seeded student (firstname.familyname@ulink.cn) |
 | `DEMO_SEED` | `20260317` | RNG seed — keeps the data identical between runs |
 
 The script always passes `--reset`, so it is safe to run as many times as you need between takes.
@@ -99,14 +99,14 @@ At the end of the run the seeder logs credentials that the script expects to be 
  INFO Demo database initialized
  INFO Teachers: 4, students: 72, activities: 25, records: 233, comments: 96, messages: 192
  INFO Activity states -> recruiting: 9, going: 4, ended: 8, canceled: 4
- INFO Admin login:   admin@demo.ulink.local / DemoAdmin123!
- INFO Teacher login: teacher01@demo.ulink.local / DemoTeacher123!
- INFO Student login: student001@demo.ulink.local / DemoStudent123!
+ INFO Admin login:   rachel.ho@ulink.cn / DemoAdmin123!
+ INFO Teacher login: jamie.wu@ulink.cn / DemoTeacher123!
+ INFO Student login: alex.chen@ulink.cn / DemoStudent123!
 ```
 
-Keep this terminal output visible while rehearsing — the three logins are the only accounts the script uses.
+Keep this terminal output **off screen** during recording — the IBDP evaluator should see the app behaving like a deployed product, not a demo seed log. The three logins above are the only accounts the script uses on camera.
 
-> The activity count is 25 rather than `teacher_count × activities_per_teacher` because the seeder adds one extra **capacity-demo activity** called "Library Reshelving Marathon (Capacity Demo)" filled to 12 of 12 slots. Section 4 of the video script relies on this exact state so that the very next apply is rejected by the server's `volunteer_num >= max_volunteer_num` guard.
+> The activity count is 25 rather than `teacher_count × activities_per_teacher` because the seeder adds one extra full-capacity activity called "Library Reshelving Day" filled to 12 of 12 slots. Section 4 of the video script relies on this exact state so that the very next apply is rejected by the server's `volunteer_num >= max_volunteer_num` guard. The activity name and description are intentionally plain so that the recording looks like a real library volunteering session.
 
 ### Confirm the seed worked
 
@@ -122,9 +122,9 @@ sqlite3 /tmp/together-demo.db \
 Expected:
 
 - 77 users (1 admin + 4 teachers + 72 students)
-- 25 activities (24 regular + 1 capacity-demo)
+- 25 activities (24 regular + 1 full-capacity activity)
 - 233 records
-- `Library Reshelving Marathon (Capacity Demo)|12/12`
+- `Library Reshelving Day|12/12`
 
 ---
 
@@ -167,7 +167,7 @@ curl -s http://127.0.0.1:8080/api/v1/health
 
 curl -s -X POST http://127.0.0.1:8080/api/v1/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@demo.ulink.local","password":"DemoAdmin123!"}' -i | head -20
+  -d '{"email":"rachel.ho@ulink.cn","password":"DemoAdmin123!"}' -i | head -20
 # → HTTP/1.1 200 OK plus Set-Cookie: session=...
 ```
 
@@ -194,51 +194,42 @@ Vite will start on `http://localhost:5173` (or 5174 if 5173 is taken). **Write t
 
 ### Smoke-test the admin panel
 
-Open `http://localhost:5173/` in Chrome. You should see the login page. Sign in as `admin@demo.ulink.local` / `DemoAdmin123!` and verify the dashboard shows 8 recruiting / 4 in progress / 8 completed. Sign out before you start recording so your first frame is the login screen.
+Open `http://localhost:5173/` in Chrome. You should see the login page. Sign in as `rachel.ho@ulink.cn` / `DemoAdmin123!` and verify the dashboard shows 9 recruiting / 4 in progress / 8 completed. Sign out before you start recording so your first frame is the login screen.
 
 ---
 
-## 5. Build and launch the SwiftUI iPad app
+## 5. Launch the SwiftUI iPad app as a pre-deployed product
 
-The SwiftUI app reads its server URL from the `TOGETHER_API_BASE_URL` Info.plist entry. In the xcodeproj this key is declared as `INFOPLIST_KEY_TOGETHER_API_BASE_URL = ""` — empty by default, so the user enters an address at runtime. For recording you want a fixed URL baked in, so the simulator never shows the "Enter service address" step unless the script asks for it.
+IBDP requires a realistic demonstration — a real student at Ulink would never type a server URL. The app must look and feel as if it was already deployed to a school-managed iPad, even though the "school server" is actually your local `127.0.0.1:8080`.
 
-### Option A — build-time override (recommended for recording)
+To make this work, `AppEnvironment.bundledServerURL()` checks `ProcessInfo.processInfo.environment["TOGETHER_API_BASE_URL"]`. When Xcode launches the app with that variable set, the app reads it on launch, `hasBundledServerURL` returns `true`, and the auth screen skips the "Enter service address" step entirely — the first frame is the sign-in form, exactly as a deployed product would behave.
 
-```bash
-cd swiftui
-xcodebuild \
-  -project together.xcodeproj \
-  -scheme together \
-  -configuration Debug \
-  -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M4)' \
-  INFOPLIST_KEY_TOGETHER_API_BASE_URL="http://127.0.0.1:8080" \
-  build
-```
+### Set the scheme environment variable (one-time)
 
-Then launch:
+1. Open the Xcode project:
+   ```bash
+   open ~/Coding/ulink-together/swiftui/together.xcodeproj
+   ```
+2. **Product → Scheme → Edit Scheme…** (⌘<).
+3. Left sidebar: **Run**.
+4. Top tabs: **Arguments**.
+5. Under **Environment Variables**, click **+** and add:
+   - Name: `TOGETHER_API_BASE_URL`
+   - Value: `http://127.0.0.1:8080`
+6. Make sure the checkbox next to the row is **ticked** — unchecked rows are ignored.
+7. Click **Close**.
 
-```bash
-xcrun simctl install booted \
-  ~/Library/Developer/Xcode/DerivedData/together-*/Build/Products/Debug-iphonesimulator/together.app
-xcrun simctl launch booted cool.lexo.together
-```
+### Launch
 
-### Option B — Xcode GUI
+Destination: **iPad Pro 13-inch** simulator (M5 or M4, either works). Press **Run** (⌘R).
 
-1. Open `swiftui/together.xcodeproj` in Xcode.
-2. Select the `together` scheme and the **iPad Pro 13-inch (M4)** simulator.
-3. Open **Edit Scheme → Run → Arguments → Environment Variables** and add `TOGETHER_API_BASE_URL = http://127.0.0.1:8080`.
-4. Press Run (`⌘R`).
+The simulator boots, the app launches, and the first frame is the sign-in form — no "Enter service address" step.
 
-### Option C — runtime entry (if you deliberately want to record Section 1 of the script showing the server-address field)
+### Smoke-test
 
-Leave `TOGETHER_API_BASE_URL` empty. On first launch the app will prompt for a service address. Enter `http://127.0.0.1:8080` and tap Next.
+Sign in as `alex.chen@ulink.cn` / `DemoStudent123!`. Pull-to-refresh the Explore tab — seeded activities should appear. Sign out so your first recorded frame is the auth screen.
 
-> **Warning**: the Xcode simulator's `localhost` is the host Mac, so `http://127.0.0.1:8080` does resolve to your running server. You do **not** need to replace it with your LAN IP unless you are running the server on a different machine.
-
-### Smoke-test the iPad app
-
-On the first launch, the auth screen should appear within one second. Sign in as `student001@demo.ulink.local` / `DemoStudent123!`, then pull-to-refresh the Explore tab — you should see activities populated from the seed (not an empty list). Sign out before recording.
+If you still see the "Service address" field, the scheme env var did not stick. Stop the simulator (⌘.), re-open **Edit Scheme**, verify the checkbox is ticked, and press Run again — Xcode reads the scheme at launch time, not at edit time.
 
 ---
 
@@ -286,11 +277,11 @@ The seeder uses a fixed RNG seed (`DEMO_SEED=20260317`) so every reset produces 
 | `Skyzen listening on http://127.0.0.1:<random>` | `--port` arg was eaten by cargo | Use `cargo run --bin together-server -- --port 8080` with an explicit `--` separator |
 | Admin panel shows `Network error` immediately after login | Dev server started without `BACKEND_TARGET` | Stop Vite (`Ctrl+C`), re-export `BACKEND_TARGET=http://127.0.0.1:8080` and restart |
 | Admin panel shows `CORS error` | You set `VITE_BACKEND_ORIGIN` by mistake, which exposes the backend URL to the browser | Unset `VITE_BACKEND_ORIGIN`, set `BACKEND_TARGET` instead |
-| iPad app opens with the "Enter service address" field | `TOGETHER_API_BASE_URL` not baked into the build | Use Option A or B in §5 |
+| iPad app opens with the "Enter service address" field | The scheme environment variable `TOGETHER_API_BASE_URL` was never set, or Xcode cached an older scheme where it was missing | Edit Scheme → Run → Arguments → Environment Variables, ensure `TOGETHER_API_BASE_URL` is set to `http://127.0.0.1:8080` **and the checkbox next to the row is ticked**. Stop the simulator (⌘.) and press Run again — Xcode re-reads the scheme at launch, not at edit time. |
 | iPad app shows `Could not reach the service` | Server not running on the expected port or using IPv6 loopback | Verify with `curl http://127.0.0.1:8080/api/v1/health`; if the server is bound to `::1` use `http://[::1]:8080` instead |
 | `student001` has no activities in Explore | Seed database used but server is pointing at a different SQLite file | Double-check `--db` argument matches `DEMO_DATABASE_URL` |
 | Capacity protection demo fails — apply silently succeeds past 12/12 | You forgot to re-seed between rehearsals, so the seeded activity is already in a different state | Run `scripts/init-demo.sh` again |
-| Teacher sees the Users tab in the sidebar | You logged in with the admin account by mistake | Sign out, sign back in with `teacher01@demo.ulink.local` |
+| Teacher sees the Users tab in the sidebar | You logged in with the admin account by mistake | Sign out, sign back in with `jamie.wu@ulink.cn` |
 | Notifications tab shows "You're all caught up" during Section 6 | The previous take ran long enough for the SSE push to already arrive and you dismissed the notifications by mistake | Re-seed; the seed does not create notifications, so you must re-trigger them by posting a message before recording Section 6 |
 
 ---
@@ -312,10 +303,45 @@ The recorded file should be exported to `doc/Crit_D_Video.mp4` (same folder as t
 
 ## Appendix — Accounts produced by the seeder
 
-| Role | Email | Password | Group | Notes |
-|---|---|---|---|---|
-| Administrator | `admin@demo.ulink.local` | `DemoAdmin123!` | `admin` (god view) | Seeded with `allow_all_authorities=true`; sees every activity, every user, every export |
-| Teacher 1–4 | `teacher01..teacher04@demo.ulink.local` | `DemoTeacher123!` | `teacher` | Can create activities, manage own activities' records, post in own channels; cannot view Users or Operations |
-| Student 1–72 | `student001..student072@demo.ulink.local` | `DemoStudent123!` | `student` | Can browse, apply, chat in channels they belong to, view own records |
+Every seeded account uses the `@ulink.cn` domain so the demonstration looks like a deployed Ulink College product. Passwords are still the fixed `Demo*` strings because the seeder needs reproducible credentials — but the passwords should never be visible on camera during the video (the recorder types them into the password field).
 
-All emails, names, and classes are deterministic — the same seed value produces the same data, so the recorder can reference any student email between `student001` and `student072` with confidence that the account exists.
+### Administrator
+
+| Email | Name | Password | Notes |
+|---|---|---|---|
+| `rachel.ho@ulink.cn` | Rachel Ho | `DemoAdmin123!` | Head of A-level Department. Seeded in the `admin` group with `allow_all_authorities=true`; sees every activity, every user, and every export. |
+
+### Teachers
+
+| Email | Name | Title / Classname | Notes |
+|---|---|---|---|
+| `jamie.wu@ulink.cn` | Jamie Wu | Head of Community Service | Used in the video as the principal organiser for Sections 3–5 |
+| `daniel.chen@ulink.cn` | Daniel Chen | Science Faculty | Second teacher for multi-organiser shots |
+| `sophie.lin@ulink.cn` | Sophie Lin | Performing Arts Faculty | |
+| `marcus.zhang@ulink.cn` | Marcus Zhang | Sports Faculty & Duke of Edinburgh Lead | |
+
+All four teachers share the password `DemoTeacher123!` and belong to the `teacher` group. They can create activities, manage their own activities' records, and post in their own channels; they cannot view the Users or Operations pages.
+
+### Students
+
+| Email pattern | Count | Notes |
+|---|---|---|
+| `firstname.familyname@ulink.cn` (with `firstname.familyname2@...` when names collide) | 72 | Cycle of 12 first names × 12 family names × 8 classrooms; `DemoStudent123!` password; belong to the `student` group. |
+
+Example student emails produced by the deterministic seed (`DEMO_SEED=20260317`):
+
+- `alex.chen@ulink.cn` (class 10A)
+- `jamie.chen@ulink.cn` (class 10B)
+- `taylor.chen@ulink.cn` (class 10C)
+- `quinn.liu@ulink.cn` (class 12B)
+
+To check which students are actually in the pre-filled capacity activity (and therefore unavailable for the "activity is full" demo in Section 4):
+
+```bash
+sqlite3 /tmp/together-demo.db \
+  "SELECT u.email FROM records r JOIN users u ON u.id=r.user_id \
+   JOIN activities a ON a.id=r.activity_id \
+   WHERE a.name='Library Reshelving Day' ORDER BY u.email;"
+```
+
+Pick any student email **not** in that list to record the capacity rejection — `alex.chen@ulink.cn` is reliably available under the default seed.

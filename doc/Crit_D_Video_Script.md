@@ -48,9 +48,9 @@ Run through everything in `RECORDING.md` §1–§4:
 **Show:**
 
 1. From the iPad auth screen, tap **Create account**.
-2. Fill the registration form with a brand-new email (`demo.recorder@demo.ulink.local`), real name, class 12A, gender, password `DemoRecorder123!`.
+2. Fill the registration form with a brand-new school email (e.g. `riley.ho@ulink.cn`), real name "Riley Ho", class 12A, gender, password `UlinkVol2026!`.
 3. Submit. The app signs the new account in automatically.
-4. Cut to the organiser Mac, open a terminal, and run `sqlite3 /tmp/together-demo.db "SELECT email, substr(password_hash,1,20) FROM users WHERE email='demo.recorder@demo.ulink.local';"` — the result shows a `$2b$12$` bcrypt prefix, never the plaintext password.
+4. Cut briefly to the organiser Mac, open a terminal, and run `sqlite3 /tmp/together-demo.db "SELECT email, substr(password_hash,1,20) FROM users WHERE email='riley.ho@ulink.cn';"` — the result shows a `$2b$12$` bcrypt prefix, never the plaintext password.
 5. Sign back out from the new account.
 
 **Say:**
@@ -62,9 +62,9 @@ Run through everything in `RECORDING.md` §1–§4:
 
 **Show (fast cuts, ~15 s each):**
 
-1. Sign into the iPad app as `student001@demo.ulink.local` / `DemoStudent123!`. Show the student tab bar: Explore, Records, Notifications, Leaderboard, Account. Note that there is no Manage tab.
-2. Cut to Chrome, sign into the admin panel as `teacher01@demo.ulink.local` / `DemoTeacher123!`. Show the sidebar with only three items: Home, Activities, Chats. Confirm Users and Operations are hidden — teachers cannot manage users.
-3. Sign out. Sign back in as `admin@demo.ulink.local` / `DemoAdmin123!`. The sidebar now has five items (Home, Activities, Chats, Users, Operations). Hover the home stats: 8 recruiting, 4 in progress, 8 completed — the admin sees every teacher's activities.
+1. Sign into the iPad app as `alex.chen@ulink.cn` / `DemoStudent123!`. Show the student tab bar: Explore, Records, Notifications, Leaderboard, Account. Note that there is no Manage tab.
+2. Cut to Chrome, sign into the admin panel as `jamie.wu@ulink.cn` / `DemoTeacher123!`. Show the sidebar with only three items: Home, Activities, Chats. Confirm Users and Operations are hidden — teachers cannot manage users.
+3. Sign out. Sign back in as `rachel.ho@ulink.cn` / `DemoAdmin123!`. The sidebar now has five items (Home, Activities, Chats, Users, Operations). Hover the home stats: 9 recruiting, 4 in progress, 8 completed — the admin sees every teacher's activities.
 4. Click **Users**, then **Create User**, switch the group dropdown to **teacher**, and show the form so the evaluator sees the admin can provision new teachers and students at runtime.
 
 **Say:**
@@ -76,7 +76,7 @@ Run through everything in `RECORDING.md` §1–§4:
 
 **Show:**
 
-1. Back in Chrome as `teacher01@demo.ulink.local`, click **Activities → New activity**.
+1. Back in Chrome as `jamie.wu@ulink.cn`, click **Activities → New activity**.
 2. Fill: name `Book Fair Volunteer Support`, date two weeks in the future at 14:00, location `Learning Commons`, capacity 12, duration 120 minutes, brief description, full description.
 3. Submit. The activity appears in the admin panel list.
 4. Cut to the iPad — pull-to-refresh the Explore tab. The new activity appears in the feed with the `Recruiting` chip, correct date, location, and capacity.
@@ -92,10 +92,10 @@ Run through everything in `RECORDING.md` §1–§4:
 
 **Show:**
 
-1. On the iPad, still signed in as `student001`, open the new `Book Fair Volunteer Support` activity and tap **Apply**. The state chip changes to `Pending Approval`.
-2. Switch to the admin panel, open the same activity, Records tab, approve `student001`. The state chip updates live — no manual refresh.
-3. Now demonstrate the capacity rule using the dedicated seeded activity. Sign into the iPad as a student who is **not** one of the twelve pre-enrolled students (the deterministic seed with `DEMO_SEED=20260317` leaves every `student0NN` outside the selection; `student072@demo.ulink.local` is a safe choice). Open `Library Reshelving Marathon (Capacity Demo)` from the Explore feed — the card displays 12/12.
-4. Tap **Apply**. The app displays a clear "The activity needn't more people" error banner and no new record is created. Cut to a terminal tab and run `sqlite3 /tmp/together-demo.db "SELECT volunteer_num, max_volunteer_num FROM activities WHERE name LIKE '%Capacity Demo%';"` to prove the count remains exactly 12/12 — the server refused the request before any insert happened.
+1. On the iPad, still signed in as `alex.chen@ulink.cn`, open the new `Book Fair Volunteer Support` activity and tap **Apply**. The state chip changes to `Pending Approval`.
+2. Switch to the admin panel, open the same activity, Records tab, approve `Alex Chen`. The state chip updates live — no manual refresh.
+3. Now demonstrate the capacity rule using the seeded full activity. Sign out of the iPad and sign in as a student not already enrolled in `Library Reshelving Day` — `alex.chen@ulink.cn` is the canonical choice under the default seed (run the SQL snippet in RECORDING.md §Appendix if you need to verify). Open `Library Reshelving Day` from the Explore feed — the card displays 12/12.
+4. Tap **Apply**. The app displays a clear "The activity needn't more people" error banner and no new record is created. Cut briefly to the off-screen terminal and run `sqlite3 /tmp/together-demo.db "SELECT volunteer_num, max_volunteer_num FROM activities WHERE name='Library Reshelving Day';"` to prove the count remains exactly 12/12 — the server refused the request before any insert happened.
 
 **Say:**
 > Students apply to activities from the detail page, and the organiser either approves or rejects the application. The fifth success criterion also requires that a capacity limit cannot be exceeded. The server enforces this inside a transaction: the apply endpoint first opens a BEGIN IMMEDIATE transaction against SQLite, reads the current volunteer count and maximum together, and only then tries to insert the new record. Because the seeded activity is already at twelve of twelve, the comparison fails and the server returns a 403 with an "activity is full" message, as the terminal query confirms immediately afterwards.
@@ -173,27 +173,30 @@ Run through everything in `RECORDING.md` §1–§4:
 
 **Show:**
 
-1. Back on the iPad Explore tab. Rotate the simulator from landscape to portrait (Command+Right Arrow). The NavigationSplitView collapses to a single pane without cropping any buttons.
-2. Open an activity detail, rotate back to landscape — the split view restores. Scroll the detail view to show no elements are cut off.
+1. Back on the iPad Explore tab in landscape. Open an activity detail — show the NavigationSplitView with the feed on the left and detail on the right.
+2. Try rotating the simulator to portrait (Command+Right Arrow). The app **stays in landscape**; the simulator chrome rotates but the app content does not, because portrait is not declared in `UISupportedInterfaceOrientations`.
+3. Rotate back to landscape to show the layout is untouched.
 
 **Say:**
-> The app supports both iPad orientations. The feed uses a split view in landscape and collapses to a single column in portrait, and every button remains fully visible and tappable when the device rotates mid-session.
+> Platform compatibility means the app runs reliably on the devices the school actually uses — iPads in landscape on a desk or stand. After the beta feedback from the client, the team locked the app to landscape-only rather than maintaining a second layout. The simulator can try to rotate, but the app keeps the one orientation every screen was designed for, so no element is ever cropped or wasted on a layout no one uses in class.
 
 ---
 
-## Closing (6:15–6:30)
+## Closing and extensibility (6:00–6:30)
 
-**Show:** Return to the admin panel home with stats visible.
+> IBDP Criterion D explicitly asks the candidate to "spend the last 30 seconds discussing expansion and modification of the product" (official checklist). This closing block covers that requirement.
+
+**Show:** Return to the admin panel home with stats visible. Optionally cursor over the Users / Operations sections to hint at extension points.
 
 **Say:**
-> The finished product centralises announcements, applications, messaging, hour tracking, and reporting onto one server with typed SwiftUI and React clients, directly addressing the fragmented workflow described by the client in Appendix 1.
+> The finished product centralises announcements, applications, messaging, hour tracking, and reporting onto one server. Looking forward, the same authority model extends naturally to new roles, the activity-scoped channel abstraction extends to group announcements, and the notification pipeline already has the hooks to add automated activity reminders and graduation-hour progress tracking, which are the top items on the client's post-release wishlist from Appendix 2.
 
 ---
 
 ## Post-production checklist
 
 - [ ] Verify total length is ≤ 6 minutes 45 seconds after cuts (target 6:30; hard cap 7:00).
-- [ ] Every visible account email ends in `@demo.ulink.local` — no real student names.
+- [ ] Every visible account email ends in `@ulink.cn` — the domain should look like a real school deployment, not a test environment.
 - [ ] Terminal SQL snippets are legible at 1080p.
 - [ ] Narration audio is normalised, no clipping.
 - [ ] Export CSV open-in-Numbers frame shows the ISMAS header row clearly for at least 2 seconds.

@@ -530,6 +530,8 @@ The use case diagram below identifies the three actors that interact with the sy
 
 == Student-side SwiftUI iPad Interface
 
+The iPad client is deliberately *landscape-only*. Portrait is excluded from the `UISupportedInterfaceOrientations` build setting in the project file, which means iPadOS never offers the app a portrait canvas and the developer never has to reason about two simultaneous layouts. This lets every screen target a single wide aspect ratio: the feed uses a NavigationSplitView where the sidebar and the activity detail sit side-by-side, the records screen uses a wide summary header with a full-width list underneath, and the channel view uses a multi-column chat layout. The decision also matches how students actually hold a school-issued iPad during class --- on a desk or stand in landscape, usually with a keyboard attached --- rather than in phone-style portrait.
+
 #figure(
   image("assets/wireframe-student-annotated.svg", width: 100%),
   caption: [Student-side annotated wireframe showing the planned feed and activity-detail workspace],
@@ -541,11 +543,12 @@ The use case diagram below identifies the three actors that interact with the sy
     text(fill: white, weight: "bold")[Screen cluster],
     text(fill: white, weight: "bold")[Design decision],
   ),
+  [Orientation], [Landscape-only across every screen. Portrait is not declared in the Info.plist orientations, so iPadOS will refuse to redraw in portrait when the device is rotated. This lets each view rely on a fixed wide canvas and avoids the Criterion A pain point of "portrait feels cramped".],
   [Auth flow], [The sign-in and registration screens emphasise school identity, required-field validation, and a clear transition into the app shell.],
-  [Feed and detail], [The student journey is built around quick scanning first and deeper detail second, so status, location, date, and capacity appear before long descriptions.],
-  [Records and leaderboard], [Personal progress is separated from the browse flow so confirmed hours and ranking can be checked without cluttering the activity feed.],
+  [Feed and detail], [The student journey is built around quick scanning first and deeper detail second, so status, location, date, and capacity appear before long descriptions. The NavigationSplitView places the feed list on the left and the detail pane on the right so neither view has to be dismissed to see the other.],
+  [Records and leaderboard], [Personal progress is separated from the browse flow so confirmed hours and ranking can be checked without cluttering the activity feed. The leaderboard uses a podium layout for the top three volunteers that only works in landscape.],
   [Comments and messaging], [Each activity has one shared chat for the organiser and the participating volunteers. The chat is created with the activity and remains tied to it throughout that activity's lifetime, so reminders, schedule changes, and questions stay attached to the correct event instead of private chats.],
-  [Account], [Profile management is separated from browsing and records, so the student-facing navigation stays clear and role-specific.],
+  [Account], [Profile management is separated from browsing and records, so the student-facing navigation stays clear and role-specific. The settings section includes a per-type notification opt-out row that opens a dedicated preferences page.],
 )
 
 == Communication and Export Boundaries
@@ -658,9 +661,9 @@ The test plan is organised by success criterion from Criterion A. Each criterion
   [Invalid], [Permission denied], [Generate an export without the required authority.], [The request is blocked.],
 
   sc-header("10", "Platform Compatibility"),
-  [Valid], [iPad orientations], [Run the app on iPad in portrait and landscape.], [Core screens remain usable with visible controls and readable content.],
+  [Valid], [Landscape launch], [Launch the app on an iPad Pro 13-inch simulator.], [The app opens in landscape and the NavigationSplitView sidebar + detail layout fills the screen with no clipping or forbidden rotation prompts.],
+  [Invalid], [Portrait rotation], [Physically rotate the iPad to portrait while the app is open.], [The app stays in landscape because portrait is not declared in the supported interface orientations, so the OS never redraws in portrait.],
   [Invalid], [Extreme content], [Open screens with very long titles or very long message history.], [The interface scrolls or truncates safely instead of breaking layout.],
-  [Boundary], [Mid-action rotation], [Rotate the device during text input and navigation.], [The current screen remains stable and interactive.],
 )
 
 === Testing Evidence Streams

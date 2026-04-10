@@ -96,8 +96,9 @@ sqlite://./together-demo.db
 
 Default sample credentials:
 
-- teacher: `teacher01@demo.ulink.local` / `DemoTeacher123!`
-- student: `student001@demo.ulink.local` / `DemoStudent123!`
+- admin: `rachel.ho@ulink.cn` / `DemoAdmin123!`
+- teacher: `jamie.wu@ulink.cn` / `DemoTeacher123!`
+- student: `alex.chen@ulink.cn` / `DemoStudent123!`
 
 The shell script accepts environment overrides such as:
 
@@ -105,6 +106,7 @@ The shell script accepts environment overrides such as:
 - `DEMO_TEACHER_COUNT`
 - `DEMO_STUDENT_COUNT`
 - `DEMO_ACTIVITIES_PER_TEACHER`
+- `DEMO_ADMIN_PASSWORD`
 - `DEMO_TEACHER_PASSWORD`
 - `DEMO_STUDENT_PASSWORD`
 - `DEMO_SEED`
