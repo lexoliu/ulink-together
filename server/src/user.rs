@@ -96,6 +96,7 @@ pub async fn list(
     if group.trim().is_empty() {
         return Err(ListUsersError::InvalidGroup);
     }
+    let all_groups = group == "all";
     let search_pattern = search
         .as_deref()
         .map(str::trim)
@@ -107,17 +108,30 @@ pub async fn list(
         return Err(ListUsersError::InvalidLimit);
     }
 
-    let rows = sqlx::query(
-        database
-            .sql("SELECT users.id, users.email, users.realname, users.gender, users.description, users.classname, users.avatar_path, users.group_id FROM users JOIN groups ON groups.id = users.group_id WHERE groups.code = ?1 AND (?2 = '' OR LOWER(users.realname) LIKE ?2 OR LOWER(users.email) LIKE ?2 OR LOWER(users.classname) LIKE ?2) ORDER BY users.realname ASC, users.email ASC LIMIT ?3")
-            .as_ref(),
-    )
-    .bind(group)
-    .bind(search_pattern)
-    .bind(i64::from(limit))
-    .fetch_all(database.sqlx())
-    .await
-    .expect("Database error");
+    let rows = if all_groups {
+        sqlx::query(
+            database
+                .sql("SELECT users.id, users.email, users.realname, users.gender, users.description, users.classname, users.avatar_path, users.group_id FROM users WHERE (?1 = '' OR LOWER(users.realname) LIKE ?1 OR LOWER(users.email) LIKE ?1 OR LOWER(users.classname) LIKE ?1) ORDER BY users.realname ASC, users.email ASC LIMIT ?2")
+                .as_ref(),
+        )
+        .bind(search_pattern)
+        .bind(i64::from(limit))
+        .fetch_all(database.sqlx())
+        .await
+        .expect("Database error")
+    } else {
+        sqlx::query(
+            database
+                .sql("SELECT users.id, users.email, users.realname, users.gender, users.description, users.classname, users.avatar_path, users.group_id FROM users JOIN groups ON groups.id = users.group_id WHERE groups.code = ?1 AND (?2 = '' OR LOWER(users.realname) LIKE ?2 OR LOWER(users.email) LIKE ?2 OR LOWER(users.classname) LIKE ?2) ORDER BY users.realname ASC, users.email ASC LIMIT ?3")
+                .as_ref(),
+        )
+        .bind(group)
+        .bind(search_pattern)
+        .bind(i64::from(limit))
+        .fetch_all(database.sqlx())
+        .await
+        .expect("Database error")
+    };
 
     let users = rows
         .into_iter()
@@ -205,16 +219,28 @@ pub async fn list_classes(
     if group.trim().is_empty() {
         return Err(ListUserClassesError::InvalidGroup);
     }
+    let all_groups = group == "all";
 
-    let rows = sqlx::query(
-        database
-            .sql("SELECT users.classname, COUNT(users.id) AS user_count FROM users JOIN groups ON groups.id = users.group_id WHERE groups.code = ?1 GROUP BY users.classname ORDER BY users.classname ASC")
-            .as_ref(),
-    )
-    .bind(group)
-    .fetch_all(database.sqlx())
-    .await
-    .expect("Database error");
+    let rows = if all_groups {
+        sqlx::query(
+            database
+                .sql("SELECT users.classname, COUNT(users.id) AS user_count FROM users GROUP BY users.classname ORDER BY users.classname ASC")
+                .as_ref(),
+        )
+        .fetch_all(database.sqlx())
+        .await
+        .expect("Database error")
+    } else {
+        sqlx::query(
+            database
+                .sql("SELECT users.classname, COUNT(users.id) AS user_count FROM users JOIN groups ON groups.id = users.group_id WHERE groups.code = ?1 GROUP BY users.classname ORDER BY users.classname ASC")
+                .as_ref(),
+        )
+        .bind(group)
+        .fetch_all(database.sqlx())
+        .await
+        .expect("Database error")
+    };
 
     let classes = rows
         .into_iter()

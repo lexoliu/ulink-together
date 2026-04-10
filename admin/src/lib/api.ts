@@ -262,7 +262,7 @@ export class AdminApiClient {
   }
 
   async users(params?: {
-    group?: UserGroup
+    group?: UserGroup | 'all'
     search?: string
     limit?: number
   }): Promise<UserProfile[]> {

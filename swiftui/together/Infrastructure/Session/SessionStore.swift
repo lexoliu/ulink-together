@@ -40,8 +40,10 @@ final class SessionStore: ObservableObject {
     @Published var authorityCache: [String: Bool] = [:]
     @Published var serverURLText: String
     @Published var isAuthenticating = false
+    @Published var unreadNotificationCount: Int = 0
     var demoData: AppDemoData?
     private var lastErrorCategory: LastErrorCategory?
+    private var notificationPushTask: Task<Void, Never>?
 
     init(defaultServerURL: String? = nil, runtimeMode: RuntimeMode? = nil) {
         let resolvedMode = runtimeMode ?? Self.runtimeModeFromProcessInfo()
@@ -133,6 +135,7 @@ final class SessionStore: ObservableObject {
             phase = .signedIn
             clearLastError()
             await refreshAuthorities()
+            startNotificationListener()
         } catch let error as APIError {
             phase = .signedOut
             currentUser = nil
@@ -196,6 +199,7 @@ final class SessionStore: ObservableObject {
             phase = .signedIn
             clearLastError()
             await refreshAuthorities()
+            startNotificationListener()
             return true
         } catch {
             setLastError(readableError(error), category: .general)
@@ -267,6 +271,7 @@ final class SessionStore: ObservableObject {
             phase = .signedIn
             clearLastError()
             await refreshAuthorities()
+            startNotificationListener()
             return true
         } catch {
             setLastError(readableError(error), category: .general)
@@ -512,6 +517,62 @@ final class SessionStore: ObservableObject {
         phase = .signedOut
         currentUser = nil
         authorityCache = [:]
+        stopNotificationListener()
+        unreadNotificationCount = 0
+    }
+
+    func refreshUnreadNotificationCount() async {
+        guard demoData == nil else {
+            return
+        }
+        guard let serverURL else {
+            return
+        }
+        do {
+            unreadNotificationCount = try await apiClient.fetchNotificationUnreadCount(baseURL: serverURL)
+        } catch {
+            // Silent — unread count is non-critical
+        }
+    }
+
+    func startNotificationListener() {
+        guard demoData == nil else {
+            return
+        }
+        guard let serverURL else {
+            return
+        }
+        stopNotificationListener()
+
+        Task { await refreshUnreadNotificationCount() }
+
+        notificationPushTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let stream = await self.pushClient.stream(baseURL: serverURL)
+                for try await event in stream {
+                    guard event.name == "notification" else { continue }
+                    await MainActor.run {
+                        self.unreadNotificationCount += 1
+                    }
+                }
+            } catch {
+                // Stream cancelled or errored — leave count as-is
+            }
+        }
+    }
+
+    func stopNotificationListener() {
+        notificationPushTask?.cancel()
+        notificationPushTask = nil
+    }
+
+    func markUnreadNotificationsCleared() {
+        unreadNotificationCount = 0
+    }
+
+    func decrementUnreadNotificationCount(by amount: Int = 1) {
+        unreadNotificationCount = max(0, unreadNotificationCount - amount)
     }
 
     private static func runtimeModeFromProcessInfo() -> RuntimeMode {

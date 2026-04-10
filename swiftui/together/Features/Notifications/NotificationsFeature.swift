@@ -6,7 +6,6 @@ struct NotificationsHomeView: View {
     @State private var notifications: [NotificationResponse] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
-    @State private var pushTask: Task<Void, Never>?
 
     var body: some View {
         Group {
@@ -21,20 +20,27 @@ struct NotificationsHomeView: View {
             } else {
                 List {
                     ForEach(notifications) { notification in
-                        NotificationRow(notification: notification)
-                            .listRowBackground(notification.isRead ? Color.clear : AppTheme.accentTint.opacity(0.08))
-                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        NotificationRowLink(
+                            notification: notification,
+                            onTap: {
                                 if !notification.isRead {
-                                    Button {
-                                        Task {
-                                            await markRead([notification.id])
-                                        }
-                                    } label: {
-                                        Label("Read", systemImage: "checkmark")
-                                    }
-                                    .tint(AppTheme.accentTint)
+                                    Task { await markRead([notification.id]) }
                                 }
                             }
+                        )
+                        .listRowBackground(notification.isRead ? Color.clear : AppTheme.accentTint.opacity(0.08))
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            if !notification.isRead {
+                                Button {
+                                    Task {
+                                        await markRead([notification.id])
+                                    }
+                                } label: {
+                                    Label("Read", systemImage: "checkmark")
+                                }
+                                .tint(AppTheme.accentTint)
+                            }
+                        }
                     }
                 }
                 .listStyle(.insetGrouped)
@@ -58,11 +64,9 @@ struct NotificationsHomeView: View {
         }
         .task {
             await load()
-            subscribeToPush()
         }
-        .onDisappear {
-            pushTask?.cancel()
-            pushTask = nil
+        .onChange(of: session.unreadNotificationCount) { _, _ in
+            Task { await load() }
         }
         .alert("Unable to Load", isPresented: Binding(
             get: { errorMessage != nil },
@@ -96,6 +100,7 @@ struct NotificationsHomeView: View {
                 limit: 100
             )
             errorMessage = nil
+            await session.refreshUnreadNotificationCount()
         } catch {
             errorMessage = session.readableError(error)
         }
@@ -105,6 +110,7 @@ struct NotificationsHomeView: View {
         guard let serverURL = session.serverURL else { return }
         do {
             try await session.apiClient.markNotificationsRead(baseURL: serverURL, ids: ids)
+            session.decrementUnreadNotificationCount(by: ids.count)
             await load()
         } catch {
             errorMessage = session.readableError(error)
@@ -115,25 +121,132 @@ struct NotificationsHomeView: View {
         guard let serverURL = session.serverURL else { return }
         do {
             try await session.apiClient.markAllNotificationsRead(baseURL: serverURL)
+            session.markUnreadNotificationsCleared()
             await load()
         } catch {
             errorMessage = session.readableError(error)
         }
     }
 
-    private func subscribeToPush() {
-        guard let serverURL = session.serverURL else { return }
-        pushTask?.cancel()
-        pushTask = Task {
-            do {
-                let stream = await session.pushClient.stream(baseURL: serverURL)
-                for try await event in stream {
-                    guard event.name == "notification" else { continue }
-                    await load()
-                }
-            } catch {
-                // Swallow — push stream may be cancelled when view disappears
+}
+
+struct NotificationPreferencesView: View {
+    @EnvironmentObject private var session: SessionStore
+
+    @State private var preferences: [NotificationPreference] = []
+    @State private var isLoading = true
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        Form {
+            Section {
+                Text("Choose which system notifications you want to receive. Disabling a type stops new notifications immediately.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
+
+            Section("Types") {
+                if isLoading {
+                    HStack {
+                        ProgressView()
+                        Text("Loading")
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    ForEach(Array(preferences.enumerated()), id: \.element.notificationType) { index, preference in
+                        Toggle(
+                            isOn: Binding(
+                                get: { preferences[index].enabled },
+                                set: { newValue in
+                                    preferences[index] = NotificationPreference(
+                                        notificationType: preferences[index].notificationType,
+                                        enabled: newValue
+                                    )
+                                    Task { await save() }
+                                }
+                            )
+                        ) {
+                            Label(preference.notificationType.title, systemImage: preference.notificationType.systemImage)
+                        }
+                    }
+                }
+            }
+
+            if let errorMessage {
+                Section {
+                    Text(errorMessage)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
+            }
+        }
+        .navigationTitle("Notifications")
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            await load()
+        }
+    }
+
+    private func load() async {
+        guard let serverURL = session.serverURL else {
+            // Fall back to all-enabled defaults for demo / disconnected mode
+            preferences = NotificationTypeName.allCases.map {
+                NotificationPreference(notificationType: $0, enabled: true)
+            }
+            isLoading = false
+            return
+        }
+
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            preferences = try await session.apiClient.fetchNotificationPreferences(baseURL: serverURL)
+            // Ensure every known type is represented (server only returns what user has overridden + defaults)
+            var present = Set(preferences.map(\.notificationType))
+            for type in NotificationTypeName.allCases where !present.contains(type) {
+                preferences.append(NotificationPreference(notificationType: type, enabled: true))
+                present.insert(type)
+            }
+            errorMessage = nil
+        } catch {
+            errorMessage = session.readableError(error)
+        }
+    }
+
+    private func save() async {
+        guard let serverURL = session.serverURL else { return }
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            try await session.apiClient.updateNotificationPreferences(
+                baseURL: serverURL,
+                preferences: preferences
+            )
+            errorMessage = nil
+        } catch {
+            errorMessage = session.readableError(error)
+        }
+    }
+}
+
+private struct NotificationRowLink: View {
+    let notification: NotificationResponse
+    let onTap: () -> Void
+
+    var body: some View {
+        if let activityID = notification.payload.activityID {
+            NavigationLink {
+                ActivityDetailView(activityID: activityID)
+                    .onAppear { onTap() }
+            } label: {
+                NotificationRow(notification: notification)
+            }
+        } else {
+            NotificationRow(notification: notification)
+                .contentShape(Rectangle())
+                .onTapGesture { onTap() }
         }
     }
 }

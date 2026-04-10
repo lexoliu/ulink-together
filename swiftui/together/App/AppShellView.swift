@@ -42,6 +42,7 @@ struct AppShellView: View {
                     NotificationsHomeView()
                 }
             }
+            .badge(session.unreadNotificationCount)
 
             if session.showsManageTab {
                 Tab("Manage", systemImage: "slider.horizontal.3", value: .manage) {

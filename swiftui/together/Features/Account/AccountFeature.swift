@@ -75,6 +75,10 @@ struct AccountHomeView: View {
                     Button("Change Password") {
                         showingChangePassword = true
                     }
+
+                    NavigationLink("Notifications") {
+                        NotificationPreferencesView()
+                    }
                 }
 
                 // MARK: - Sign out

@@ -892,8 +892,9 @@ async fn change_state(
             .expect("Database error");
     }
 
-    // Notify volunteers about state change
-    notify_activity_state_change(&database, &hub, id, &activity_name, target_state).await;
+    // Notify volunteers + promoter about state change (excluding the actor)
+    notify_activity_state_change(&database, &hub, id, &activity_name, target_state, auth.uid())
+        .await;
 
     Ok(ApiMessage::new(format!(
         "Activity is {} now",
@@ -907,6 +908,7 @@ async fn notify_activity_state_change(
     activity_id: Id,
     activity_name: &str,
     new_state: ActivityState,
+    actor_id: Id,
 ) {
     let payload = models::ActivityStatePayload {
         activity_id: activity_id.to_string(),
@@ -915,6 +917,24 @@ async fn notify_activity_state_change(
     };
     let Some(payload_json) = notification::serialize_payload(&payload) else {
         return;
+    };
+
+    // Load promoter id
+    let promoter_row = sqlx::query(
+        database
+            .sql("SELECT promoter_id FROM activities WHERE id = ?1")
+            .as_ref(),
+    )
+    .bind(activity_id.to_string())
+    .fetch_optional(database.sqlx())
+    .await;
+
+    let promoter_id: Option<Id> = match promoter_row {
+        Ok(Some(row)) => row
+            .try_get::<String, _>("promoter_id")
+            .ok()
+            .and_then(|hex| hex.parse().ok()),
+        _ => None,
     };
 
     // Load all users with records for this activity
@@ -932,13 +952,23 @@ async fn notify_activity_state_change(
         Err(_) => return,
     };
 
-    let recipients: Vec<Id> = rows
+    let mut recipients: Vec<Id> = rows
         .iter()
         .filter_map(|row| {
             let hex: String = row.try_get("user_id").ok()?;
             hex.parse().ok()
         })
         .collect();
+
+    // Add promoter if not already present
+    if let Some(promoter) = promoter_id {
+        if !recipients.contains(&promoter) {
+            recipients.push(promoter);
+        }
+    }
+
+    // Exclude the actor — they just performed this action
+    recipients.retain(|&uid| uid != actor_id);
 
     notification::create_notifications_batch(
         database,

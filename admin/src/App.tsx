@@ -158,7 +158,7 @@ function App() {
   const [search, setSearch] = useState('')
   const [chatSearch, setChatSearch] = useState('')
   const [studentSearch, setStudentSearch] = useState('')
-  const [userGroupFilter, setUserGroupFilter] = useState<'student' | 'teacher'>('student')
+  const [userGroupFilter, setUserGroupFilter] = useState<'student' | 'teacher' | 'all'>('student')
   const [scope, setScope] = useState<ActivityScope>('all')
   const [stateFilter, setStateFilter] = useState<ActivityFilter>('all')
   const [formOpen, setFormOpen] = useState(false)
@@ -202,10 +202,15 @@ function App() {
   })
 
   const authorities = authoritiesQuery.data ?? ({} as Record<AuthorityName, boolean>)
+  const canViewAllActivities = authorities.view_all_activities === true
 
   const activitiesQuery = useQuery({
-    queryKey: ['activities', currentUser?.id],
-    queryFn: () => api.activities({ displayAll: true }),
+    queryKey: ['activities', currentUser?.id, canViewAllActivities],
+    queryFn: () =>
+      api.activities({
+        displayAll: true,
+        user: canViewAllActivities ? undefined : currentUser?.id,
+      }),
     enabled: Boolean(currentUser),
   })
 
@@ -1612,8 +1617,8 @@ function StudentsPage({
   batchUpdatingClass: boolean
   batchDeletingClass: boolean
   creatingUser: boolean
-  userGroupFilter: 'student' | 'teacher'
-  onUserGroupFilterChange: (value: 'student' | 'teacher') => void
+  userGroupFilter: 'student' | 'teacher' | 'all'
+  onUserGroupFilterChange: (value: 'student' | 'teacher' | 'all') => void
   onCreateUser: (form: AdminCreateUserForm) => Promise<void>
   onSearchChange: (value: string) => void
   onSelectStudent: (studentId: string) => void
@@ -1696,6 +1701,17 @@ function StudentsPage({
           >
             Teachers
           </button>
+          <button
+            type="button"
+            onClick={() => onUserGroupFilterChange('all')}
+            className={`rounded-md px-4 py-1.5 transition ${
+              userGroupFilter === 'all'
+                ? 'bg-slate-900 text-white'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            All
+          </button>
         </div>
         {canCreateUsers ? (
           <Button
@@ -1708,7 +1724,7 @@ function StudentsPage({
                 gender: 'other',
                 classname: '',
                 avatar: null,
-                group: userGroupFilter,
+                group: userGroupFilter === 'all' ? 'student' : userGroupFilter,
               })
               setCreateUserOpen(true)
             }}
@@ -1827,6 +1843,7 @@ function StudentsPage({
         </Card>
       ) : null}
 
+      {userGroupFilter === 'student' ? (
       <div className="shrink-0 grid gap-4 xl:grid-cols-2">
         <Card className="border bg-white">
           <CardHeader className="p-5">
@@ -1954,6 +1971,7 @@ function StudentsPage({
           </CardContent>
         </Card>
       </div>
+      ) : null}
 
       <div className="min-h-0 flex-1 rounded-xl border bg-white p-3">
         <div className="grid h-full min-h-0 gap-2 xl:grid-cols-[340px_minmax(0,1fr)]">
