@@ -1124,100 +1124,6 @@ async fn password_change_and_reset_flow_work() {
 }
 
 #[tokio::test]
-async fn notification_read_and_read_all_update_read_at() {
-    let database = build_test_database().await;
-    let admin = insert_user(&database, "admin", "notify-admin@example.com", "Admin").await;
-    let student = insert_user(
-        &database,
-        "student",
-        "notify-student@example.com",
-        "Student",
-    )
-    .await;
-    let admin_cookie = insert_session(&database, admin).await;
-    let student_cookie = insert_session(&database, student).await;
-    let client = test_client(database);
-
-    let first = client
-        .post("/api/v1/notification")
-        .header("Cookie", &admin_cookie)
-        .json(&json!({
-            "user": student.to_string(),
-            "title": "First",
-            "content": "Hello 1"
-        }))
-        .send()
-        .await;
-    first.assert_status_success();
-    let first_json: serde_json::Value = first.assert_json();
-    let first_id = first_json["id"].as_str().expect("first id").to_string();
-
-    client
-        .post("/api/v1/notification")
-        .header("Cookie", &admin_cookie)
-        .json(&json!({
-            "user": student.to_string(),
-            "title": "Second",
-            "content": "Hello 2"
-        }))
-        .send()
-        .await
-        .assert_status_success();
-
-    let list_before = client
-        .get("/api/v1/notification")
-        .header("Cookie", &student_cookie)
-        .send()
-        .await;
-    list_before.assert_status_success();
-    let before_json: serde_json::Value = list_before.assert_json();
-    assert!(before_json
-        .as_array()
-        .expect("notification array")
-        .iter()
-        .all(|item| item["read_at"].is_null()));
-
-    client
-        .post(&format!("/api/v1/notification/{first_id}/read"))
-        .header("Cookie", &student_cookie)
-        .send()
-        .await
-        .assert_status_success();
-
-    let list_after_one = client
-        .get("/api/v1/notification")
-        .header("Cookie", &student_cookie)
-        .send()
-        .await;
-    list_after_one.assert_status_success();
-    let after_one: serde_json::Value = list_after_one.assert_json();
-    assert!(after_one
-        .as_array()
-        .expect("notification array")
-        .iter()
-        .any(|item| item["id"].as_str() == Some(first_id.as_str()) && item["read_at"].is_string()));
-
-    client
-        .post("/api/v1/notification/read_all")
-        .header("Cookie", &student_cookie)
-        .send()
-        .await
-        .assert_status_success();
-    let list_after_all = client
-        .get("/api/v1/notification")
-        .header("Cookie", &student_cookie)
-        .send()
-        .await;
-    list_after_all.assert_status_success();
-    let after_all: serde_json::Value = list_after_all.assert_json();
-    assert!(after_all
-        .as_array()
-        .expect("notification array")
-        .iter()
-        .all(|item| item["read_at"].is_string()));
-}
-
-#[tokio::test]
 async fn admin_can_delete_activity_comment() {
     let database = build_test_database().await;
     let owner = insert_user(&database, "student", "comment-owner@example.com", "Owner").await;
@@ -1273,7 +1179,7 @@ async fn authority_group_update_changes_auth_check_result() {
         .header("Cookie", &admin_cookie)
         .json(&json!({
             "allow_all_authorities": false,
-            "authorities": ["view_user", "send_notification"]
+            "authorities": ["view_user"]
         }))
         .send()
         .await

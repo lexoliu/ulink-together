@@ -1,7 +1,6 @@
 import { Suspense, lazy, startTransition, useDeferredValue, useMemo, useState } from 'react'
 import {
   ArrowRight,
-  BellRing,
   Download,
   FolderKanban,
   House,
@@ -610,38 +609,6 @@ function App() {
     },
   })
 
-  const sendClassNotificationMutation = useMutation({
-    mutationFn: ({
-      classname,
-      title,
-      content,
-    }: {
-      classname: string
-      title: string
-      content: string
-    }) => api.sendNotificationByClass(classname, title, content),
-    onSuccess: (result) => {
-      toast.success(`Notified ${result.affected} students.`)
-    },
-    onError: showMutationError,
-  })
-
-  const sendActivityNotificationMutation = useMutation({
-    mutationFn: ({
-      activityId,
-      title,
-      content,
-    }: {
-      activityId: string
-      title: string
-      content: string
-    }) => api.sendNotificationByActivity(activityId, title, content),
-    onSuccess: (result) => {
-      toast.success(`Notified ${result.affected} participants.`)
-    },
-    onError: showMutationError,
-  })
-
   const updateAuthorityGroupMutation = useMutation({
     mutationFn: ({
       code,
@@ -769,9 +736,8 @@ function App() {
   const canEditStudents = authorities.update_user_anyway === true
   const canDeleteStudents = authorities.delete_user === true
   const canManageComments = authorities.manage_comment_anyway === true
-  const canSendNotification = authorities.send_notification === true
   const canManageAuthorities = authorities.manage_authority_anyway === true
-  const canViewOperations = canSendNotification || canManageAuthorities
+  const canViewOperations = canManageAuthorities
   const canManageSelectedActivity =
     selectedDetail !== null &&
     (selectedDetail.promoter === currentUser?.id || authorities.manage_record_anyway === true)
@@ -1011,22 +977,10 @@ function App() {
               />
             ) : currentView === 'operations' ? (
               <OperationsPage
-                activities={activitiesQuery.data ?? []}
-                classSummaries={studentClasses}
-                classSummariesLoading={studentClassesQuery.isLoading}
                 groups={authorityGroups}
                 groupsLoading={authorityGroupsQuery.isLoading}
-                canSendNotification={canSendNotification}
                 canManageAuthorities={canManageAuthorities}
-                sendingClassNotification={sendClassNotificationMutation.isPending}
-                sendingActivityNotification={sendActivityNotificationMutation.isPending}
                 updatingAuthorityGroup={updateAuthorityGroupMutation.isPending}
-                onSendClassNotification={async (classname, title, content) => {
-                  await sendClassNotificationMutation.mutateAsync({ classname, title, content })
-                }}
-                onSendActivityNotification={async (activityId, title, content) => {
-                  await sendActivityNotificationMutation.mutateAsync({ activityId, title, content })
-                }}
                 onSaveGroup={async (code, allowAllAuthorities, groupAuthorities) => {
                   await updateAuthorityGroupMutation.mutateAsync({
                     code,
@@ -2079,52 +2033,26 @@ function StudentsPage({
 }
 
 function OperationsPage({
-  activities,
-  classSummaries,
-  classSummariesLoading,
   groups,
   groupsLoading,
-  canSendNotification,
   canManageAuthorities,
-  sendingClassNotification,
-  sendingActivityNotification,
   updatingAuthorityGroup,
-  onSendClassNotification,
-  onSendActivityNotification,
   onSaveGroup,
 }: {
-  activities: ActivitySummary[]
-  classSummaries: UserClassSummary[]
-  classSummariesLoading: boolean
   groups: GroupAuthoritySummary[]
   groupsLoading: boolean
-  canSendNotification: boolean
   canManageAuthorities: boolean
-  sendingClassNotification: boolean
-  sendingActivityNotification: boolean
   updatingAuthorityGroup: boolean
-  onSendClassNotification: (classname: string, title: string, content: string) => Promise<void>
-  onSendActivityNotification: (activityId: string, title: string, content: string) => Promise<void>
   onSaveGroup: (
     code: string,
     allowAllAuthorities: boolean,
     authorities: string[],
   ) => Promise<void>
 }) {
-  const [activityId, setActivityId] = useState('')
-  const [activityTitle, setActivityTitle] = useState('')
-  const [activityContent, setActivityContent] = useState('')
-
-  const [classname, setClassname] = useState('')
-  const [classTitle, setClassTitle] = useState('')
-  const [classContent, setClassContent] = useState('')
-
   const [groupCode, setGroupCode] = useState('')
   const [allowAllAuthoritiesOverride, setAllowAllAuthoritiesOverride] = useState<boolean | null>(null)
   const [authorityTextOverride, setAuthorityTextOverride] = useState<string | null>(null)
 
-  const effectiveActivityId = activityId || activities[0]?.id || ''
-  const effectiveClassname = classname || classSummaries[0]?.classname || ''
   const effectiveGroupCode = groupCode || groups[0]?.code || ''
   const selectedGroup = groups.find((group) => group.code === effectiveGroupCode) ?? null
   const effectiveAllowAllAuthorities =
@@ -2132,189 +2060,62 @@ function OperationsPage({
   const effectiveAuthorityText = authorityTextOverride ?? selectedGroup?.authorities.join('\n') ?? ''
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4">
-      <div className="min-h-0 flex-1 rounded-xl border bg-white p-4">
-        <div className="grid h-full min-h-0 gap-2 xl:grid-cols-2">
-          <ScrollArea className="h-full rounded-lg bg-white p-5">
-            <div className="grid gap-4">
-              <Card className="border-slate-200/70 bg-slate-50/65 shadow-none">
-                <CardHeader className="p-5">
-                  <CardTitle className="flex items-center gap-2">
-                    <BellRing className="size-4" />
-                    Notify by Activity
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="grid gap-3 px-5 pb-5 pt-0">
-                  <Select value={effectiveActivityId || undefined} onValueChange={setActivityId}>
-                    <SelectTrigger className="rounded-lg border-slate-200/80 bg-white/90">
-                      <SelectValue placeholder="Select activity" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {activities.map((activity) => (
-                        <SelectItem key={activity.id} value={activity.id}>
-                          {activity.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Input
-                    value={activityTitle}
-                    placeholder="Notification title"
-                    onChange={(event) => setActivityTitle(event.target.value)}
-                  />
-                  <Textarea
-                    value={activityContent}
-                    rows={4}
-                    placeholder="Notification content"
-                    onChange={(event) => setActivityContent(event.target.value)}
-                  />
-                  <Button
-                    disabled={!canSendNotification || sendingActivityNotification}
-                    onClick={async () => {
-                      const selectedActivityId = effectiveActivityId.trim()
-                      const title = activityTitle.trim()
-                      const content = activityContent.trim()
-                      if (!selectedActivityId || !title || !content) {
-                        toast.error('Activity, title, and content are required.')
-                        return
-                      }
-                      await onSendActivityNotification(selectedActivityId, title, content)
-                      setActivityTitle('')
-                      setActivityContent('')
-                    }}
-                  >
-                    {sendingActivityNotification ? 'Sending…' : 'Send activity notification'}
-                  </Button>
-                </CardContent>
-              </Card>
+    <div className="mx-auto max-w-xl space-y-4 py-4">
+      <Select
+        value={effectiveGroupCode || undefined}
+        onValueChange={(value) => {
+          setGroupCode(value)
+          setAllowAllAuthoritiesOverride(null)
+          setAuthorityTextOverride(null)
+        }}
+        disabled={groupsLoading || groups.length === 0}
+      >
+        <SelectTrigger>
+          <SelectValue placeholder="Select group" />
+        </SelectTrigger>
+        <SelectContent>
+          {groups.map((g) => (
+            <SelectItem key={g.code} value={g.code}>{g.code}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
 
-              <Card className="border-slate-200/70 bg-slate-50/65 shadow-none">
-                <CardHeader className="p-5">
-                  <CardTitle className="flex items-center gap-2">
-                    <BellRing className="size-4" />
-                    Notify by Class
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="grid gap-3 px-5 pb-5 pt-0">
-                  <Select
-                    value={effectiveClassname || undefined}
-                    onValueChange={setClassname}
-                    disabled={classSummariesLoading || classSummaries.length === 0}
-                  >
-                    <SelectTrigger className="rounded-lg border-slate-200/80 bg-white/90">
-                      <SelectValue placeholder="Select class" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {classSummaries.map((summary) => (
-                        <SelectItem key={summary.classname} value={summary.classname}>
-                          {summary.classname} ({summary.count})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Input
-                    value={classTitle}
-                    placeholder="Notification title"
-                    onChange={(event) => setClassTitle(event.target.value)}
-                  />
-                  <Textarea
-                    value={classContent}
-                    rows={4}
-                    placeholder="Notification content"
-                    onChange={(event) => setClassContent(event.target.value)}
-                  />
-                  <Button
-                    disabled={!canSendNotification || sendingClassNotification}
-                    onClick={async () => {
-                      const selectedClass = effectiveClassname.trim()
-                      const title = classTitle.trim()
-                      const content = classContent.trim()
-                      if (!selectedClass || !title || !content) {
-                        toast.error('Class, title, and content are required.')
-                        return
-                      }
-                      await onSendClassNotification(selectedClass, title, content)
-                      setClassTitle('')
-                      setClassContent('')
-                    }}
-                  >
-                    {sendingClassNotification ? 'Sending…' : 'Send class notification'}
-                  </Button>
-                </CardContent>
-              </Card>
-            </div>
-          </ScrollArea>
-
-          <ScrollArea className="h-full rounded-lg bg-white p-5">
-            <Card className="border-slate-200/70 bg-slate-50/65 shadow-none">
-              <CardHeader className="p-5">
-                <CardTitle className="flex items-center gap-2">
-                  <ShieldCheck className="size-4" />
-                  Group Authorities
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-3 px-5 pb-5 pt-0">
-                <Select
-                  value={effectiveGroupCode || undefined}
-                  onValueChange={(value) => {
-                    setGroupCode(value)
-                    setAllowAllAuthoritiesOverride(null)
-                    setAuthorityTextOverride(null)
-                  }}
-                  disabled={groupsLoading || groups.length === 0}
-                >
-                  <SelectTrigger className="rounded-lg border-slate-200/80 bg-white/90">
-                    <SelectValue placeholder="Select group" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {groups.map((group) => (
-                      <SelectItem key={group.code} value={group.code}>
-                        {group.code}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                <div className="flex items-center justify-between rounded-lg border border-slate-200/80 bg-white/80 px-4 py-3">
-                  <p className="text-sm font-medium text-slate-700">Allow all authorities</p>
-                  <Switch
-                    checked={effectiveAllowAllAuthorities}
-                    onCheckedChange={setAllowAllAuthoritiesOverride}
-                    disabled={!canManageAuthorities || selectedGroup === null}
-                  />
-                </div>
-
-                <Textarea
-                  value={effectiveAuthorityText}
-                  rows={10}
-                  placeholder="One authority per line"
-                  onChange={(event) => setAuthorityTextOverride(event.target.value)}
-                  disabled={!canManageAuthorities || selectedGroup === null}
-                />
-
-                <Button
-                  disabled={!canManageAuthorities || selectedGroup === null || updatingAuthorityGroup}
-                  onClick={async () => {
-                    if (!selectedGroup) {
-                      toast.error('Select a group first.')
-                      return
-                    }
-                    const authorities = effectiveAuthorityText
-                      .split('\n')
-                      .map((value) => value.trim())
-                      .filter(Boolean)
-                    await onSaveGroup(selectedGroup.code, effectiveAllowAllAuthorities, authorities)
-                    setAllowAllAuthoritiesOverride(null)
-                    setAuthorityTextOverride(null)
-                  }}
-                >
-                  {updatingAuthorityGroup ? 'Saving…' : 'Save permissions'}
-                </Button>
-              </CardContent>
-            </Card>
-          </ScrollArea>
-        </div>
+      <div className="flex items-center justify-between rounded-lg border px-4 py-3">
+        <span className="text-sm font-medium">Allow all authorities</span>
+        <Switch
+          checked={effectiveAllowAllAuthorities}
+          onCheckedChange={setAllowAllAuthoritiesOverride}
+          disabled={!canManageAuthorities || selectedGroup === null}
+        />
       </div>
+
+      <Textarea
+        value={effectiveAuthorityText}
+        rows={10}
+        placeholder="One authority per line"
+        onChange={(e) => setAuthorityTextOverride(e.target.value)}
+        disabled={!canManageAuthorities || selectedGroup === null}
+      />
+
+      <Button
+        className="w-full"
+        disabled={!canManageAuthorities || selectedGroup === null || updatingAuthorityGroup}
+        onClick={async () => {
+          if (!selectedGroup) {
+            toast.error('Select a group first.')
+            return
+          }
+          const authorities = effectiveAuthorityText
+            .split('\n')
+            .map((v) => v.trim())
+            .filter(Boolean)
+          await onSaveGroup(selectedGroup.code, effectiveAllowAllAuthorities, authorities)
+          setAllowAllAuthoritiesOverride(null)
+          setAuthorityTextOverride(null)
+        }}
+      >
+        {updatingAuthorityGroup ? 'Saving…' : 'Save permissions'}
+      </Button>
     </div>
   )
 }

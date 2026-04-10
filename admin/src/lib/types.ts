@@ -3,7 +3,6 @@ export type AuthorityName =
   | 'create_channel'
   | 'manage_record_anyway'
   | 'manage_comment_anyway'
-  | 'send_notification'
   | 'manage_authority_anyway'
   | 'view_user'
   | 'generate_export'
@@ -168,10 +167,6 @@ export interface UserBatchResult {
 export interface UserClassSummary {
   classname: string
   count: number
-}
-
-export interface NotificationBatchResult {
-  affected: number
 }
 
 export interface GroupAuthoritySummary {

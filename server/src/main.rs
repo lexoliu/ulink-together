@@ -7,7 +7,6 @@ mod export;
 mod leaderboard;
 mod login;
 mod message;
-mod notification;
 mod push;
 mod record;
 mod resource;
@@ -68,15 +67,6 @@ pub fn api() -> Route {
         "/resource"
             .post(resource::create)
             .route(("/{filename}".at(resource::access).delete(resource::delete),)),
-        "/notification"
-            .at(notification::list)
-            .post(notification::create)
-            .route((
-                "/{id}/read".post(notification::mark_read),
-                "/read_all".post(notification::mark_all_read),
-                "/class".post(notification::create_for_class),
-                "/activity".post(notification::create_for_activity),
-            )),
         "/push".at(push::handler),
         "/auth".route((
             "/check/{authority}".at(check_authority),

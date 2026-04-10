@@ -3,7 +3,6 @@ import SwiftUI
 private enum AppDestination: Hashable {
     case feed
     case records
-    case notifications
     case manage
     case leaderboard
     case account
@@ -34,12 +33,6 @@ struct AppShellView: View {
             Tab("Records", systemImage: "clock.badge.checkmark.fill", value: .records) {
                 NavigationStack {
                     RecordsHomeView()
-                }
-            }
-
-            Tab("Notifications", systemImage: "bell.badge.fill", value: .notifications) {
-                NavigationStack {
-                    NotificationsHomeView()
                 }
             }
 

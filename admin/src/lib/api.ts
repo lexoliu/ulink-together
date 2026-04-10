@@ -14,7 +14,6 @@ import type {
   ChannelResponse,
   ExportBatchResponse,
   GroupAuthoritySummary,
-  NotificationBatchResult,
   RecordEntry,
   UpdateUserForm,
   UserBatchResult,
@@ -37,7 +36,6 @@ const authorityNames: AuthorityName[] = [
   'create_channel',
   'manage_record_anyway',
   'manage_comment_anyway',
-  'send_notification',
   'manage_authority_anyway',
   'view_user',
   'generate_export',
@@ -318,36 +316,6 @@ export class AdminApiClient {
 
   async deleteUser(userId: string): Promise<void> {
     await request<ApiMessage>(this.client, `/user/${userId}`, { method: 'DELETE' })
-  }
-
-  async sendNotificationByClass(
-    classname: string,
-    title: string,
-    content: string,
-  ): Promise<NotificationBatchResult> {
-    return request<NotificationBatchResult>(this.client, '/notification/class', {
-      method: 'POST',
-      data: {
-        classname,
-        title,
-        content,
-      },
-    })
-  }
-
-  async sendNotificationByActivity(
-    activityId: string,
-    title: string,
-    content: string,
-  ): Promise<NotificationBatchResult> {
-    return request<NotificationBatchResult>(this.client, '/notification/activity', {
-      method: 'POST',
-      data: {
-        activity: activityId,
-        title,
-        content,
-      },
-    })
   }
 
   async authorityGroups(): Promise<GroupAuthoritySummary[]> {

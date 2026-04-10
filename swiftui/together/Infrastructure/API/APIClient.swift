@@ -276,22 +276,6 @@ struct APIClient: Sendable {
         )
     }
 
-    func fetchNotifications(baseURL: URL) async throws -> [NotificationEntry] {
-        try await request(baseURL: baseURL, path: "/notification")
-    }
-
-    func markNotificationRead(baseURL: URL, notificationID: String) async throws {
-        _ = try await request(
-            baseURL: baseURL,
-            path: "/notification/\(notificationID)/read",
-            method: .post
-        ) as APIMessageResponse
-    }
-
-    func markAllNotificationsRead(baseURL: URL) async throws {
-        _ = try await request(baseURL: baseURL, path: "/notification/read_all", method: .post) as APIMessageResponse
-    }
-
     func changePassword(
         baseURL: URL,
         currentPassword: String,
