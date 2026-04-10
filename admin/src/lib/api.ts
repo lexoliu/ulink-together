@@ -6,6 +6,7 @@ import type {
   ActivityDraft,
   ActivitySummary,
   ActivityTransitionAction,
+  AdminCreateUserForm,
   ApiMessage,
   AuthorityCheckResponse,
   AuthorityName,
@@ -14,10 +15,13 @@ import type {
   ChannelResponse,
   ExportBatchResponse,
   GroupAuthoritySummary,
+  NotificationPreference,
+  NotificationResponse,
   RecordEntry,
   UpdateUserForm,
   UserBatchResult,
   UserClassSummary,
+  UserGroup,
   UserProfile,
 } from '@/lib/types'
 
@@ -41,6 +45,7 @@ const authorityNames: AuthorityName[] = [
   'generate_export',
   'update_user_anyway',
   'delete_user',
+  'view_all_activities',
 ]
 
 function apiOrigin(): string {
@@ -257,7 +262,7 @@ export class AdminApiClient {
   }
 
   async users(params?: {
-    group?: string
+    group?: UserGroup
     search?: string
     limit?: number
   }): Promise<UserProfile[]> {
@@ -267,6 +272,62 @@ export class AdminApiClient {
         search: params?.search,
         limit: params?.limit,
       },
+    })
+  }
+
+  async adminCreateUser(form: AdminCreateUserForm): Promise<ApiMessage> {
+    return request<ApiMessage>(this.client, '/user/admin_create', {
+      method: 'POST',
+      data: form,
+    })
+  }
+
+  async notifications(params?: {
+    unreadOnly?: boolean
+    limit?: number
+    before?: string
+  }): Promise<NotificationResponse[]> {
+    return request<NotificationResponse[]>(this.client, '/notification', {
+      query: {
+        unread_only: params?.unreadOnly ? '1' : undefined,
+        limit: params?.limit,
+        before: params?.before,
+      },
+    })
+  }
+
+  async notificationUnreadCount(): Promise<number> {
+    const response = await request<{ count: number }>(
+      this.client,
+      '/notification/unread_count',
+    )
+    return response.count
+  }
+
+  async markNotificationsRead(ids: string[]): Promise<void> {
+    await request<ApiMessage>(this.client, '/notification/read', {
+      method: 'POST',
+      data: { ids },
+    })
+  }
+
+  async markAllNotificationsRead(): Promise<void> {
+    await request<ApiMessage>(this.client, '/notification/read', {
+      method: 'POST',
+      data: { all: true },
+    })
+  }
+
+  async notificationPreferences(): Promise<NotificationPreference[]> {
+    return request<NotificationPreference[]>(this.client, '/notification/preferences')
+  }
+
+  async updateNotificationPreferences(
+    preferences: NotificationPreference[],
+  ): Promise<void> {
+    await request<ApiMessage>(this.client, '/notification/preferences', {
+      method: 'PUT',
+      data: { preferences },
     })
   }
 

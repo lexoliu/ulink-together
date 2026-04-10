@@ -51,6 +51,7 @@ import type {
   ActivityDetail,
   ActivityDraft,
   ActivitySummary,
+  AdminCreateUserForm,
   AuthorityName,
   ActivityTransitionAction,
   GroupAuthoritySummary,
@@ -58,6 +59,7 @@ import type {
   RecordEntry,
   UpdateUserForm,
   UserClassSummary,
+  UserGroup,
   UserProfile,
 } from '@/lib/types'
 import {
@@ -156,6 +158,7 @@ function App() {
   const [search, setSearch] = useState('')
   const [chatSearch, setChatSearch] = useState('')
   const [studentSearch, setStudentSearch] = useState('')
+  const [userGroupFilter, setUserGroupFilter] = useState<'student' | 'teacher'>('student')
   const [scope, setScope] = useState<ActivityScope>('all')
   const [stateFilter, setStateFilter] = useState<ActivityFilter>('all')
   const [formOpen, setFormOpen] = useState(false)
@@ -259,18 +262,18 @@ function App() {
       : chatActivities[0]?.id ?? null
 
   const studentsQuery = useQuery({
-    queryKey: ['students', currentUser?.id, deferredStudentSearch],
+    queryKey: ['students', currentUser?.id, userGroupFilter, deferredStudentSearch],
     queryFn: () =>
       api.users({
-        group: 'student',
+        group: userGroupFilter,
         search: deferredStudentSearch.trim() || undefined,
         limit: 500,
       }),
     enabled: Boolean(currentUser) && authorities.view_user === true,
   })
   const studentClassesQuery = useQuery({
-    queryKey: ['student-classes', currentUser?.id],
-    queryFn: () => api.userClasses({ group: 'student' }),
+    queryKey: ['student-classes', currentUser?.id, userGroupFilter],
+    queryFn: () => api.userClasses({ group: userGroupFilter }),
     enabled: Boolean(currentUser) && authorities.view_user === true,
   })
   const authorityGroupsQuery = useQuery({
@@ -563,6 +566,15 @@ function App() {
       api.importUsersCsv(csvText, defaultPassword),
     onSuccess: async (result) => {
       toast.success(`Imported ${result.affected} students.`)
+      await invalidateStudentQueries()
+    },
+    onError: showMutationError,
+  })
+
+  const createUserMutation = useMutation({
+    mutationFn: (form: AdminCreateUserForm) => api.adminCreateUser(form),
+    onSuccess: async () => {
+      toast.success('User created.')
       await invalidateStudentQueries()
     },
     onError: showMutationError,
@@ -949,11 +961,18 @@ function App() {
                 canViewStudents={canViewStudents}
                 canEditStudents={canEditStudents}
                 canDeleteStudents={canDeleteStudents}
+                canCreateUsers={canEditStudents}
                 savingStudentId={savingStudentId}
                 deletingStudentId={deletingStudentId}
                 importingStudents={importStudentsMutation.isPending}
                 batchUpdatingClass={batchUpdateClassMutation.isPending}
                 batchDeletingClass={batchDeleteClassMutation.isPending}
+                creatingUser={createUserMutation.isPending}
+                userGroupFilter={userGroupFilter}
+                onUserGroupFilterChange={setUserGroupFilter}
+                onCreateUser={async (form) => {
+                  await createUserMutation.mutateAsync(form)
+                }}
                 onSearchChange={setStudentSearch}
                 onSelectStudent={(studentId) => navigateStudents(studentId)}
                 onImportStudents={async (csvText, defaultPassword) => {
@@ -1557,11 +1576,16 @@ function StudentsPage({
   canViewStudents,
   canEditStudents,
   canDeleteStudents,
+  canCreateUsers,
   savingStudentId,
   deletingStudentId,
   importingStudents,
   batchUpdatingClass,
   batchDeletingClass,
+  creatingUser,
+  userGroupFilter,
+  onUserGroupFilterChange,
+  onCreateUser,
   onSearchChange,
   onSelectStudent,
   onImportStudents,
@@ -1581,11 +1605,16 @@ function StudentsPage({
   canViewStudents: boolean
   canEditStudents: boolean
   canDeleteStudents: boolean
+  canCreateUsers: boolean
   savingStudentId: string | null
   deletingStudentId: string | null
   importingStudents: boolean
   batchUpdatingClass: boolean
   batchDeletingClass: boolean
+  creatingUser: boolean
+  userGroupFilter: 'student' | 'teacher'
+  onUserGroupFilterChange: (value: 'student' | 'teacher') => void
+  onCreateUser: (form: AdminCreateUserForm) => Promise<void>
   onSearchChange: (value: string) => void
   onSelectStudent: (studentId: string) => void
   onImportStudents: (csvText: string, defaultPassword: string) => Promise<void>
@@ -1604,6 +1633,16 @@ function StudentsPage({
   const [bulkClassTo, setBulkClassTo] = useState('')
   const [bulkDeleteClassArmed, setBulkDeleteClassArmed] = useState(false)
   const [deleteArmed, setDeleteArmed] = useState(false)
+  const [createUserOpen, setCreateUserOpen] = useState(false)
+  const [createUserForm, setCreateUserForm] = useState<AdminCreateUserForm>({
+    email: '',
+    realname: '',
+    password: '',
+    gender: 'other',
+    classname: '',
+    avatar: null,
+    group: 'student',
+  })
 
   if (!canViewStudents) {
     return (
@@ -1633,6 +1672,160 @@ function StudentsPage({
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-4">
+      <div className="shrink-0 flex items-center justify-between gap-3">
+        <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1 text-sm">
+          <button
+            type="button"
+            onClick={() => onUserGroupFilterChange('student')}
+            className={`rounded-md px-4 py-1.5 transition ${
+              userGroupFilter === 'student'
+                ? 'bg-slate-900 text-white'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Students
+          </button>
+          <button
+            type="button"
+            onClick={() => onUserGroupFilterChange('teacher')}
+            className={`rounded-md px-4 py-1.5 transition ${
+              userGroupFilter === 'teacher'
+                ? 'bg-slate-900 text-white'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Teachers
+          </button>
+        </div>
+        {canCreateUsers ? (
+          <Button
+            type="button"
+            onClick={() => {
+              setCreateUserForm({
+                email: '',
+                realname: '',
+                password: '',
+                gender: 'other',
+                classname: '',
+                avatar: null,
+                group: userGroupFilter,
+              })
+              setCreateUserOpen(true)
+            }}
+          >
+            Create User
+          </Button>
+        ) : null}
+      </div>
+
+      {createUserOpen ? (
+        <Card className="shrink-0 border bg-white">
+          <CardHeader className="p-5">
+            <CardTitle className="text-lg">New User</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-3 px-5 pb-5 pt-0 md:grid-cols-2">
+            <div className="grid gap-1">
+              <label className="text-xs font-medium text-slate-500">Group</label>
+              <select
+                value={createUserForm.group}
+                onChange={(event) =>
+                  setCreateUserForm((form) => ({
+                    ...form,
+                    group: event.target.value as UserGroup,
+                  }))
+                }
+                className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm"
+              >
+                <option value="student">Student</option>
+                <option value="teacher">Teacher</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+            <div className="grid gap-1">
+              <label className="text-xs font-medium text-slate-500">Real Name</label>
+              <Input
+                value={createUserForm.realname}
+                onChange={(event) =>
+                  setCreateUserForm((form) => ({ ...form, realname: event.target.value }))
+                }
+              />
+            </div>
+            <div className="grid gap-1">
+              <label className="text-xs font-medium text-slate-500">Email</label>
+              <Input
+                type="email"
+                value={createUserForm.email}
+                onChange={(event) =>
+                  setCreateUserForm((form) => ({ ...form, email: event.target.value }))
+                }
+              />
+            </div>
+            <div className="grid gap-1">
+              <label className="text-xs font-medium text-slate-500">Password</label>
+              <Input
+                type="password"
+                value={createUserForm.password}
+                onChange={(event) =>
+                  setCreateUserForm((form) => ({ ...form, password: event.target.value }))
+                }
+              />
+            </div>
+            <div className="grid gap-1">
+              <label className="text-xs font-medium text-slate-500">Class</label>
+              <Input
+                value={createUserForm.classname}
+                onChange={(event) =>
+                  setCreateUserForm((form) => ({ ...form, classname: event.target.value }))
+                }
+                placeholder={createUserForm.group === 'teacher' ? 'Faculty' : '10A'}
+              />
+            </div>
+            <div className="grid gap-1">
+              <label className="text-xs font-medium text-slate-500">Gender</label>
+              <select
+                value={createUserForm.gender}
+                onChange={(event) =>
+                  setCreateUserForm((form) => ({ ...form, gender: event.target.value }))
+                }
+                className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm"
+              >
+                <option value="female">Female</option>
+                <option value="male">Male</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div className="col-span-full flex items-center justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCreateUserOpen(false)}
+                disabled={creatingUser}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={
+                  creatingUser
+                  || !createUserForm.email.trim()
+                  || !createUserForm.realname.trim()
+                  || !createUserForm.password.trim()
+                }
+                onClick={async () => {
+                  try {
+                    await onCreateUser(createUserForm)
+                    setCreateUserOpen(false)
+                  } catch {
+                    // error is already reported via toast by the caller
+                  }
+                }}
+              >
+                {creatingUser ? 'Creating…' : 'Create'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="shrink-0 grid gap-4 xl:grid-cols-2">
         <Card className="border bg-white">

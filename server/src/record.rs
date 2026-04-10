@@ -1,6 +1,8 @@
 use crate::{
     auth::{Auth, AuthError, AuthSession},
     database::AppDatabase,
+    notification,
+    push::PushHub,
     utils::{parse_oid, ApiMessage, Id},
 };
 
@@ -279,6 +281,7 @@ pub enum UpdateRecordError {
 
 async fn update_record_state(
     database: &AppDatabase,
+    hub: &PushHub,
     auth: &Auth,
     record_id: Id,
     state: RecordState,
@@ -304,7 +307,7 @@ async fn update_record_state(
 
     let activity = sqlx::query(
         database
-            .sql("SELECT promoter_id, duration_minutes, state FROM activities WHERE id = ?1")
+            .sql("SELECT promoter_id, duration_minutes, state, name FROM activities WHERE id = ?1")
             .as_ref(),
     )
     .bind(&activity_hex)
@@ -392,6 +395,27 @@ async fn update_record_state(
         .await
         .expect("Database error");
 
+    // Notify the record owner about state change
+    let activity_name: String = activity
+        .try_get("name")
+        .unwrap_or_else(|_| "Activity".to_string());
+    let payload = models::RecordStatePayload {
+        activity_id: activity_id.to_string(),
+        activity_name,
+        record_id: record_id.to_string(),
+        new_state: state.as_str().to_string(),
+    };
+    if let Some(payload_json) = notification::serialize_payload(&payload) {
+        notification::create_notification(
+            database,
+            hub,
+            user_id,
+            models::NotificationType::RecordStateChange,
+            &payload_json,
+        )
+        .await;
+    }
+
     Ok(())
 }
 
@@ -420,6 +444,7 @@ pub enum ConfirmRecordError {
 #[skyzen::openapi]
 pub async fn confirm(
     database: State<AppDatabase>,
+    hub: State<PushHub>,
     session: AuthSession,
     params: Params,
 ) -> Result<ApiMessage, ConfirmRecordError> {
@@ -433,7 +458,7 @@ pub async fn confirm(
             .map_err(|_| ConfirmRecordError::InvalidRecordId)?,
     )
     .map_err(|_| ConfirmRecordError::InvalidRecordId)?;
-    update_record_state(&database, &auth, record_id, RecordState::Confirmed, None)
+    update_record_state(&database, &hub, &auth, record_id, RecordState::Confirmed, None)
         .await
         .map_err(|err| match err {
             UpdateRecordError::RecordNotFound => ConfirmRecordError::NotFound,
@@ -469,6 +494,7 @@ pub enum ConfirmRecordCustomError {
 #[skyzen::openapi]
 pub async fn confirm_custom(
     database: State<AppDatabase>,
+    hub: State<PushHub>,
     session: AuthSession,
     params: Params,
     form: Json<MarkDoneCustomForm>,
@@ -487,6 +513,7 @@ pub async fn confirm_custom(
 
     update_record_state(
         &database,
+        &hub,
         &auth,
         record_id,
         RecordState::Confirmed,
@@ -527,6 +554,7 @@ pub enum ApproveRecordError {
 #[skyzen::openapi]
 pub async fn approve(
     database: State<AppDatabase>,
+    hub: State<PushHub>,
     session: AuthSession,
     params: Params,
 ) -> Result<ApiMessage, ApproveRecordError> {
@@ -540,7 +568,7 @@ pub async fn approve(
             .map_err(|_| ApproveRecordError::InvalidRecordId)?,
     )
     .map_err(|_| ApproveRecordError::InvalidRecordId)?;
-    update_record_state(&database, &auth, record_id, RecordState::Approved, None)
+    update_record_state(&database, &hub, &auth, record_id, RecordState::Approved, None)
         .await
         .map_err(|err| match err {
             UpdateRecordError::RecordNotFound => ApproveRecordError::NotFound,
@@ -576,6 +604,7 @@ pub enum CancelRecordError {
 #[skyzen::openapi]
 pub async fn cancel(
     database: State<AppDatabase>,
+    hub: State<PushHub>,
     session: AuthSession,
     params: Params,
 ) -> Result<ApiMessage, CancelRecordError> {
@@ -589,7 +618,7 @@ pub async fn cancel(
             .map_err(|_| CancelRecordError::InvalidRecordId)?,
     )
     .map_err(|_| CancelRecordError::InvalidRecordId)?;
-    update_record_state(&database, &auth, record_id, RecordState::Canceled, None)
+    update_record_state(&database, &hub, &auth, record_id, RecordState::Canceled, None)
         .await
         .map_err(|err| match err {
             UpdateRecordError::RecordNotFound => CancelRecordError::NotFound,

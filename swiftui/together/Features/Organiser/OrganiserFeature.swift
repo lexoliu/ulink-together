@@ -242,7 +242,9 @@ struct ActivityEditorView: View {
         }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
+        #if !os(visionOS)
         .scrollDismissesKeyboard(.interactively)
+        #endif
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button("Cancel") {

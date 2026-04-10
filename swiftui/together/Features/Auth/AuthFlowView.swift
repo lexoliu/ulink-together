@@ -115,7 +115,9 @@ struct AuthFlowView: View {
                 .scrollIndicators(.hidden)
             }
         }
+        #if !os(visionOS)
         .scrollDismissesKeyboard(.interactively)
+        #endif
         .animation(.snappy, value: step)
         .onChange(of: mode) { _, _ in
             localError = nil

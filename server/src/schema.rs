@@ -152,11 +152,33 @@ pub fn schema_statements() -> &'static [&'static str] {
         )
         "#,
         "CREATE INDEX IF NOT EXISTS check_mails_email_idx ON check_mails(email)",
+        r#"
+        CREATE TABLE IF NOT EXISTS notifications (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            notification_type TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            read_at TEXT,
+            created_at TEXT NOT NULL
+        )
+        "#,
+        "CREATE INDEX IF NOT EXISTS notifications_user_idx ON notifications(user_id)",
+        "CREATE INDEX IF NOT EXISTS notifications_user_read_idx ON notifications(user_id, read_at)",
+        r#"
+        CREATE TABLE IF NOT EXISTS notification_preferences (
+            user_id TEXT NOT NULL,
+            notification_type TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            PRIMARY KEY (user_id, notification_type)
+        )
+        "#,
     ]
 }
 
 pub fn reset_schema_statements() -> &'static [&'static str] {
     &[
+        "DROP TABLE IF EXISTS notification_preferences",
+        "DROP TABLE IF EXISTS notifications",
         "DROP TABLE IF EXISTS export_items",
         "DROP TABLE IF EXISTS export_batches",
         "DROP TABLE IF EXISTS resources",
@@ -204,18 +226,21 @@ pub async fn reset_schema_any(pool: &Pool<Any>) -> Result<(), sqlx::Error> {
 
 pub async fn seed_builtin_groups_sqlite(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     ensure_group_sqlite(pool, "admin", true).await?;
+    ensure_group_sqlite(pool, "teacher", false).await?;
     ensure_group_sqlite(pool, "student", false).await?;
     Ok(())
 }
 
 pub async fn seed_builtin_groups_postgres(pool: &PgPool) -> Result<(), sqlx::Error> {
     ensure_group_postgres(pool, "admin", true).await?;
+    ensure_group_postgres(pool, "teacher", false).await?;
     ensure_group_postgres(pool, "student", false).await?;
     Ok(())
 }
 
 pub async fn seed_builtin_groups_any(pool: &Pool<Any>) -> Result<(), sqlx::Error> {
     ensure_group_any(pool, "admin", true).await?;
+    ensure_group_any(pool, "teacher", false).await?;
     ensure_group_any(pool, "student", false).await?;
     Ok(())
 }

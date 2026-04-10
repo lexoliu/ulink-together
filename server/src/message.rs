@@ -4,7 +4,9 @@ use crate::{
     auth::{Auth, AuthError, AuthSession},
     channel,
     database::AppDatabase,
+    notification,
     push::{MessagePush, PushHub},
+    user,
     utils::{parse_oid, ApiMessage, Id},
 };
 
@@ -321,6 +323,9 @@ pub async fn post(
     };
     push_message_to_channel(&database, &hub, &channel_id, &push_payload).await;
 
+    // Trigger notifications for channel members
+    notify_channel_members(&database, &hub, channel_id, auth.uid(), &content).await;
+
     Ok(Json(Message {
         id,
         channel: channel_id,
@@ -430,4 +435,118 @@ async fn push_message_to_channel(
     }
 
     hub.send_json_to_users(users, "message", payload).await;
+}
+
+async fn notify_channel_members(
+    database: &AppDatabase,
+    hub: &PushHub,
+    channel_id: Id,
+    sender_id: Id,
+    content: &str,
+) {
+    // Load channel to get activity_id
+    let channel_row = sqlx::query(
+        database
+            .sql("SELECT activity_id FROM channels WHERE id = ?1")
+            .as_ref(),
+    )
+    .bind(channel_id.to_string())
+    .fetch_optional(database.sqlx())
+    .await;
+
+    let channel_row = match channel_row {
+        Ok(Some(row)) => row,
+        _ => return,
+    };
+
+    let activity_id_hex: Option<String> = channel_row.try_get("activity_id").ok();
+    let activity_id_hex = match activity_id_hex {
+        Some(hex) if !hex.is_empty() => hex,
+        _ => return, // Only notify for activity-bound channels
+    };
+
+    // Load activity name and promoter
+    let activity_row = sqlx::query(
+        database
+            .sql("SELECT name, promoter_id FROM activities WHERE id = ?1")
+            .as_ref(),
+    )
+    .bind(&activity_id_hex)
+    .fetch_optional(database.sqlx())
+    .await;
+
+    let activity_row = match activity_row {
+        Ok(Some(row)) => row,
+        _ => return,
+    };
+
+    let activity_name: String = activity_row.try_get("name").unwrap_or_default();
+    let promoter_hex: String = activity_row.try_get("promoter_id").unwrap_or_default();
+
+    // Determine if this is a teacher post
+    let is_teacher_post = sender_id.to_string() == promoter_hex;
+    let notification_type = if is_teacher_post {
+        models::NotificationType::TeacherChannelPost
+    } else {
+        models::NotificationType::NewChannelMessage
+    };
+
+    // Get sender name
+    let sender_name = user::get_name(database, sender_id)
+        .await
+        .unwrap_or_else(|_| "Someone".to_string());
+
+    let preview = if content.len() > 100 {
+        format!("{}...", &content[..97])
+    } else {
+        content.to_string()
+    };
+
+    let payload = models::ChannelMessagePayload {
+        channel_id: channel_id.to_string(),
+        activity_id: activity_id_hex,
+        activity_name,
+        sender_name,
+        message_preview: preview,
+    };
+    let Some(payload_json) = notification::serialize_payload(&payload) else {
+        return;
+    };
+
+    // Load channel members excluding sender
+    let rows = sqlx::query(
+        database
+            .sql("SELECT user_id FROM channel_members WHERE channel_id = ?1")
+            .as_ref(),
+    )
+    .bind(channel_id.to_string())
+    .fetch_all(database.sqlx())
+    .await;
+
+    let rows = match rows {
+        Ok(rows) => rows,
+        Err(_) => return,
+    };
+
+    let recipients: Vec<Id> = rows
+        .iter()
+        .filter_map(|row| {
+            let hex: String = row.try_get("user_id").ok()?;
+            let uid: Id = hex.parse().ok()?;
+            if uid == sender_id {
+                None
+            } else {
+                Some(uid)
+            }
+        })
+        .collect();
+
+    notification::create_notifications_batch(
+        database,
+        hub,
+        &recipients,
+        notification_type,
+        &payload_json,
+    )
+    .await;
 }

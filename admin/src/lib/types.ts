@@ -8,6 +8,39 @@ export type AuthorityName =
   | 'generate_export'
   | 'update_user_anyway'
   | 'delete_user'
+  | 'view_all_activities'
+
+export type UserGroup = 'admin' | 'teacher' | 'student'
+
+export interface AdminCreateUserForm {
+  email: string
+  realname: string
+  password: string
+  gender: string
+  classname: string
+  avatar?: string | null
+  group: UserGroup
+}
+
+export type NotificationTypeName =
+  | 'new_channel_message'
+  | 'teacher_channel_post'
+  | 'activity_state_change'
+  | 'record_state_change'
+
+export interface NotificationResponse {
+  id: string
+  user_id: string
+  notification_type: NotificationTypeName
+  payload: Record<string, unknown>
+  read_at: string | null
+  created_at: string
+}
+
+export interface NotificationPreference {
+  notification_type: NotificationTypeName
+  enabled: boolean
+}
 
 export type ActivityState = 'need_volunteer' | 'going' | 'ended' | 'canceled'
 export type ActivityTransitionAction = 'need_volunteer' | 'go' | 'end' | 'cancel'

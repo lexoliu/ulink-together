@@ -8114,57 +8114,8 @@ dependencies = [
 name = "waterui"
 version = "0.2.1"
 dependencies = [
- "android_clipboard",
- "arboard",
- "async-fs",
- "cpu-time",
- "executor-core",
- "futures",
- "libloading 0.9.0",
- "minstant",
- "nami",
- "native-executor",
- "pastey 0.2.1",
- "pulldown-cmark",
- "robius-open",
- "serde",
- "tracing",
- "tree-sitter",
- "tree-sitter-bash",
- "tree-sitter-go",
- "tree-sitter-java",
- "tree-sitter-javascript",
- "tree-sitter-json",
- "tree-sitter-md",
- "tree-sitter-python",
- "tree-sitter-rust",
- "tree-sitter-sequel",
- "tree-sitter-swift",
- "tree-sitter-typescript",
- "wasm-bindgen-futures",
- "waterkit-screen",
- "waterui-assets",
- "waterui-assets-macros",
- "waterui-controls",
- "waterui-core",
- "waterui-form",
- "waterui-graphics",
- "waterui-icon",
- "waterui-inspector-protocol",
- "waterui-layout",
- "waterui-locale",
- "waterui-macros",
- "waterui-media",
- "waterui-navigation",
- "waterui-shape",
- "waterui-str",
- "waterui-svg",
- "waterui-text",
- "waterui-url",
- "waterui-video",
- "waterui-webview",
- "web-sys",
- "zenwave",
+ "waterui-dylib",
+ "waterui-internal",
 ]
 
 [[package]]
@@ -8233,6 +8184,13 @@ dependencies = [
  "nami",
  "waterui-macros",
  "waterui-str",
+]
+
+[[package]]
+name = "waterui-dylib"
+version = "0.2.1"
+dependencies = [
+ "waterui-internal",
 ]
 
 [[package]]
@@ -8365,6 +8323,63 @@ dependencies = [
  "futures-lite 2.6.1",
  "serde",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "waterui-internal"
+version = "0.2.1"
+dependencies = [
+ "android_clipboard",
+ "arboard",
+ "async-fs",
+ "cpu-time",
+ "executor-core",
+ "futures",
+ "libloading 0.9.0",
+ "minstant",
+ "nami",
+ "native-executor",
+ "pastey 0.2.1",
+ "pulldown-cmark",
+ "robius-open",
+ "serde",
+ "tracing",
+ "tree-sitter",
+ "tree-sitter-bash",
+ "tree-sitter-go",
+ "tree-sitter-java",
+ "tree-sitter-javascript",
+ "tree-sitter-json",
+ "tree-sitter-md",
+ "tree-sitter-python",
+ "tree-sitter-rust",
+ "tree-sitter-sequel",
+ "tree-sitter-swift",
+ "tree-sitter-typescript",
+ "wasm-bindgen-futures",
+ "waterkit-screen",
+ "waterui-assets",
+ "waterui-assets-macros",
+ "waterui-controls",
+ "waterui-core",
+ "waterui-form",
+ "waterui-graphics",
+ "waterui-icon",
+ "waterui-inspector-protocol",
+ "waterui-layout",
+ "waterui-locale",
+ "waterui-macros",
+ "waterui-media",
+ "waterui-navigation",
+ "waterui-shape",
+ "waterui-str",
+ "waterui-svg",
+ "waterui-text",
+ "waterui-url",
+ "waterui-video",
+ "waterui-webview",
+ "web-sys",
+ "zenwave",
 ]
 
 [[package]]

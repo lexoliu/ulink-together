@@ -60,6 +60,11 @@ pub async fn generate(
         .await
         .map_err(|_| ExportError::Forbidden)?;
 
+    let can_view_all = auth
+        .match_authority("view_all_activities")
+        .await
+        .unwrap_or(false);
+
     let batch_id = Id::new();
     let created_at = OffsetDateTime::now_utc().to_string();
 
@@ -79,31 +84,57 @@ pub async fn generate(
     .await
     .expect("Database error");
 
-    let rows = sqlx::query(
-        database
-            .sql(
-                r#"
-                SELECT
-                    records.user_id,
-                    records.activity_id,
-                    users.realname,
-                    users.classname,
-                    activities.name AS activity_title,
-                    activities.date AS activity_date,
-                    records.confirmed_minutes,
-                    records.confirmed_at
-                FROM records
-                JOIN users ON users.id = records.user_id
-                JOIN activities ON activities.id = records.activity_id
-                WHERE records.state = 'confirmed' AND records.confirmed_minutes > 0
-                ORDER BY users.classname ASC, users.realname ASC, activities.date ASC, activities.name ASC
-                "#,
-            )
-            .as_ref(),
-    )
-    .fetch_all(database.sqlx())
-    .await
-    .expect("Database error");
+    let export_sql = if can_view_all {
+        database.sql(
+            r#"
+            SELECT
+                records.user_id,
+                records.activity_id,
+                users.realname,
+                users.classname,
+                activities.name AS activity_title,
+                activities.date AS activity_date,
+                records.confirmed_minutes,
+                records.confirmed_at
+            FROM records
+            JOIN users ON users.id = records.user_id
+            JOIN activities ON activities.id = records.activity_id
+            WHERE records.state = 'confirmed' AND records.confirmed_minutes > 0
+            ORDER BY users.classname ASC, users.realname ASC, activities.date ASC, activities.name ASC
+            "#,
+        )
+    } else {
+        database.sql(
+            r#"
+            SELECT
+                records.user_id,
+                records.activity_id,
+                users.realname,
+                users.classname,
+                activities.name AS activity_title,
+                activities.date AS activity_date,
+                records.confirmed_minutes,
+                records.confirmed_at
+            FROM records
+            JOIN users ON users.id = records.user_id
+            JOIN activities ON activities.id = records.activity_id
+            WHERE records.state = 'confirmed' AND records.confirmed_minutes > 0
+                AND activities.promoter_id = ?1
+            ORDER BY users.classname ASC, users.realname ASC, activities.date ASC, activities.name ASC
+            "#,
+        )
+    };
+
+    let query = sqlx::query(export_sql.as_ref());
+    let query = if can_view_all {
+        query
+    } else {
+        query.bind(auth.uid().to_string())
+    };
+    let rows = query
+        .fetch_all(database.sqlx())
+        .await
+        .expect("Database error");
 
     let mut items = Vec::with_capacity(rows.len());
     for row in rows {

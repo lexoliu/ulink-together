@@ -4,6 +4,8 @@ use crate::{
     auth::{Auth, AuthError, AuthSession},
     channel,
     database::AppDatabase,
+    notification,
+    push::PushHub,
     record, user,
     utils::{parse_oid, ApiMessage, Id},
 };
@@ -44,7 +46,18 @@ pub async fn list(
         _ => ListActivitiesError::Forbidden,
     })?;
     let Query(query_params) = query;
-    let user_filter = query_params.user.map(|user| user.to_string());
+    let can_view_all = auth
+        .match_authority("view_all_activities")
+        .await
+        .unwrap_or(false);
+
+    // When display_all is set (admin/teacher mode), scope to own activities
+    // unless the user has view_all_activities (admin)
+    let user_filter = if query_params.display_all.is_some() && !can_view_all {
+        Some(auth.uid().to_string())
+    } else {
+        query_params.user.map(|user| user.to_string())
+    };
 
     let mut sql_text = String::from(
         "SELECT id, promoter_id, name, location, state, volunteer_num, max_volunteer_num, date, brief_description, duration_minutes FROM activities WHERE 1=1",
@@ -806,6 +819,7 @@ pub enum ChangeActivityStateError {
 
 async fn change_state(
     database: State<AppDatabase>,
+    hub: State<PushHub>,
     params: Params,
     session: AuthSession,
     target_state: ActivityState,
@@ -830,7 +844,7 @@ async fn change_state(
 
     let row = sqlx::query(
         database
-            .sql("SELECT state FROM activities WHERE id = ?1")
+            .sql("SELECT state, name FROM activities WHERE id = ?1")
             .as_ref(),
     )
     .bind(id.to_string())
@@ -840,6 +854,7 @@ async fn change_state(
     let current_state =
         ActivityState::from_db(&row.try_get::<String, _>("state").expect("Database error"))
             .ok_or(ChangeActivityStateError::InvalidTransition)?;
+    let activity_name: String = row.try_get("name").expect("Database error");
 
     if !can_transition(current_state, target_state) {
         return Err(ChangeActivityStateError::InvalidTransition);
@@ -877,10 +892,62 @@ async fn change_state(
             .expect("Database error");
     }
 
+    // Notify volunteers about state change
+    notify_activity_state_change(&database, &hub, id, &activity_name, target_state).await;
+
     Ok(ApiMessage::new(format!(
         "Activity is {} now",
         target_state.as_str()
     )))
+}
+
+async fn notify_activity_state_change(
+    database: &AppDatabase,
+    hub: &PushHub,
+    activity_id: Id,
+    activity_name: &str,
+    new_state: ActivityState,
+) {
+    let payload = models::ActivityStatePayload {
+        activity_id: activity_id.to_string(),
+        activity_name: activity_name.to_string(),
+        new_state: new_state.as_str().to_string(),
+    };
+    let Some(payload_json) = notification::serialize_payload(&payload) else {
+        return;
+    };
+
+    // Load all users with records for this activity
+    let rows = sqlx::query(
+        database
+            .sql("SELECT DISTINCT user_id FROM records WHERE activity_id = ?1")
+            .as_ref(),
+    )
+    .bind(activity_id.to_string())
+    .fetch_all(database.sqlx())
+    .await;
+
+    let rows = match rows {
+        Ok(rows) => rows,
+        Err(_) => return,
+    };
+
+    let recipients: Vec<Id> = rows
+        .iter()
+        .filter_map(|row| {
+            let hex: String = row.try_get("user_id").ok()?;
+            hex.parse().ok()
+        })
+        .collect();
+
+    notification::create_notifications_batch(
+        database,
+        hub,
+        &recipients,
+        models::NotificationType::ActivityStateChange,
+        &payload_json,
+    )
+    .await;
 }
 
 fn can_transition(current: ActivityState, target: ActivityState) -> bool {
@@ -914,10 +981,11 @@ pub enum TurnNeedVolunteerError {
 #[skyzen::openapi]
 pub async fn turn_need_volunteer(
     database: State<AppDatabase>,
+    hub: State<PushHub>,
     params: Params,
     session: AuthSession,
 ) -> Result<ApiMessage, TurnNeedVolunteerError> {
-    change_state(database, params, session, ActivityState::NeedVolunteer)
+    change_state(database, hub, params, session, ActivityState::NeedVolunteer)
         .await
         .map_err(|err| match err {
             ChangeActivityStateError::SessionExpired => TurnNeedVolunteerError::SessionExpired,
@@ -953,10 +1021,11 @@ pub enum TurnGoingError {
 #[skyzen::openapi]
 pub async fn turn_going(
     database: State<AppDatabase>,
+    hub: State<PushHub>,
     params: Params,
     session: AuthSession,
 ) -> Result<ApiMessage, TurnGoingError> {
-    change_state(database, params, session, ActivityState::Going)
+    change_state(database, hub, params, session, ActivityState::Going)
         .await
         .map_err(|err| match err {
             ChangeActivityStateError::SessionExpired => TurnGoingError::SessionExpired,
@@ -989,10 +1058,11 @@ pub enum TurnEndedError {
 #[skyzen::openapi]
 pub async fn turn_ended(
     database: State<AppDatabase>,
+    hub: State<PushHub>,
     params: Params,
     session: AuthSession,
 ) -> Result<ApiMessage, TurnEndedError> {
-    change_state(database, params, session, ActivityState::Ended)
+    change_state(database, hub, params, session, ActivityState::Ended)
         .await
         .map_err(|err| match err {
             ChangeActivityStateError::SessionExpired => TurnEndedError::SessionExpired,
@@ -1025,10 +1095,11 @@ pub enum TurnCanceledError {
 #[skyzen::openapi]
 pub async fn turn_canceled(
     database: State<AppDatabase>,
+    hub: State<PushHub>,
     params: Params,
     session: AuthSession,
 ) -> Result<ApiMessage, TurnCanceledError> {
-    change_state(database, params, session, ActivityState::Canceled)
+    change_state(database, hub, params, session, ActivityState::Canceled)
         .await
         .map_err(|err| match err {
             ChangeActivityStateError::SessionExpired => TurnCanceledError::SessionExpired,

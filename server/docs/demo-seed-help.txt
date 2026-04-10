@@ -8,6 +8,7 @@ USAGE:
     [--activities-per-teacher <COUNT>] \
     [--comments-per-activity <COUNT>] \
     [--messages-per-activity <COUNT>] \
+    [--admin-password <PASSWORD>] \
     [--teacher-password <PASSWORD>] \
     [--student-password <PASSWORD>] \
     [--seed <SEED>] \
@@ -20,11 +21,14 @@ DEFAULTS:
   activities-per-teacher  6
   comments-per-activity   4
   messages-per-activity   8
+  admin-password          DemoAdmin123!
   teacher-password        DemoTeacher123!
   student-password        DemoStudent123!
   seed                    20260317
 
 NOTES:
   --reset drops existing application tables before seeding.
-  Teachers are created in a dedicated teacher group with organiser authorities.
+  Admin is seeded with god view (allow_all_authorities) and a single account.
+  Teachers are created in a dedicated teacher group with organiser authorities
+  scoped to their own activities and records.
   Students and teachers use predictable demo emails for easy login.

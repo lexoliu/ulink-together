@@ -27,6 +27,17 @@ pub struct RegisterPayload {
     pub avatar: Option<String>,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone, ToSchema)]
+pub struct AdminCreateUserPayload {
+    pub email: String,
+    pub realname: String,
+    pub password: String,
+    pub gender: String,
+    pub classname: String,
+    pub avatar: Option<String>,
+    pub group: String,
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone, Default, ToSchema)]
 pub struct UpdateUserForm {
     pub realname: Option<String>,
@@ -716,6 +727,97 @@ pub enum RegisterError {
 
     #[error("User already exists", status = FORBIDDEN)]
     AlreadyExists,
+}
+
+#[skyzen::error]
+pub enum AdminCreateUserError {
+    #[error("Session expired", status = FORBIDDEN)]
+    SessionExpired,
+
+    #[error("Forbidden", status = FORBIDDEN)]
+    Forbidden,
+
+    #[error("Group not found", status = BAD_REQUEST)]
+    GroupNotFound,
+
+    #[error("User already exists", status = CONFLICT)]
+    AlreadyExists,
+
+    #[error("Invalid input", status = BAD_REQUEST)]
+    InvalidInput,
+}
+
+/// Create a user in a specific group (admin-only).
+#[skyzen::openapi]
+pub async fn admin_create(
+    database: State<AppDatabase>,
+    form: Json<AdminCreateUserPayload>,
+    session: AuthSession,
+) -> Result<ApiMessage, AdminCreateUserError> {
+    let auth = session.into_auth().await.map_err(|err| match err {
+        AuthError::SessionExpired => AdminCreateUserError::SessionExpired,
+        _ => AdminCreateUserError::Forbidden,
+    })?;
+    auth.ensure_authority("update_user_anyway")
+        .await
+        .map_err(|_| AdminCreateUserError::Forbidden)?;
+
+    let Json(form) = form;
+
+    if form.email.trim().is_empty()
+        || form.password.trim().is_empty()
+        || form.realname.trim().is_empty()
+    {
+        return Err(AdminCreateUserError::InvalidInput);
+    }
+
+    let group_id = get_group_id(&database, form.group.as_str())
+        .await
+        .ok_or(AdminCreateUserError::GroupNotFound)?;
+
+    let password = hash_password(&form.password).expect("bcrypt hash password");
+    let user_id = Id::new();
+
+    let result = sqlx::query(
+        database
+            .sql(
+                r#"
+        INSERT INTO users (
+            id,
+            email,
+            realname,
+            gender,
+            description,
+            classname,
+            avatar_path,
+            password_hash,
+            group_id
+        ) VALUES (?1, ?2, ?3, ?4, '', ?5, ?6, ?7, ?8)
+        "#,
+            )
+            .as_ref(),
+    )
+    .bind(user_id.to_string())
+    .bind(&form.email)
+    .bind(&form.realname)
+    .bind(&form.gender)
+    .bind(&form.classname)
+    .bind(form.avatar.clone())
+    .bind(password)
+    .bind(group_id.to_string())
+    .execute(database.sqlx())
+    .await;
+
+    match result {
+        Ok(_) => Ok(ApiMessage::new("User created successfully")),
+        Err(sqlx::Error::Database(error)) => {
+            if is_unique_violation(&*error) {
+                return Err(AdminCreateUserError::AlreadyExists);
+            }
+            panic!("Database error: {}", error);
+        }
+        Err(error) => panic!("Database error: {error}"),
+    }
 }
 
 #[derive(Debug, Clone)]

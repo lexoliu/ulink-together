@@ -19,7 +19,14 @@ use sqlx::Any;
 use time::{format_description::well_known::Rfc3339, Duration, OffsetDateTime};
 use tracing::info;
 
-const TEACHER_AUTHORITIES: &[&str] = &["create_activity", "create_channel", "generate_export"];
+const TEACHER_AUTHORITIES: &[&str] = &[
+    "create_activity",
+    "create_channel",
+    "generate_export",
+    "view_record_anyway",
+    "view_channel_anyway",
+    "manage_record_anyway",
+];
 const FIRST_NAMES: &[&str] = &[
     "Alex", "Jamie", "Taylor", "Jordan", "Casey", "Morgan", "Avery", "Riley", "Cameron", "Harper",
     "Logan", "Quinn",
@@ -82,6 +89,7 @@ struct Config {
     activities_per_teacher: NonZeroUsize,
     comments_per_activity: NonZeroUsize,
     messages_per_activity: NonZeroUsize,
+    admin_password: String,
     teacher_password: String,
     student_password: String,
     seed: u64,
@@ -106,6 +114,7 @@ struct DemoSummary {
     going_activities: usize,
     ended_activities: usize,
     canceled_activities: usize,
+    admin_email: String,
     sample_teacher_email: String,
     sample_student_email: String,
 }
@@ -132,6 +141,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
+    let admin_group = bootstrap::ensure_group(
+        &connected.database,
+        &SeedGroup {
+            code: "admin",
+            allow_all_authorities: true,
+            authorities: &[],
+        },
+    )
+    .await?;
     let teacher_group = bootstrap::ensure_group(
         &connected.database,
         &SeedGroup {
@@ -154,6 +172,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut rng = StdRng::seed_from_u64(config.seed);
     let mut transaction = connected.database.sqlx().begin().await?;
 
+    let admin = seed_admin(
+        &connected.database,
+        &mut transaction,
+        &mut rng,
+        admin_group,
+        &config,
+    )
+    .await?;
     let teachers = seed_teachers(
         &connected.database,
         &mut transaction,
@@ -170,7 +196,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         &config,
     )
     .await?;
-    let summary = seed_activities(
+    let mut summary = seed_activities(
         &connected.database,
         &mut transaction,
         &mut rng,
@@ -179,6 +205,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         &config,
     )
     .await?;
+    summary.admin_email = admin.email.clone();
 
     transaction.commit().await?;
 
@@ -200,6 +227,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
         summary.canceled_activities
     );
     info!(
+        "Admin login:   {} / {}",
+        summary.admin_email, config.admin_password
+    );
+    info!(
         "Teacher login: {} / {}",
         summary.sample_teacher_email, config.teacher_password
     );
@@ -209,6 +240,41 @@ async fn main() -> Result<(), Box<dyn Error>> {
     );
 
     Ok(())
+}
+
+async fn seed_admin(
+    database: &database::AppDatabase,
+    transaction: &mut sqlx::Transaction<'_, Any>,
+    rng: &mut StdRng,
+    admin_group: Id,
+    config: &Config,
+) -> Result<Account, sqlx::Error> {
+    let realname = "System Administrator".to_string();
+    let email = "admin@demo.ulink.local".to_string();
+    let description =
+        "Full-access administrative account for customer demos — god view enabled.".to_string();
+    let classname = "Administration".to_string();
+    let admin_id = bootstrap::insert_user(
+        database,
+        &mut **transaction,
+        rng,
+        &SeedUser {
+            email: &email,
+            realname: &realname,
+            gender: "other",
+            description: &description,
+            classname: &classname,
+            avatar_path: None,
+            password: &config.admin_password,
+            group_id: admin_group,
+        },
+    )
+    .await?;
+    Ok(Account {
+        id: admin_id,
+        email,
+        realname,
+    })
 }
 
 async fn seed_teachers(
@@ -311,6 +377,7 @@ async fn seed_activities(
         going_activities: 0,
         ended_activities: 0,
         canceled_activities: 0,
+        admin_email: String::new(),
         sample_teacher_email: teachers
             .first()
             .expect("teachers must not be empty")
@@ -601,6 +668,7 @@ fn parse_config() -> Result<Config, String> {
     let mut activities_per_teacher = Some(NonZeroUsize::new(6).expect("non-zero activity default"));
     let mut comments_per_activity = Some(NonZeroUsize::new(4).expect("non-zero comment default"));
     let mut messages_per_activity = Some(NonZeroUsize::new(8).expect("non-zero message default"));
+    let mut admin_password = Some("DemoAdmin123!".to_string());
     let mut teacher_password = Some("DemoTeacher123!".to_string());
     let mut student_password = Some("DemoStudent123!".to_string());
     let mut seed = Some(20_260_317_u64);
@@ -634,6 +702,7 @@ fn parse_config() -> Result<Config, String> {
                     args.next(),
                 )?)
             }
+            "--admin-password" => admin_password = args.next(),
             "--teacher-password" => teacher_password = args.next(),
             "--student-password" => student_password = args.next(),
             "--seed" => seed = Some(parse_seed(args.next())?),
@@ -656,6 +725,8 @@ fn parse_config() -> Result<Config, String> {
             .expect("comments per activity default must exist"),
         messages_per_activity: messages_per_activity
             .expect("messages per activity default must exist"),
+        admin_password: admin_password
+            .ok_or_else(|| "--admin-password requires a value".to_string())?,
         teacher_password: teacher_password
             .ok_or_else(|| "--teacher-password requires a value".to_string())?,
         student_password: student_password

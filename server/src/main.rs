@@ -7,6 +7,7 @@ mod export;
 mod leaderboard;
 mod login;
 mod message;
+mod notification;
 mod push;
 mod record;
 mod resource;
@@ -62,6 +63,15 @@ pub fn api() -> Route {
         "/message"
             .at(message::find)
             .route(("/{id}".at(message::get).delete(message::delete),)),
+        "/notification"
+            .at(notification::list)
+            .route((
+                "/read".post(notification::mark_read),
+                "/unread_count".at(notification::unread_count),
+                "/preferences"
+                    .at(notification::get_preferences)
+                    .put(notification::update_preferences),
+            )),
         "/leaderboard".at(leaderboard::list),
         "/export".post(export::generate),
         "/resource"
@@ -84,6 +94,7 @@ pub fn api() -> Route {
         "/user".at(user::list).post(user::register).route((
             "/{id}".at(user::get).put(user::update).delete(user::delete),
             "/classes".at(user::list_classes),
+            "/admin_create".post(user::admin_create),
             "/batch/import_csv".post(user::import_csv),
             "/batch/update_class".post(user::batch_update_class),
             "/batch/delete_class".post(user::batch_delete_class),

@@ -351,6 +351,63 @@ struct APIClient: Sendable {
         try await request(baseURL: baseURL, path: "/export", method: .post)
     }
 
+    func fetchNotifications(
+        baseURL: URL,
+        unreadOnly: Bool = false,
+        limit: Int? = nil
+    ) async throws -> [NotificationResponse] {
+        var queryItems = [URLQueryItem]()
+        if unreadOnly {
+            queryItems.append(URLQueryItem(name: "unread_only", value: "1"))
+        }
+        if let limit {
+            queryItems.append(URLQueryItem(name: "limit", value: String(limit)))
+        }
+        return try await request(baseURL: baseURL, path: "/notification", queryItems: queryItems)
+    }
+
+    func fetchNotificationUnreadCount(baseURL: URL) async throws -> Int {
+        let response: NotificationUnreadCountResponse = try await request(
+            baseURL: baseURL,
+            path: "/notification/unread_count"
+        )
+        return response.count
+    }
+
+    func markNotificationsRead(baseURL: URL, ids: [String]) async throws {
+        _ = try await request(
+            baseURL: baseURL,
+            path: "/notification/read",
+            method: .post,
+            body: MarkNotificationsReadRequest(ids: ids, all: nil)
+        ) as APIMessageResponse
+    }
+
+    func markAllNotificationsRead(baseURL: URL) async throws {
+        _ = try await request(
+            baseURL: baseURL,
+            path: "/notification/read",
+            method: .post,
+            body: MarkNotificationsReadRequest(ids: nil, all: true)
+        ) as APIMessageResponse
+    }
+
+    func fetchNotificationPreferences(baseURL: URL) async throws -> [NotificationPreference] {
+        try await request(baseURL: baseURL, path: "/notification/preferences")
+    }
+
+    func updateNotificationPreferences(
+        baseURL: URL,
+        preferences: [NotificationPreference]
+    ) async throws {
+        _ = try await request(
+            baseURL: baseURL,
+            path: "/notification/preferences",
+            method: .put,
+            body: UpdateNotificationPreferencesRequest(preferences: preferences)
+        ) as APIMessageResponse
+    }
+
     func loadDisplayNameIfPossible(baseURL: URL, userID: String) async throws -> String {
         let user: UserProfile = try await request(baseURL: baseURL, path: "/user/\(userID)")
         return user.realname

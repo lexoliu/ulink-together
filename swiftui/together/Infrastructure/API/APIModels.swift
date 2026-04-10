@@ -406,3 +406,104 @@ struct ResetPasswordConfirmRequest: Encodable, Sendable {
         case newPassword = "new_password"
     }
 }
+
+// MARK: - Notifications
+
+enum NotificationTypeName: String, Codable, CaseIterable, Sendable {
+    case newChannelMessage = "new_channel_message"
+    case teacherChannelPost = "teacher_channel_post"
+    case activityStateChange = "activity_state_change"
+    case recordStateChange = "record_state_change"
+
+    var title: String {
+        switch self {
+        case .newChannelMessage:
+            "New Message"
+        case .teacherChannelPost:
+            "Teacher Update"
+        case .activityStateChange:
+            "Activity Update"
+        case .recordStateChange:
+            "Record Update"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .newChannelMessage:
+            "bubble.left.fill"
+        case .teacherChannelPost:
+            "megaphone.fill"
+        case .activityStateChange:
+            "calendar.badge.clock"
+        case .recordStateChange:
+            "checkmark.seal.fill"
+        }
+    }
+}
+
+/// Lightweight decoded payload — all fields optional so decoding never fails.
+struct NotificationPayload: Decodable, Sendable {
+    let channelID: String?
+    let activityID: String?
+    let activityName: String?
+    let senderName: String?
+    let messagePreview: String?
+    let recordID: String?
+    let newState: String?
+
+    enum CodingKeys: String, CodingKey {
+        case channelID = "channel_id"
+        case activityID = "activity_id"
+        case activityName = "activity_name"
+        case senderName = "sender_name"
+        case messagePreview = "message_preview"
+        case recordID = "record_id"
+        case newState = "new_state"
+    }
+}
+
+struct NotificationResponse: Decodable, Identifiable, Sendable {
+    let id: String
+    let userID: String
+    let notificationType: NotificationTypeName
+    let payload: NotificationPayload
+    let readAt: String?
+    let createdAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case userID = "user_id"
+        case notificationType = "notification_type"
+        case payload
+        case readAt = "read_at"
+        case createdAt = "created_at"
+    }
+
+    var isRead: Bool {
+        readAt != nil
+    }
+}
+
+struct NotificationUnreadCountResponse: Decodable, Sendable {
+    let count: Int
+}
+
+struct NotificationPreference: Codable, Sendable {
+    let notificationType: NotificationTypeName
+    let enabled: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case notificationType = "notification_type"
+        case enabled
+    }
+}
+
+struct MarkNotificationsReadRequest: Encodable, Sendable {
+    let ids: [String]?
+    let all: Bool?
+}
+
+struct UpdateNotificationPreferencesRequest: Encodable, Sendable {
+    let preferences: [NotificationPreference]
+}
