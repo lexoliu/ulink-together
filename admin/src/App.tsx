@@ -813,7 +813,7 @@ function App() {
                 <SidebarItem
                   active={currentView === 'students'}
                   icon={<Users className="size-4" />}
-                  label="Students"
+                  label="Users"
                   collapsed={sidebarCollapsed}
                   onClick={() => navigateStudents(selectedStudentId ?? undefined)}
                 />

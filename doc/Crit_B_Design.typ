@@ -9,8 +9,19 @@
   fill: (_, y) => if y == 0 { rgb("#183153") } else if calc.rem(y, 2) == 0 { rgb("#f8fafc") } else { white },
 )
 
-#import "@preview/mmdr:0.2.1": mermaid
+#import "@preview/mmdr:0.2.1": mermaid, mermaid-svg
 #import "@preview/fletcher:0.5.8" as fletcher: diagram, node, edge
+
+#let mermaid-fitted(code, width: 100%, base-theme: "modern") = {
+  let svg = mermaid-svg(code, base-theme: base-theme)
+  // Strip intrinsic width/height/style attributes from the <svg> root so
+  // Typst scales to our explicit width instead of clamping to the natural size.
+  let cleaned = svg
+    .replace(regex("\s+width=\"[^\"]*\""), "", count: 1)
+    .replace(regex("\s+height=\"[^\"]*\""), "", count: 1)
+    .replace(regex("\s+style=\"[^\"]*\""), "", count: 1)
+  image(bytes(cleaned), format: "svg", width: width)
+}
 
 #let navy = rgb("#183153")
 #let sky = rgb("#4d7ac7")
@@ -44,66 +55,97 @@
 
 = Overall Design
 
+The design is built around one shared server that every client talks to, so that the deputy head's volunteer records, the students' feed, and the organiser tools always see the same data. Three clients connect to that server: a native SwiftUI iPad application for volunteers and organisers, a React-based admin panel for school staff, and a real-time push channel used by the iPad client to stay in sync during a class period. The table below summarises the four design principles that guide the rest of this document, and the system decomposition diagram that follows breaks those principles down into concrete modules.
+
 #table(
   columns: (1.1fr, 2fr),
   table.header(
     text(fill: white, weight: "bold")[Design focus],
     text(fill: white, weight: "bold")[How the design addresses the client context],
   ),
-  [Shared source of truth], [The app is used by many students and organisers at the same time, so the design keeps activity state, participation records, and messaging on one central server.],
-  [Role separation], [Volunteers mainly browse and apply, organisers manage activities and confirmations, and administrators manage users and exports.],
-  [Clear activity structure], [Activities, participation records, chat messages, and exports are linked so information stays organised and can be reused across the system.],
-  [Short-session interface], [Students use the iPad app between lessons, so the feed, detail page, and records screens are designed for quick scanning and low-friction actions.],
+  [Shared source of truth], [The app is used by many students and organisers at the same time, so the design keeps activity state, participation records, and messaging on one central server. Every client --- SwiftUI, React, and the live push stream --- reads from and writes to the same authoritative database, which is the only way to prevent the spreadsheet-style inconsistencies that the client reported in Appendix 1.],
+  [Role separation], [Volunteers mainly browse and apply, organisers manage activities and confirmations, and administrators manage users and exports. The interface never exposes controls that the current user cannot actually perform, and the server re-checks the authority on every protected call so that a UI bypass cannot leak privileged behaviour.],
+  [Clear activity structure], [Activities, participation records, chat messages, comments, notifications, and export items are all linked through activity and user foreign keys so information stays organised and can be reused across the system. Denormalised copies are only kept in the export tables where historical accuracy matters more than storage efficiency.],
+  [Short-session interface], [Students use the iPad app between lessons, so the feed, detail page, and records screens are designed for quick scanning and low-friction actions. The design avoids multi-step wizards for the volunteer journey and relies on typography and a native `List` layout rather than heavy cards so that students can act in seconds rather than minutes.],
 )
-
-#pagebreak()
 
 == System Decomposition
 
+The system is decomposed into five functional modules. Each module groups the server endpoints, database tables, and client screens that share a common purpose, so that any change to a single feature touches a bounded area of the codebase. The Account module handles identity and sign-in. The Activity module handles publication and browsing. Participation covers the apply → approve → confirm flow. Communication covers comments, activity channels, and the event-driven notification system. Administration covers user and export management through the React admin panel.
+
+#let mod-node(pos, label, name) = node(
+  pos,
+  text(weight: "bold", size: 11pt, fill: white, label),
+  name: name,
+  shape: rect,
+  corner-radius: 5pt,
+  fill: navy,
+  stroke: 0.9pt + navy,
+  inset: 8pt,
+)
+
+#let leaf-node(pos, label, name) = node(
+  pos,
+  text(size: 9pt, fill: navy, label),
+  name: name,
+  shape: rect,
+  corner-radius: 4pt,
+  fill: rgb("#f8fafc"),
+  stroke: 0.7pt + navy,
+  inset: 6pt,
+)
+
 #figure(
-  scale(x: 82%, y: 82%, diagram(
-    spacing: (18pt, 56pt),
-    node-stroke: 0.9pt + navy,
-    node-fill: rgb("#f8fafc"),
-    node-inset: 8pt,
-    edge-stroke: 0.8pt + luma(130),
+  diagram(
+    spacing: (30pt, 26pt),
+    edge-stroke: 0.7pt + luma(130),
 
-    node((3, 0), text(weight: "bold", size: 11pt)[Together System], name: <root>, shape: rect, corner-radius: 5pt),
+    node(
+      (2, 0),
+      text(weight: "bold", size: 12pt, fill: white, [Together System]),
+      shape: rect,
+      corner-radius: 6pt,
+      fill: navy,
+      stroke: 1pt + navy,
+      inset: 10pt,
+      name: <root>,
+    ),
 
-    node((0.4, 2), text(weight: "bold", size: 10pt)[Account], name: <acc>, shape: rect, corner-radius: 5pt),
-    node((1.8, 2), text(weight: "bold", size: 10pt)[Activity], name: <act>, shape: rect, corner-radius: 5pt),
-    node((3, 2), text(weight: "bold", size: 10pt)[Participation], name: <par>, shape: rect, corner-radius: 5pt),
-    node((4.4, 2), text(weight: "bold", size: 10pt)[Communication], name: <com>, shape: rect, corner-radius: 5pt),
-    node((5.8, 2), text(weight: "bold", size: 10pt)[Administration], name: <adm>, shape: rect, corner-radius: 5pt),
+    mod-node((0, 1), [Account], <acc>),
+    mod-node((1, 1), [Activity], <act>),
+    mod-node((2, 1), [Participation], <par>),
+    mod-node((3, 1), [Communication], <com>),
+    mod-node((4, 1), [Administration], <adm>),
 
-    node((-0.2, 4), text(size: 8.5pt)[Register], name: <a1>, shape: rect, corner-radius: 4pt),
-    node((0.9, 4), text(size: 8.5pt)[Login / Profile], name: <a2>, shape: rect, corner-radius: 4pt),
-    node((1.6, 4), text(size: 8.5pt)[Publish], name: <b1>, shape: rect, corner-radius: 4pt),
-    node((2.3, 4), text(size: 8.5pt)[Browse / Detail], name: <b2>, shape: rect, corner-radius: 4pt),
-    node((2.9, 4), text(size: 8.5pt)[Apply], name: <c1>, shape: rect, corner-radius: 4pt),
-    node((3.5, 4), text(size: 8.5pt)[Confirm Hours], name: <c2>, shape: rect, corner-radius: 4pt),
-    node((4.2, 4), text(size: 8.5pt)[Comments], name: <d1>, shape: rect, corner-radius: 4pt),
-    node((5.0, 4), text(size: 8.5pt)[Channel], name: <d2>, shape: rect, corner-radius: 4pt),
-    node((5.7, 4), text(size: 8.5pt)[Manage Users], name: <e1>, shape: rect, corner-radius: 4pt),
-    node((6.5, 4), text(size: 8.5pt)[Exports], name: <e2>, shape: rect, corner-radius: 4pt),
+    leaf-node((0, 2), [Register], <a1>),
+    leaf-node((0, 3), [Login / Profile], <a2>),
+    leaf-node((1, 2), [Publish], <b1>),
+    leaf-node((1, 3), [Browse / Detail], <b2>),
+    leaf-node((2, 2), [Apply], <c1>),
+    leaf-node((2, 3), [Confirm Hours], <c2>),
+    leaf-node((3, 2), [Comments], <d1>),
+    leaf-node((3, 3), [Channel], <d2>),
+    leaf-node((3, 4), [Notifications], <d3>),
+    leaf-node((4, 2), [Manage Users], <e1>),
+    leaf-node((4, 3), [Generate Exports], <e2>),
 
     edge(<root>, <acc>), edge(<root>, <act>), edge(<root>, <par>),
     edge(<root>, <com>), edge(<root>, <adm>),
-    edge(<acc>, <a1>), edge(<acc>, <a2>),
-    edge(<act>, <b1>), edge(<act>, <b2>),
-    edge(<par>, <c1>), edge(<par>, <c2>),
-    edge(<com>, <d1>), edge(<com>, <d2>),
-    edge(<adm>, <e1>), edge(<adm>, <e2>),
-  )),
+    edge(<acc>, <a1>), edge(<a1>, <a2>),
+    edge(<act>, <b1>), edge(<b1>, <b2>),
+    edge(<par>, <c1>), edge(<c1>, <c2>),
+    edge(<com>, <d1>), edge(<d1>, <d2>), edge(<d2>, <d3>),
+    edge(<adm>, <e1>), edge(<e1>, <e2>),
+  ),
   caption: [System decomposition diagram],
 )
 
-#pagebreak()
-
 == System Architecture
 
+At deployment time the five modules from Section 1.1 collapse into three running components: the SwiftUI iPad application, the React admin panel, and the Rust server. All clients communicate with the server through the same JSON API over HTTPS, and the server in turn talks to the database through SQLx and to the local filesystem for avatars and other uploaded resources. Putting every business rule on the server rather than in the clients means a future additional client (for example a parent-facing web portal) can be added without re-implementing any permission or validation logic.
+
 #figure(
-  mermaid(
+  mermaid-fitted(
     "%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '22px', 'primaryColor': '#ffffff', 'primaryBorderColor': '#183153', 'primaryTextColor': '#183153', 'lineColor': '#5f6b7a'}, 'flowchart': {'nodeSpacing': 60, 'rankSpacing': 92, 'curve': 'basis'}}}%%
     flowchart TB
     Volunteer[\"Volunteer / Organiser\\nSwiftUI iPad App\"]
@@ -116,7 +158,8 @@
     Admin -->|\"HTTPS / JSON API\"| Server
     Server -->|\"SQL queries / transactions\"| DB
     Server -->|\"Read / write\"| Storage
-"
+",
+    width: 82%,
   ),
   caption: [System architecture diagram],
 )
@@ -156,164 +199,192 @@ The table definitions below use logical database types for clarity. In the curre
   text(fill: white, weight: "bold", style: "italic")[VALIDATION RULES],
 )
 
-#db-table-header("users", "Stores all registered volunteer, organiser, and administrator accounts")
+#db-table-header("users", "Stores every registered volunteer, organiser, and administrator account so that one user record can be referenced from activities, records, channels, and exports")
 
 #table(
-  columns: (1fr, 0.8fr, 1.8fr, 1.2fr),
+  columns: (1fr, 0.8fr, 1.9fr, 1.2fr),
   field-header,
-  [id], [UUID], [Unique identifier for the user], [Primary key],
-  [email], [VARCHAR], [The user's school email address], [Unique; required],
-  [realname], [VARCHAR], [Full display name], [Required],
-  [gender], [VARCHAR], [Gender of the user], [Required],
-  [description], [TEXT], [Short biography or personal statement], [-],
-  [classname], [VARCHAR], [Class or homeroom identifier], [Required],
-  [avatar_path], [VARCHAR], [File path to uploaded avatar image], [Nullable],
-  [password_hash], [VARCHAR], [Bcrypt hash of the account password], [Required],
-  [group_id], [UUID], [Foreign key to the groups table], [Required; FK → groups.id],
+  [id], [UUID], [Internal identifier used as a stable foreign key by every other table. It is generated by the server instead of reusing school IDs so that account records can be created before a student is enrolled in ISMAS.], [Primary key; UUID v4 format],
+  [email], [VARCHAR], [School email address of the user. This is the credential shown on the login screen and also serves as the human-readable identifier when the deputy head searches for a specific student.], [Unique; follow email format convention; e.g. `name\@ulink.edu.cn`],
+  [realname], [VARCHAR], [Full Chinese/English name displayed in the feed, leaderboard, and chat so that organisers can recognise who applied to each activity.], [Required; 2--40 characters],
+  [gender], [VARCHAR], [Self-reported gender kept for record-keeping purposes when activities have gender-balance targets.], [Required; one of `male`, `female`, `other`],
+  [description], [TEXT], [Optional short biography that the student can edit from the account screen; shown when another user opens the profile card.], [0--500 characters],
+  [classname], [VARCHAR], [Homeroom class identifier (e.g. `12A`). Used by the admin panel to batch-manage students by class and by the leaderboard to label entries.], [Required; 1--20 characters],
+  [avatar_path], [VARCHAR], [Server-relative path to the uploaded avatar image inside the resource folder. Stored rather than embedded so that large binary data stays outside the primary table.], [Nullable; must resolve to an existing resource file],
+  [password_hash], [VARCHAR], [Bcrypt hash of the account password. The original password is never persisted, which limits damage if the database is leaked.], [Required; 60-character bcrypt string starting with `\$2`],
+  [group_id], [UUID], [Authority group the user belongs to. All permission checks resolve through this column rather than through a fixed enum so that administrators can adjust what each group can do at runtime.], [Required; FK → groups.id],
 )
 
-#db-table-header("activities", "Stores each volunteer opportunity published by an organiser")
+#db-table-header("activities", "Stores each volunteer opportunity published by an organiser. Central table that the feed, detail view, records, channels, and exports all reference")
 
 #table(
-  columns: (1fr, 0.8fr, 1.8fr, 1.2fr),
+  columns: (1fr, 0.8fr, 1.9fr, 1.2fr),
   field-header,
-  [id], [UUID], [Unique identifier for the activity], [Primary key],
-  [promoter_id], [UUID], [The organiser who created this activity], [FK → users.id],
-  [name], [VARCHAR], [Title of the activity], [Required],
-  [location], [VARCHAR], [Where the activity takes place], [Required],
-  [state], [VARCHAR], [Current lifecycle state], [One of: need_volunteer, going, ended, canceled],
-  [volunteer_num], [INTEGER], [Number of volunteers currently signed up], [Default 0],
-  [max_volunteer_num], [INTEGER], [Maximum capacity for volunteers], [Nullable (unlimited if null)],
-  [date], [TIMESTAMP], [Scheduled date of the activity], [Nullable],
-  [brief_description], [VARCHAR], [Short summary shown in the feed], [Required],
-  [description], [TEXT], [Full details shown in the detail view], [Required],
-  [duration_minutes], [INTEGER], [Expected duration in minutes], [Required],
+  [id], [UUID], [Internal activity identifier referenced by records, channels, comments, and export items.], [Primary key; UUID v4 format],
+  [promoter_id], [UUID], [The organiser who created and manages this activity. Permission checks compare this column against the current user when deciding whether lifecycle changes or record confirmations are allowed.], [Required; FK → users.id],
+  [name], [VARCHAR], [Title shown on the feed card and at the top of the detail view. Must be long enough to describe the activity but short enough to fit the feed layout.], [Required; 3--80 characters],
+  [location], [VARCHAR], [Human-readable location such as a building name or campus area. Displayed in the feed so students can judge whether the activity is convenient.], [Required; 1--80 characters],
+  [state], [VARCHAR], [Current lifecycle state. The server rejects transitions that do not match the allowed state-diagram paths (see Section 3.2).], [Required; one of `need_volunteer`, `going`, `ended`, `canceled`],
+  [volunteer_num], [INTEGER], [Current number of approved volunteers. Maintained by the sign-up transaction so the value stays consistent with the records table.], [Default 0; `>= 0`; `<= max_volunteer_num` when capacity set],
+  [max_volunteer_num], [INTEGER], [Maximum number of volunteers the organiser will accept. Left null when the activity is open-ended.], [Nullable (unlimited if null); `>= 1` when set],
+  [date], [TIMESTAMP], [Scheduled start time of the activity. Shown in the feed and used by the home page to highlight activities that need attention.], [Nullable ISO 8601 timestamp],
+  [brief_description], [VARCHAR], [Short summary displayed on the feed card so students can scan opportunities quickly without opening every detail page.], [Required; 1--120 characters],
+  [description], [TEXT], [Full description shown only on the activity detail page. Can contain multiple paragraphs describing tasks, expectations, and logistics.], [Required; 1--5000 characters],
+  [duration_minutes], [INTEGER], [Expected duration in minutes. Used as the default value when an organiser confirms attendance, so the correct number of minutes lands in the leaderboard and the export.], [Required; `>= 1` and `<= 1440`],
 )
 
-#db-table-header("records", "Tracks each volunteer's participation in an activity and confirmed hours")
+#db-table-header("records", "Tracks one volunteer's participation in one activity across the apply → approve → confirm lifecycle. This table is the authoritative source for both the personal records screen and the leaderboard")
 
 #table(
-  columns: (1fr, 0.8fr, 1.8fr, 1.2fr),
+  columns: (1fr, 0.8fr, 1.9fr, 1.2fr),
   field-header,
-  [id], [UUID], [Unique identifier for the record], [Primary key],
-  [activity_id], [UUID], [The activity this record belongs to], [FK → activities.id],
-  [user_id], [UUID], [The volunteer who applied], [FK → users.id],
-  [state], [VARCHAR], [Current record state], [One of: todo, done, canceled],
-  [confirmed_minutes], [INTEGER], [Minutes confirmed by the organiser], [Default 0],
-  [confirmed_at], [TIMESTAMP], [Timestamp of confirmation], [Nullable],
-  [confirmed_by], [UUID], [User who confirmed the hours], [Nullable; FK → users.id],
-  [updated_at], [TIMESTAMP], [Last modification timestamp], [Required],
+  [id], [UUID], [Internal record identifier used as the target of confirm/approve/cancel API calls.], [Primary key; UUID v4 format],
+  [activity_id], [UUID], [The activity this record belongs to. Combined with `user_id` it forms a unique constraint that prevents the same volunteer from applying to the same activity twice.], [Required; FK → activities.id],
+  [user_id], [UUID], [The volunteer the record belongs to. Used by the personal records screen to load the student's own history.], [Required; FK → users.id],
+  [state], [VARCHAR], [Current record state, moving through apply → approve → confirm (or cancel). Only the `confirmed` state contributes minutes to the leaderboard and the export.], [Required; one of `pending_approval`, `approved`, `confirmed`, `canceled`],
+  [confirmed_minutes], [INTEGER], [Minutes actually confirmed by the organiser, which may differ from the activity's scheduled duration if a volunteer arrived late or left early.], [Default 0; `>= 0`; `>= 1` when state is `confirmed`],
+  [confirmed_at], [TIMESTAMP], [Wall-clock time at which the organiser confirmed attendance. Used in the export column `organiser_confirmation_timestamp` for audit trails.], [Nullable; required when state is `confirmed`],
+  [confirmed_by], [UUID], [Organiser who performed the confirmation. Stored so that the school can audit who signed off on which record.], [Nullable; FK → users.id; required when state is `confirmed`],
+  [updated_at], [TIMESTAMP], [Wall-clock time of the most recent state change. Used by the client to display "last updated" on the personal records screen.], [Required ISO 8601 timestamp],
 )
 
-#db-table-header("channels", "Communication rooms, each linked to one activity")
+#db-table-header("channels", "One chat room per activity. The system creates the channel together with the activity and binds them through `activity_id`, so messages stay attached to the correct event rather than drifting into a general-purpose room")
 
 #table(
-  columns: (1fr, 0.8fr, 1.8fr, 1.2fr),
+  columns: (1fr, 0.8fr, 1.9fr, 1.2fr),
   field-header,
-  [id], [UUID], [Unique identifier for the channel], [Primary key],
-  [name], [VARCHAR], [Display name of the channel], [Required],
-  [owner_id], [UUID], [The organiser who owns the channel], [FK → users.id],
-  [activity_id], [UUID], [The activity this channel is linked to], [Nullable; FK → activities.id],
-  [created_at], [TIMESTAMP], [Creation timestamp], [Required],
+  [id], [UUID], [Internal channel identifier referenced by messages and channel_members.], [Primary key; UUID v4 format],
+  [name], [VARCHAR], [Display name shown above the chat timeline. Usually derived from the activity title so students immediately recognise where they are.], [Required; 1--80 characters],
+  [owner_id], [UUID], [Creator of the channel --- normally the organiser of the bound activity. Used as a fallback permission check when `activity_id` is null.], [Required; FK → users.id],
+  [activity_id], [UUID], [Activity the channel is bound to. Null is allowed so that admin-only channels can exist, but the student app only surfaces channels where this column is set.], [Nullable; FK → activities.id],
+  [created_at], [TIMESTAMP], [Wall-clock time at which the channel was created. Displayed only in the debug log; the client uses the first message timestamp for the visible "created" indicator.], [Required ISO 8601 timestamp],
 )
 
-#db-table-header("messages", "Individual messages sent within activity channels")
+#db-table-header("messages", "Individual messages posted inside an activity channel. The client loads this table in reverse chronological order when entering a chat and appends new rows as they arrive over the live push stream")
 
 #table(
-  columns: (1fr, 0.8fr, 1.8fr, 1.2fr),
+  columns: (1fr, 0.8fr, 1.9fr, 1.2fr),
   field-header,
-  [id], [UUID], [Unique identifier for the message], [Primary key],
-  [channel_id], [UUID], [The channel this message belongs to], [FK → channels.id],
-  [sender_id], [UUID], [The user who sent this message], [FK → users.id],
-  [content], [TEXT], [Message body text], [Required],
-  [sent_at], [TIMESTAMP], [Timestamp when the message was sent], [Required],
+  [id], [UUID], [Internal message identifier used by the delete endpoint and by the SSE push payload so clients can deduplicate.], [Primary key; UUID v4 format],
+  [channel_id], [UUID], [Channel the message belongs to. Indexed so that loading a channel's history remains fast even as the messages table grows.], [Required; FK → channels.id; indexed],
+  [sender_id], [UUID], [User who sent the message. Compared against `channel_members` before the send is accepted, so non-members cannot post.], [Required; FK → users.id; indexed],
+  [content], [TEXT], [Message body. Plain text only --- markdown and HTML are intentionally not parsed to avoid XSS risks.], [Required; 1--2000 characters],
+  [sent_at], [TIMESTAMP], [Wall-clock time at which the server accepted the message. Used both to order the timeline and to drive the Discord-style "grouped by sender within five minutes" rendering.], [Required ISO 8601 timestamp],
 )
 
-#db-table-header("export_batches", "Tracks each batch export request for school reporting")
+#db-table-header("export_batches", "Each time staff press \"Export Hours\", one batch row is created together with the file that gets downloaded. Keeping a batch record allows the system to recreate the same file later if the original CSV is lost")
 
 #table(
-  columns: (1fr, 0.8fr, 1.8fr, 1.2fr),
+  columns: (1fr, 0.8fr, 1.9fr, 1.2fr),
   field-header,
-  [id], [UUID], [Unique identifier for the batch], [Primary key],
-  [creator_id], [UUID], [User who initiated the export], [FK → users.id],
-  [target_format], [VARCHAR], [Output format (e.g. CSV)], [Required],
-  [status], [VARCHAR], [Processing status], [Required],
-  [created_at], [TIMESTAMP], [Creation timestamp], [Required],
+  [id], [UUID], [Internal batch identifier used by the download URL and by the `export_items` foreign key.], [Primary key; UUID v4 format],
+  [creator_id], [UUID], [Member of staff who triggered the export. Useful for auditing who ran which report at the end of the semester.], [Required; FK → users.id],
+  [target_format], [VARCHAR], [File format the batch produced. Currently fixed to `csv` because that is the only format ISMAS accepts.], [Required; currently always `csv`],
+  [status], [VARCHAR], [Processing status of the batch. Immediate in the current implementation, but left as a column so a background-job version can populate `queued` / `processing` / `ready`.], [Required; one of `ready`, `failed`],
+  [created_at], [TIMESTAMP], [Wall-clock time at which the export was generated. Shown next to the downloaded file so staff know which reporting window it belongs to.], [Required ISO 8601 timestamp],
 )
 
-#db-table-header("export_items", "Individual rows within an export batch")
+#db-table-header("export_items", "Denormalised rows inside an export batch. The student name, class, and activity title are copied here at export time so that later edits to the source tables do not change historical reports")
 
 #table(
-  columns: (1fr, 0.8fr, 1.8fr, 1.2fr),
+  columns: (1fr, 0.8fr, 1.9fr, 1.2fr),
   field-header,
-  [id], [UUID], [Unique identifier for the item], [Primary key],
-  [batch_id], [UUID], [The batch this item belongs to], [FK → export_batches.id],
-  [user_id], [UUID], [The volunteer being reported], [FK → users.id],
-  [activity_id], [UUID], [The activity being reported], [FK → activities.id],
-  [confirmed_minutes], [INTEGER], [Confirmed hours for this record], [Required],
+  [id], [UUID], [Internal item identifier.], [Primary key; UUID v4 format],
+  [batch_id], [UUID], [Batch this row belongs to. Composite logical key with `user_id`/`activity_id` for lookups.], [Required; FK → export_batches.id; indexed],
+  [user_id], [UUID], [Volunteer being reported.], [Required; FK → users.id],
+  [activity_id], [UUID], [Activity being reported.], [Required; FK → activities.id],
+  [activity_title], [VARCHAR], [Activity title captured at export time. Denormalised so that renaming the activity later does not alter the historical export.], [Required; 3--80 characters],
+  [activity_date], [TIMESTAMP], [Scheduled activity date captured at export time.], [Nullable],
+  [student_name], [VARCHAR], [Student name captured at export time.], [Required],
+  [class_name], [VARCHAR], [Homeroom class captured at export time.], [Required],
+  [confirmed_minutes], [INTEGER], [Confirmed minutes for this record. This is the actual value written to the CSV column `confirmed_minutes`.], [Required; `>= 1`],
+  [confirmed_at], [TIMESTAMP], [Confirmation wall-clock time captured at export time.], [Nullable],
 )
 
-#db-table-header("groups", "Defines authority groups that control what actions a user can perform")
+#db-table-header("groups", "Defines authority groups that control what actions a user can perform. The admin, teacher, and student groups are seeded on first startup so that the permission system is immediately usable")
 
 #table(
-  columns: (1fr, 0.8fr, 1.8fr, 1.2fr),
+  columns: (1fr, 0.8fr, 1.9fr, 1.2fr),
   field-header,
-  [id], [UUID], [Unique identifier for the group], [Primary key],
-  [code], [VARCHAR], [Short code such as "admin" or "student"], [Unique; required],
-  [allow_all_authorities], [BOOLEAN], [Whether this group bypasses individual authority checks], [Default false],
+  [id], [UUID], [Internal group identifier referenced by `users.group_id`.], [Primary key; UUID v4 format],
+  [code], [VARCHAR], [Short human-readable code such as `admin`, `teacher`, or `student`. This is the value the admin panel shows in the group selector.], [Unique; required; 2--20 lowercase characters],
+  [allow_all_authorities], [BOOLEAN], [When true, every authority check for users in this group succeeds automatically. This is how the `admin` group gets its "god view" without having to list every authority string individually.], [Default false],
 )
 
-#db-table-header("group_authorities", "Maps specific permissions to groups that do not have blanket access")
+#db-table-header("group_authorities", "Maps specific permissions onto groups that do not have blanket access. A row in this table means \"users in this group can perform this action\"")
 
 #table(
-  columns: (1fr, 0.8fr, 1.8fr, 1.2fr),
+  columns: (1fr, 0.8fr, 1.9fr, 1.2fr),
   field-header,
-  [group_id], [UUID], [The group receiving this authority], [PK (composite); FK → groups.id],
-  [authority], [VARCHAR], [The permission string such as "manage_activity_anyway"], [PK (composite)],
+  [group_id], [UUID], [Group receiving the authority.], [PK (composite); FK → groups.id],
+  [authority], [VARCHAR], [Permission string such as `manage_activity_anyway` or `view_all_activities`. The server compares this value directly when it evaluates an `ensure_authority` call, so typos are caught at code-review time rather than at runtime.], [PK (composite); 3--40 lowercase characters],
 )
 
-#db-table-header("sessions", "Tracks active login sessions for cookie-based authentication")
+#db-table-header("sessions", "Active login sessions for cookie-based authentication. Each successful login creates one row; logout deletes it")
 
 #table(
-  columns: (1fr, 0.8fr, 1.8fr, 1.2fr),
+  columns: (1fr, 0.8fr, 1.9fr, 1.2fr),
   field-header,
-  [id], [UUID], [Unique session identifier], [Primary key],
-  [user_id], [UUID], [The user who owns this session], [FK → users.id],
-  [generated_at], [TIMESTAMP], [When the session was created], [Required],
-  [ip], [VARCHAR], [IP address at login time], [Required],
+  [id], [UUID], [Session identifier. This value is stored in the browser cookie so that subsequent requests can look up which user is authenticated.], [Primary key; UUID v4 format],
+  [user_id], [UUID], [Owner of the session. The `Auth` extractor reads this column on every protected request.], [Required; FK → users.id; indexed],
+  [generated_at], [TIMESTAMP], [Wall-clock time the session was created, stored so that very old sessions can be pruned offline.], [Required ISO 8601 timestamp],
+  [ip], [VARCHAR], [IP address observed at login time. Recorded for basic audit logging.], [Required; valid IPv4/IPv6 string],
 )
 
-#db-table-header("channel_members", "Junction table linking users to the channels they have joined")
+#db-table-header("channel_members", "Junction table recording which users can post in which channels. Membership is written when a record is approved and removed when the record is cancelled")
 
 #table(
-  columns: (1fr, 0.8fr, 1.8fr, 1.2fr),
+  columns: (1fr, 0.8fr, 1.9fr, 1.2fr),
   field-header,
-  [channel_id], [UUID], [The channel], [PK (composite); FK → channels.id],
-  [user_id], [UUID], [The member], [PK (composite); FK → users.id],
+  [channel_id], [UUID], [Channel the user is a member of.], [PK (composite); FK → channels.id],
+  [user_id], [UUID], [Member. Exactly one row exists per (channel, user) pair.], [PK (composite); FK → users.id],
 )
 
-#db-table-header("activity_comments", "Public comments attached to an activity for open discussion")
+#db-table-header("activity_comments", "Open comments that sit underneath an activity's detail page. Unlike channel messages these are visible to anyone viewing the activity, not only the participants")
 
 #table(
-  columns: (1fr, 0.8fr, 1.8fr, 1.2fr),
+  columns: (1fr, 0.8fr, 1.9fr, 1.2fr),
   field-header,
-  [id], [UUID], [Unique identifier for the comment], [Primary key],
-  [activity_id], [UUID], [The activity this comment belongs to], [FK → activities.id],
-  [author_id], [UUID], [The user who wrote the comment], [FK → users.id],
-  [content], [TEXT], [Comment body text], [Required],
-  [created_at], [TIMESTAMP], [Timestamp when the comment was posted], [Required],
+  [id], [UUID], [Comment identifier used by the delete endpoint.], [Primary key; UUID v4 format],
+  [activity_id], [UUID], [Activity the comment is attached to. Indexed so that loading comments for one activity stays cheap.], [Required; FK → activities.id; indexed],
+  [author_id], [UUID], [User who wrote the comment. Compared against the current user and `manage_comment_anyway` authority when deletions are requested.], [Required; FK → users.id],
+  [content], [TEXT], [Comment body. Plain text only.], [Required; 1--1000 characters],
+  [created_at], [TIMESTAMP], [Wall-clock time at which the comment was posted. Shown in the detail view.], [Required ISO 8601 timestamp],
 )
+
+#db-table-header("notifications", "Event-driven system notifications delivered to users when the server state changes. Unlike teacher-composed messages, every row in this table is generated automatically as a side effect of another action (new chat message, activity transition, or record state change)")
+
+#table(
+  columns: (1fr, 0.8fr, 1.9fr, 1.2fr),
+  field-header,
+  [id], [UUID], [Notification identifier used by the mark-as-read endpoint and by the SSE push payload.], [Primary key; UUID v4 format],
+  [user_id], [UUID], [Recipient of the notification. The notifications list only loads rows where this matches the current user.], [Required; FK → users.id; indexed],
+  [notification_type], [VARCHAR], [Category of the system event. Determines the icon shown in the notifications tab and the preview text rendered in the row.], [Required; one of `new_channel_message`, `teacher_channel_post`, `activity_state_change`, `record_state_change`],
+  [payload], [JSON], [Structured event details serialised as JSON --- typed per notification category and always contains the `activity_id` and `activity_name` needed for the tap-through navigation.], [Required; valid JSON],
+  [read_at], [TIMESTAMP], [Wall-clock time at which the recipient marked the notification as read. Left null while the row is still unread, which drives the Notifications tab badge count.], [Nullable],
+  [created_at], [TIMESTAMP], [Wall-clock time at which the notification was generated.], [Required; indexed together with `user_id` for fast unread-count lookups],
+)
+
+#db-table-header("notification_preferences", "Per-user opt-out choices for each notification type, giving users Twitter-style control over which events they receive")
+
+#table(
+  columns: (1fr, 0.8fr, 1.9fr, 1.2fr),
+  field-header,
+  [user_id], [UUID], [User expressing the preference.], [PK (composite); FK → users.id],
+  [notification_type], [VARCHAR], [Category the row is enabling or disabling.], [PK (composite); same values as `notifications.notification_type`],
+  [enabled], [BOOLEAN], [Whether the user receives this category. Absent rows are treated as enabled by default so that new notification types reach everybody until they explicitly opt out.], [Default true],
+)
+
+#pagebreak()
 
 == Entity-Relationship Diagram
 
-#pagebreak()
+The crow's-foot diagram below shows how the tables described in Section 2.1 are linked. Each crow's-foot symbol indicates the "many" side of a relationship and each single bar indicates "exactly one", so `users → records` is one-to-many (one student can have many participation records) and `activities → channels` is one-to-one-or-zero (each activity owns at most one channel). These relationships are enforced both by foreign-key declarations in the database and by transactional logic on the server.
 
 #figure(
   image("assets/er-diagram.jpg", width: 100%),
   caption: [Crow's foot entity-relationship diagram],
 )
-
-#pagebreak()
 
 == Key Data Rules
 
@@ -359,9 +430,11 @@ The table definitions below use logical database types for clarity. In the curre
   [Canceled], [Closed early; non-completed participation records should no longer remain active.], [Yes],
 )
 
+The state diagram below makes the allowed lifecycle transitions explicit. The server's `can_transition` function compares the current state to the proposed next state and rejects any pair that is not drawn on the diagram, so both the organiser interface and any direct API caller have to follow the same sequence.
+
 #figure(
-  mermaid(
-    "%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '22px', 'primaryColor': '#ffffff', 'primaryBorderColor': '#183153', 'primaryTextColor': '#183153', 'lineColor': '#5f6b7a'}}}%%
+  mermaid-fitted(
+    "%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '26px', 'primaryColor': '#ffffff', 'primaryBorderColor': '#183153', 'primaryTextColor': '#183153', 'lineColor': '#5f6b7a'}}}%%
     stateDiagram-v2
     direction TB
     [*] --> NeedVolunteer
@@ -371,55 +444,77 @@ The table definitions below use logical database types for clarity. In the curre
     Going --> Canceled: cancel
     Ended --> [*]
     Canceled --> [*]
-"
+",
+    width: 62%,
   ),
   caption: [Activity lifecycle state diagram],
 )
 
-#pagebreak()
+== Login Verification Flowchart
+
+The login screen is the first protected entry point, so the verification flow has to catch invalid input early and avoid leaking information about which accounts exist. The flowchart below shows how the server processes a submitted login form. The email is normalised first, then the user row is looked up in the `users` table; if no row matches, the response is the same generic "wrong email or password" message used for incorrect passwords, so an attacker cannot distinguish between a missing account and a bad password. When the account exists, bcrypt compares the submitted password against the stored hash, a new session row is written to the `sessions` table, and the browser receives a cookie that identifies the session on every subsequent request.
+
+#figure(
+  mermaid-fitted("
+%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '20px', 'primaryColor': '#ffffff', 'primaryBorderColor': '#183153', 'primaryTextColor': '#183153', 'lineColor': '#5f6b7a'}, 'flowchart': {'nodeSpacing': 28, 'rankSpacing': 42}}}%%
+flowchart TB
+    Start([User submits login form])
+    Empty{Email or password empty?}
+    ErrEmpty[Return 'Missing fields']
+    Normalise[Normalise email to lowercase, trim whitespace]
+    UsersDB[(users table)]
+    Lookup{Lookup email in users}
+    Bcrypt[Verify password with bcrypt]
+    Match{Hash matches?}
+    ErrWrong[Return 'Wrong email or password']
+    GenSession[Generate new session id]
+    SessionsDB[(sessions table)]
+    InsertSession[Insert session row with user_id, ip, timestamp]
+    Cookie[Set session cookie in response]
+    Success([Return signed-in user profile])
+
+    Start --> Empty
+    Empty -- Yes --> ErrEmpty
+    Empty -- No --> Normalise
+    Normalise --> Lookup
+    Lookup --> UsersDB
+    Lookup -- Not found --> ErrWrong
+    Lookup -- Found --> Bcrypt
+    Bcrypt --> Match
+    Match -- No --> ErrWrong
+    Match -- Yes --> GenSession
+    GenSession --> InsertSession
+    InsertSession --> SessionsDB
+    InsertSession --> Cookie
+    Cookie --> Success
+", width: 70%),
+  caption: [Login verification flowchart],
+)
 
 = Use Case Diagram
 
-The following use case diagram shows the three main actors and the functions each actor can access within the system. Solid lines indicate direct access; shared use cases appear where multiple actors connect to them.
+The use case diagram below identifies the three actors that interact with the system --- volunteer, organiser, and administrator --- and connects each actor to the use cases they are allowed to invoke. Lines indicate that the actor can start that use case directly; where several actors connect to the same use case, every connected actor has independent access. The diagram corresponds to the authority checks that the server performs on every protected request, so it also serves as a map of which authority strings each role needs.
 
-#figure(
-  mermaid("
-flowchart LR
-    V[Volunteer]
-    O[Organiser]
-    A[Administrator]
-    subgraph Together System
-        UC3([Apply to Activity])
-        UC4([View Personal Records])
-        UC1([Browse Activity Feed])
-        UC2([View Activity Detail])
-        UC5([Use Activity Chat])
-        UC6([View Leaderboard])
-        UC8([Confirm Participation])
-        UC7([Create / Edit Activity])
-        UC9([Manage Users / Groups])
-        UC10([Generate Export])
-    end
-    V --- UC3
-    V --- UC4
-    V --- UC1
-    V --- UC2
-    V --- UC5
-    V --- UC6
-    O --- UC1
-    O --- UC2
-    O --- UC5
-    O --- UC6
-    O --- UC8
-    O --- UC7
-    A --- UC7
-    A --- UC9
-    A --- UC10
-  "),
-  caption: [Use case diagram mapping actors to system functions],
+#table(
+  columns: (1.1fr, 2.4fr, 1.3fr),
+  table.header(
+    text(fill: white, weight: "bold")[Use case],
+    text(fill: white, weight: "bold")[Description],
+    text(fill: white, weight: "bold")[Allowed actors],
+  ),
+  [UC1 --- Browse Activity Feed], [Scroll the list of published activities and filter by state.], [Volunteer, Organiser],
+  [UC2 --- View Activity Detail], [Open a single activity to read the full description, location, date, and capacity.], [Volunteer, Organiser],
+  [UC3 --- Apply to Activity], [Create a participation record in the pending_approval state.], [Volunteer],
+  [UC4 --- View Personal Records], [Read the signed-in user's own application and confirmation history.], [Volunteer],
+  [UC5 --- Use Activity Chat], [Send and read messages in an activity-bound channel as a member.], [Volunteer, Organiser],
+  [UC6 --- View Leaderboard], [Read the confirmed-hours ranking of all volunteers.], [Volunteer, Organiser],
+  [UC7 --- Create / Edit Activity], [Publish a new activity or modify an existing one, including cancellation.], [Organiser, Administrator],
+  [UC8 --- Confirm Participation], [Approve applications and confirm attendance minutes after the activity ends.], [Organiser],
+  [UC9 --- Manage Users / Groups], [Add or delete accounts and change authority-group permissions from the admin panel.], [Administrator],
+  [UC10 --- Generate Export], [Produce the ISMAS-compatible CSV batch for the current reporting window.], [Organiser, Administrator],
+  [UC11 --- Receive System Notifications], [Read automatic notifications triggered by new messages, state changes, or record updates, with per-type opt-out.], [Volunteer, Organiser],
 )
 
-#pagebreak()
 
 = User Interface Design
 
@@ -464,7 +559,7 @@ The export feature is also intentionally limited. Because ISMAS does not provide
   [Activity form dialog], [Teacher / organiser], [Collects title, date, location, duration, and capacity for creation or editing.],
   [Participant records table], [Teacher / organiser], [Supports approval, confirmation, and review of volunteer participation.],
   [Students management], [Administrator], [Supports search, edit, delete, batch import, and class-level management of users.],
-  [Operations / permissions], [Administrator], [Supports authority changes and notification-related administrative actions.],
+  [Operations / permissions], [Administrator], [Supports authority-group configuration such as toggling blanket access and editing the per-group permission list.],
   [Export dialog], [Teacher / administrator], [Prepares and downloads a spreadsheet for manual ISMAS import.],
 )
 
@@ -485,21 +580,15 @@ The export feature is also intentionally limited. Because ISMAS does not provide
   caption: [Teacher/admin annotated wireframe for the activity management workspace],
 )
 
-#pagebreak()
-
 #figure(
   image("assets/wireframe-admin-students.svg", width: 100%),
   caption: [Teacher/admin annotated wireframe for the student management workspace],
 )
 
-#pagebreak()
-
 #figure(
   image("assets/wireframe-admin-operations.svg", width: 100%),
   caption: [Teacher/admin annotated wireframe for the operations and permissions workspace],
 )
-
-#pagebreak()
 
 = Test Plan
 

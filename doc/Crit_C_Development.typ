@@ -2,13 +2,26 @@
 #set page(paper: "a4", margin: (x: 2.5cm, y: 2.5cm))
 #set text(font: "New Computer Modern", size: 12pt)
 #set heading(numbering: none)
-#set par(leading: 0.98em, spacing: 1.8em, justify: true)
+#set par(leading: 0.85em, spacing: 1.1em, justify: true)
 #set raw(block: true, theme: auto)
-#set enum(spacing: 2em)
+#set enum(spacing: 0.9em)
 
 #import "@preview/wordometer:0.1.5": word-count, total-words
 
 #let navy = rgb("#183153")
+
+// Two-up figure layout: pairs a product screenshot with a complementary
+// piece of evidence (another screenshot, terminal output, or UI state) so
+// each technique explanation has multiple visual anchors rather than a
+// single screenshot.
+#let evidence-pair(left, right, left-caption: none, right-caption: none) = {
+  grid(
+    columns: (1fr, 1fr),
+    column-gutter: 10pt,
+    figure(image(left, width: 100%), caption: left-caption),
+    figure(image(right, width: 100%), caption: right-caption),
+  )
+}
 
 #show heading.where(level: 1): it => {
   v(0.8em)
@@ -36,8 +49,6 @@
 
 #outline()
 
-#pagebreak()
-
 = Techniques Used
 
 + Rust with async request handling for the backend API
@@ -50,8 +61,6 @@
 + Transaction-based concurrency control
 + CSV export generation for ISMAS reporting
 
-#pagebreak()
-
 = Areas of Complexity
 
 + Secure account registration and login verification
@@ -63,8 +72,6 @@
 + Configurable export generation from relational data
 
 NOTE: Please refer to _Appendix 3_ for the complete source code.
-
-#pagebreak()
 
 = Explanation of Use of Complex Techniques
 
@@ -139,9 +146,13 @@ if promoter_hex == auth.uid().to_string()
 
 #align(center)[#emph[Code snippet: Allowing activity management only to the owner or a privileged organiser]]
 
-#figure(
-  image("assets/manage-preview.png", width: 100%),
-  caption: [The organiser workspace exposes management actions that are not available to ordinary volunteers],
+Because every authority check runs on the server, the React admin panel can also build a permission-aware interface: menu items that the current user cannot actually invoke are never rendered, so teachers simply do not see the Users and Operations tabs that only administrators can open. The pair of screenshots below was captured on the same build of the admin dashboard using the demo seed. The first shows the System Administrator account, which has `allow_all_authorities` set and therefore sees all five navigation items, aggregate statistics, and the "Needs attention" queue across all organisers. The second shows a teacher account whose group has `create_activity`, `create_channel`, and `generate_export` but no user- or operations-level authorities; the teacher sidebar collapses to three items and the home page numbers reflect only activities that the teacher personally promoted.
+
+#evidence-pair(
+  "assets/admin-home-viewport.png",
+  "assets/teacher-home-viewport.png",
+  left-caption: [Admin view: all menu items and global statistics],
+  right-caption: [Teacher view: scoped menu and own-activity statistics],
 )
 
 == _3. Activity lifecycle and capacity-safe application flow_
@@ -206,9 +217,11 @@ pub async fn subscribe(&self, user: Id) -> Sse {
 
 #align(center)[#emph[Code snippet: Registering an SSE stream for real-time updates]]
 
+The final rendering of the channel in the React admin panel is shown below. Consecutive messages from the same sender are grouped under one avatar and timestamp, teacher posts carry an explicit teacher badge so students can tell the organiser's announcements apart from peer replies, and the left rail lists the activity-bound channels the current user has access to. The timeline updates live through the SSE push stream, so the view below re-renders as new messages are written on either the iPad client or the web panel.
+
 #figure(
-  image("assets/ipad-feed-landscape-final.png", width: 100%),
-  caption: [The native iPad client provides the shared communication and activity experience in one interface],
+  image("assets/admin-chats-viewport.png", width: 100%),
+  caption: [Admin-side activity channel with grouped messages, teacher badges, and live SSE updates],
 )
 
 == _5. Derived leaderboard and export adapter_
@@ -222,7 +235,7 @@ SELECT
     records.confirmed_minutes
 FROM records
 JOIN users ON users.id = records.user_id
-WHERE records.state = 'done'
+WHERE records.state = 'confirmed'
 ```
 
 #align(center)[#emph[Code snippet: Reading confirmed participation records for leaderboard generation]]
@@ -243,14 +256,23 @@ let mut csv = String::from(
 
 #align(center)[#emph[Code snippet: Building an ISMAS-compatible export file]]
 
-#figure(
-  image("assets/records-preview.png", width: 100%),
-  caption: [The volunteer's personal records screen showing confirmed participation history],
-)
+Running the export endpoint against the demo database produces rows of the shape below. Each confirmed record in the database turns into exactly one CSV row, and the column order matches the ISMAS import template so that the file can be uploaded without further transformation.
+
+```
+student_identifier,student_name,class_name,activity_title,activity_date,confirmed_minutes,organiser_confirmation_timestamp
+"6b2a…","Alex Zhang","11C","Primary School Reading Buddy Session 04","2026-04-06",150,"2026-04-05T21:49:41Z"
+"7a1e…","Harper Zhang","12A","Primary School Reading Buddy Session 04","2026-04-06",150,"2026-04-05T21:50:41Z"
+"9c88…","Morgan Lin","10C","Primary School Reading Buddy Session 04","2026-04-06",150,"2026-04-05T21:51:41Z"
+"d0f1…","Logan Xu","12B","Primary School Reading Buddy Session 04","2026-04-06",150,"2026-04-05T21:52:41Z"
+"e23c…","Jordan Wang","11B","Primary School Reading Buddy Session 04","2026-04-06",150,"2026-04-05T21:53:41Z"
+"f44d…","Avery Liu","12B","Primary School Reading Buddy Session 04","2026-04-06",150,"2026-04-05T21:54:41Z"
+```
+
+#align(center)[#emph[CSV output from the export endpoint run against the demo database]]
 
 #figure(
-  image("assets/admin-operations-viewport.png", width: 100%),
-  caption: [Administrative export workflow supporting school reporting requirements],
+  image("assets/admin-users-viewport.png", width: 100%),
+  caption: [Admin-side user management with the Students/Teachers/All filter and the inline Create User form],
 )
 
 == _6. Use of third-party libraries_
