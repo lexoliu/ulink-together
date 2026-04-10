@@ -511,6 +511,106 @@ async fn seed_activities(
         }
     }
 
+    // ------------------------------------------------------------------
+    // Capacity-demo activity (referenced by Section 4 of the video script).
+    //
+    // A dedicated Recruiting activity with capacity 12 and exactly 12
+    // approved volunteers so that the very next apply hits the server's
+    // `volunteer_num >= max` guard inside the apply transaction and the
+    // recording session can show a clean "activity is full" rejection.
+    //
+    // The server increments `volunteer_num` only when records reach the
+    // approved state, so seeding 12 approved volunteers (not 11) is what
+    // actually triggers the capacity rejection on the next apply.
+    //
+    // Without this seeded activity the regular loop never produces a
+    // near-full state because NeedVolunteer slots default to ~1/3 fill.
+    // Using a dedicated activity keeps the deterministic demo data simple
+    // and avoids hand-editing the database between takes.
+    // ------------------------------------------------------------------
+    let capacity_demo_teacher = teachers.first().expect("teachers must not be empty");
+    let capacity_demo_capacity: u16 = 12;
+    let capacity_demo_prefilled: u16 = 12;
+    let capacity_demo_scheduled_at = now + Duration::days(10) + Duration::hours(14);
+    let capacity_demo_scheduled_text = format_rfc3339(capacity_demo_scheduled_at);
+    let capacity_demo_id = bootstrap::insert_activity(
+        database,
+        &mut **transaction,
+        &SeedActivity {
+            promoter_id: capacity_demo_teacher.id,
+            name: "Library Reshelving Marathon (Capacity Demo)",
+            location: "Learning Commons",
+            state: ActivityState::NeedVolunteer,
+            volunteer_num: 0,
+            max_volunteer_num: Some(capacity_demo_capacity),
+            date: Some(&capacity_demo_scheduled_text),
+            brief_description:
+                "Seeded at 12 of 12 slots so the Criterion D recording can show the next application being rejected by the server-side capacity guard.",
+            description:
+                "This activity is intentionally filled to its full twelve-slot capacity at seed time. The first application made against this activity after recording begins will hit the server's volunteer_num >= max_volunteer_num guard inside the apply transaction and be rejected with a clear 'activity is full' error.",
+            duration_minutes: 120,
+        },
+    )
+    .await?;
+    summary.recruiting_activities += 1;
+    summary.activities += 1;
+
+    let capacity_demo_channel_id = bootstrap::insert_channel(
+        database,
+        &mut **transaction,
+        &SeedChannel {
+            name: "Library Reshelving Marathon Channel",
+            owner_id: capacity_demo_teacher.id,
+            activity_id: Some(capacity_demo_id),
+            created_at: &format_rfc3339(capacity_demo_scheduled_at - Duration::days(5)),
+        },
+    )
+    .await?;
+    bootstrap::insert_channel_member(
+        database,
+        &mut **transaction,
+        capacity_demo_channel_id,
+        capacity_demo_teacher.id,
+    )
+    .await?;
+
+    let capacity_demo_participants =
+        choose_students(rng, students, capacity_demo_prefilled as usize);
+    for (index, student) in capacity_demo_participants.iter().enumerate() {
+        let updated_at = format_rfc3339(
+            capacity_demo_scheduled_at - Duration::days(2) + Duration::hours(index as i64),
+        );
+        bootstrap::insert_record(
+            database,
+            &mut **transaction,
+            &SeedRecord {
+                activity_id: capacity_demo_id,
+                user_id: student.id,
+                state: RecordState::Approved,
+                confirmed_minutes: 0,
+                confirmed_at: None,
+                confirmed_by: None,
+                updated_at: &updated_at,
+            },
+        )
+        .await?;
+        bootstrap::insert_channel_member(
+            database,
+            &mut **transaction,
+            capacity_demo_channel_id,
+            student.id,
+        )
+        .await?;
+        summary.records += 1;
+    }
+    bootstrap::set_activity_volunteer_num(
+        database,
+        &mut **transaction,
+        capacity_demo_id,
+        capacity_demo_prefilled,
+    )
+    .await?;
+
     Ok(summary)
 }
 

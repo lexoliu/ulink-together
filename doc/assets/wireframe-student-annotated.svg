@@ -1,94 +1,153 @@
-<svg width="1500" height="760" viewBox="172 78 1196 628" xmlns="http://www.w3.org/2000/svg">
+<svg width="1800" height="900" viewBox="0 0 1800 900" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <style>
       .frame { fill: #ffffff; stroke: #2d2d2d; stroke-width: 3; }
+      .bezel { fill: #1a1a1a; stroke: #000; stroke-width: 2; }
+      .screen { fill: #ffffff; stroke: #2d2d2d; stroke-width: 2; }
       .panel { fill: #f2f2f2; stroke: #2d2d2d; stroke-width: 2.5; }
       .soft { fill: #dcdcdc; stroke: #2d2d2d; stroke-width: 2; }
-      .line { stroke: #2d2d2d; stroke-width: 2; }
       .muted { stroke: #777; stroke-width: 1.5; }
-      .label-box { fill: rgba(255,255,255,0.92); stroke: #d65a5a; stroke-width: 1.5; rx: 10; }
-      .label { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 20px; font-weight: 600; fill: #b23a3a; }
-      .caption { font-family: 'Times New Roman', serif; font-size: 28px; fill: #7c7c7c; font-style: italic; }
-      .ui { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 21px; fill: #111; }
-      .title { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 31px; fill: #111; font-weight: 600; }
-      .tiny { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 17px; fill: #666; }
-      .arrow { stroke: #b23a3a; stroke-width: 3; fill: none; marker-end: url(#arrowhead); }
+      .label { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 23px; font-weight: 500; fill: #b23a3a; }
+      .ui { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 24px; fill: #111; }
+      .title { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 34px; fill: #111; font-weight: 600; }
+      .tiny { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 19px; fill: #666; }
+      .status { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 18px; fill: #111; font-weight: 600; }
+      .arrow { stroke: #b23a3a; stroke-width: 2.4; fill: none; marker-end: url(#arrowhead); }
     </style>
     <marker id="arrowhead" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">
       <polygon points="0,0 10,4 0,8" fill="#b23a3a" />
     </marker>
   </defs>
 
-  <rect x="180" y="80" width="1180" height="640" class="frame"/>
-  <rect x="180" y="80" width="1180" height="46" fill="#4f4f4f" stroke="#2d2d2d" stroke-width="3"/>
-  <rect x="198" y="92" width="78" height="18" rx="6" fill="#7a7a7a"/>
-  <circle cx="212" cy="103" r="4" fill="#2d2d2d"/>
-  <circle cx="227" cy="103" r="4" fill="#2d2d2d"/>
-  <circle cx="242" cy="103" r="4" fill="#2d2d2d"/>
-  <rect x="300" y="91" width="970" height="20" rx="8" fill="#6a6a6a"/>
+  <!-- iPad landscape bezel (rounded black frame, no browser chrome) -->
+  <rect x="290" y="100" width="1220" height="700" rx="36" ry="36" class="bezel"/>
+  <rect x="308" y="118" width="1184" height="664" rx="18" ry="18" class="screen"/>
 
-  <rect x="214" y="154" width="300" height="530" class="panel"/>
-  <text x="244" y="190" class="title">Feed</text>
-  <rect x="236" y="214" width="254" height="34" rx="15" class="soft"/>
-  <rect x="236" y="270" width="78" height="30" rx="15" class="soft"/>
-  <rect x="326" y="270" width="88" height="30" rx="15" class="soft"/>
-  <rect x="426" y="270" width="64" height="30" rx="15" class="soft"/>
+  <!-- iPad status bar: time on left, battery indicators on right -->
+  <text x="342" y="148" class="status">9:41</text>
+  <text x="1440" y="148" class="status" text-anchor="end">100%</text>
+  <rect x="1448" y="134" width="30" height="14" rx="3" fill="none" stroke="#111" stroke-width="1.5"/>
+  <rect x="1450" y="136" width="26" height="10" rx="1" fill="#111"/>
 
-  <rect x="236" y="328" width="254" height="142" rx="18" class="frame"/>
-  <text x="258" y="364" class="ui">Activity card</text>
-  <line x1="258" y1="386" x2="408" y2="386" class="muted"/>
-  <line x1="258" y1="412" x2="382" y2="412" class="muted"/>
-  <line x1="258" y1="438" x2="398" y2="438" class="muted"/>
-  <line x1="258" y1="456" x2="446" y2="456" class="muted"/>
+  <!-- Feed panel (sidebar) -->
+  <rect x="338" y="180" width="344" height="588" class="panel"/>
+  <text x="372" y="226" class="title">Feed</text>
 
-  <rect x="236" y="494" width="254" height="142" rx="18" class="frame"/>
-  <text x="258" y="530" class="ui">Activity card</text>
-  <line x1="258" y1="552" x2="408" y2="552" class="muted"/>
-  <line x1="258" y1="578" x2="382" y2="578" class="muted"/>
-  <line x1="258" y1="604" x2="398" y2="604" class="muted"/>
-  <line x1="258" y1="622" x2="446" y2="622" class="muted"/>
+  <!-- Search bar -->
+  <rect x="372" y="254" width="276" height="38" rx="17" class="soft"/>
 
-  <rect x="548" y="154" width="778" height="530" class="panel"/>
-  <text x="846" y="190" text-anchor="middle" class="title">Activity detail</text>
-  <rect x="1188" y="162" width="116" height="28" rx="4" fill="#fff" stroke="#999" stroke-width="1.5"/>
-  <text x="1246" y="181" text-anchor="middle" class="tiny">landscape split view</text>
+  <!-- Filter chips -->
+  <rect x="372" y="316" width="82" height="32" rx="16" class="soft"/>
+  <rect x="466" y="316" width="96" height="32" rx="16" class="soft"/>
+  <rect x="574" y="316" width="70" height="32" rx="16" class="soft"/>
 
-  <text x="586" y="244" class="title">Library Reading Drive</text>
-  <line x1="586" y1="268" x2="1120" y2="268" class="muted"/>
-  <line x1="586" y1="296" x2="1250" y2="296" class="muted"/>
+  <!-- Activity card 1 -->
+  <rect x="372" y="378" width="276" height="156" rx="18" class="frame"/>
+  <text x="394" y="416" class="ui">Activity card</text>
+  <line x1="394" y1="438" x2="556" y2="438" class="muted"/>
+  <line x1="394" y1="466" x2="528" y2="466" class="muted"/>
+  <line x1="394" y1="494" x2="544" y2="494" class="muted"/>
+  <line x1="394" y1="514" x2="600" y2="514" class="muted"/>
 
-  <rect x="586" y="334" width="486" height="132" rx="16" class="frame"/>
-  <text x="610" y="366" class="ui">Activity summary</text>
-  <line x1="610" y1="392" x2="970" y2="392" class="muted"/>
-  <line x1="610" y1="418" x2="930" y2="418" class="muted"/>
-  <line x1="610" y1="444" x2="990" y2="444" class="muted"/>
+  <!-- Activity card 2 -->
+  <rect x="372" y="556" width="276" height="156" rx="18" class="frame"/>
+  <text x="394" y="594" class="ui">Activity card</text>
+  <line x1="394" y1="616" x2="556" y2="616" class="muted"/>
+  <line x1="394" y1="644" x2="528" y2="644" class="muted"/>
+  <line x1="394" y1="672" x2="544" y2="672" class="muted"/>
+  <line x1="394" y1="692" x2="600" y2="692" class="muted"/>
 
-  <rect x="1094" y="334" width="196" height="132" rx="16" class="frame"/>
-  <text x="1120" y="366" class="ui">Participation</text>
-  <rect x="1118" y="388" width="96" height="26" rx="13" class="soft"/>
-  <text x="1166" y="406" text-anchor="middle" class="tiny">Pending</text>
-  <rect x="1118" y="426" width="142" height="24" rx="12" class="soft"/>
+  <!-- Detail panel -->
+  <rect x="720" y="180" width="760" height="588" class="panel"/>
+  <text x="1100" y="226" text-anchor="middle" class="title">Activity detail</text>
+  <rect x="1336" y="196" width="130" height="30" rx="4" fill="#fff" stroke="#999" stroke-width="1.5"/>
+  <text x="1401" y="217" text-anchor="middle" class="tiny">landscape split view</text>
 
-  <rect x="586" y="496" width="704" height="146" rx="16" class="frame"/>
-  <text x="610" y="528" class="ui">Communication</text>
-  <line x1="610" y1="556" x2="878" y2="556" class="muted"/>
-  <line x1="610" y1="584" x2="1240" y2="584" class="muted"/>
-  <line x1="610" y1="610" x2="1190" y2="610" class="muted"/>
+  <text x="754" y="292" class="title">Library Reading Drive</text>
+  <line x1="754" y1="318" x2="1288" y2="318" class="muted"/>
+  <line x1="754" y1="348" x2="1420" y2="348" class="muted"/>
 
-  <rect x="218" y="118" width="224" height="34" class="label-box"/>
-  <text x="236" y="140" class="label">Search and filters stay visible</text>
-  <path d="M 340 152 C 350 170, 360 194, 364 212" class="arrow"/>
+  <!-- Summary card -->
+  <rect x="754" y="388" width="476" height="144" rx="16" class="frame"/>
+  <text x="780" y="422" class="ui">Activity summary</text>
+  <line x1="780" y1="450" x2="1140" y2="450" class="muted"/>
+  <line x1="780" y1="478" x2="1100" y2="478" class="muted"/>
+  <line x1="780" y1="506" x2="1160" y2="506" class="muted"/>
 
-  <rect x="218" y="296" width="248" height="34" class="label-box"/>
-  <text x="236" y="318" class="label">Cards show key details early</text>
-  <path d="M 342 330 C 330 344, 310 360, 290 374" class="arrow"/>
+  <!-- Participation card -->
+  <rect x="1252" y="388" width="208" height="144" rx="16" class="frame"/>
+  <text x="1280" y="422" class="ui">Participation</text>
+  <rect x="1278" y="446" width="100" height="28" rx="14" class="soft"/>
+  <text x="1328" y="465" text-anchor="middle" class="tiny">Pending</text>
+  <rect x="1278" y="486" width="150" height="26" rx="13" class="soft"/>
 
-  <rect x="930" y="206" width="284" height="34" class="label-box"/>
-  <text x="948" y="228" class="label">Split view keeps details visible</text>
-  <path d="M 1072 240 C 1050 264, 990 290, 938 310" class="arrow"/>
+  <!-- Communication card -->
+  <rect x="754" y="554" width="706" height="166" rx="16" class="frame"/>
+  <text x="780" y="588" class="ui">Communication</text>
+  <line x1="780" y1="618" x2="1048" y2="618" class="muted"/>
+  <line x1="780" y1="648" x2="1420" y2="648" class="muted"/>
+  <line x1="780" y1="676" x2="1370" y2="676" class="muted"/>
 
-  <rect x="930" y="470" width="268" height="34" class="label-box"/>
-  <text x="948" y="492" class="label">Activity chat stays with the event</text>
-  <path d="M 1064 504 C 1040 520, 960 536, 890 548" class="arrow"/>
+  <!-- ============ LEFT-SIDE ANNOTATIONS ============ -->
 
+  <!-- Search -->
+  <text x="20" y="248" class="label">Keyword search</text>
+  <text x="20" y="274" class="label">pinned at the top</text>
+  <text x="20" y="300" class="label">of the feed</text>
+  <path d="M 230 276 C 290 276, 330 278, 370 278" class="arrow"/>
+
+  <!-- Filter chips -->
+  <text x="20" y="346" class="label">State filter chips</text>
+  <text x="20" y="372" class="label">(Recruiting, In</text>
+  <text x="20" y="398" class="label">Progress, Completed)</text>
+  <path d="M 250 356 C 290 344, 330 336, 370 332" class="arrow"/>
+
+  <!-- Activity card -->
+  <text x="20" y="452" class="label">Activity card with</text>
+  <text x="20" y="478" class="label">title, date, location</text>
+  <text x="20" y="504" class="label">and capacity — tap</text>
+  <text x="20" y="530" class="label">to open the detail</text>
+  <path d="M 240 488 C 290 476, 330 460, 370 450" class="arrow"/>
+
+  <!-- Scroll list -->
+  <text x="20" y="620" class="label">Vertically scrollable</text>
+  <text x="20" y="646" class="label">list of published</text>
+  <text x="20" y="672" class="label">activities from the</text>
+  <text x="20" y="698" class="label">server</text>
+  <path d="M 250 650 C 300 640, 340 636, 370 636" class="arrow"/>
+
+  <!-- ============ RIGHT-SIDE ANNOTATIONS ============ -->
+
+  <!-- Split view -->
+  <text x="1530" y="244" class="label">Two-pane split view,</text>
+  <text x="1530" y="270" class="label">selected activity stays</text>
+  <text x="1530" y="296" class="label">beside the feed on</text>
+  <text x="1530" y="322" class="label">landscape iPad</text>
+  <path d="M 1528 250 C 1500 236, 1480 222, 1466 214" class="arrow"/>
+
+  <!-- Activity title -->
+  <text x="1530" y="370" class="label">Full activity title and</text>
+  <text x="1530" y="396" class="label">header metadata,</text>
+  <text x="1530" y="422" class="label">refreshed when a card</text>
+  <text x="1530" y="448" class="label">is selected</text>
+  <path d="M 1528 388 C 1470 360, 1360 330, 1290 306" class="arrow"/>
+
+  <!-- Summary -->
+  <text x="1530" y="496" class="label">Activity summary:</text>
+  <text x="1530" y="522" class="label">description, schedule</text>
+  <text x="1530" y="548" class="label">and organiser info</text>
+  <path d="M 1528 516 C 1400 508, 1300 492, 1232 480" class="arrow"/>
+
+  <!-- Participation -->
+  <text x="1530" y="596" class="label">Participation panel</text>
+  <text x="1530" y="622" class="label">with current state and</text>
+  <text x="1530" y="648" class="label">Join / Quit button</text>
+  <path d="M 1528 616 C 1500 580, 1480 540, 1462 510" class="arrow"/>
+
+  <!-- Communication -->
+  <text x="1530" y="700" class="label">Activity-scoped chat</text>
+  <text x="1530" y="726" class="label">created with the event;</text>
+  <text x="1530" y="752" class="label">messages stay tied to</text>
+  <text x="1530" y="778" class="label">it for its full lifetime</text>
+  <path d="M 1528 720 C 1500 700, 1480 680, 1462 646" class="arrow"/>
 </svg>

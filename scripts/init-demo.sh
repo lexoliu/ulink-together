@@ -11,6 +11,7 @@ cargo run -p together-server --bin demo_seed -- \
   --activities-per-teacher "${DEMO_ACTIVITIES_PER_TEACHER:-6}" \
   --comments-per-activity "${DEMO_COMMENTS_PER_ACTIVITY:-4}" \
   --messages-per-activity "${DEMO_MESSAGES_PER_ACTIVITY:-8}" \
+  --admin-password "${DEMO_ADMIN_PASSWORD:-DemoAdmin123!}" \
   --teacher-password "${DEMO_TEACHER_PASSWORD:-DemoTeacher123!}" \
   --student-password "${DEMO_STUDENT_PASSWORD:-DemoStudent123!}" \
   --seed "${DEMO_SEED:-20260317}" \
