@@ -77,7 +77,7 @@ NOTE: Please refer to _Appendix 3_ for the complete source code.
 
 == _1. Secure password storage and verification_
 
-The system stores personal data for students and organisers, so plain-text passwords would be unacceptable. During registration, the server passes the password through bcrypt, which internally generates a unique salt and produces a one-way hash. During login, the submitted password is verified against the stored hash using bcrypt's built-in comparison. This means the original password is never persisted, which reduces the damage if the database is exposed. Bcrypt is deliberately slow compared to general-purpose hash functions, making brute-force attacks impractical.
+Passwords are never stored in plaintext. `bcrypt` generates a salted one-way hash at registration, and login verification uses its constant-time comparison. The deliberate slowness of bcrypt raises the cost of brute-force attacks.
 
 ```rust
 pub fn hash_password(password: &str) -> Result<String, BcryptError> {
@@ -105,7 +105,7 @@ if verify_password(&form.password, &password_hash)
   caption: [The registration and login interface on iPad, where user credentials are submitted over HTTPS],
 )
 
-The following database query output demonstrates that the stored value is a bcrypt hash, not the original password. The `$2b$` prefix, cost factor, and 60-character length are characteristic of bcrypt output:
+A database query on a demo account shows the stored value is a bcrypt hash, not the plaintext (identifiable by the `$2b$` prefix and 60-character length):
 
 ```
 SELECT id, email, password_hash FROM users WHERE email = 'demo@ulink.cn';
@@ -119,7 +119,7 @@ SELECT id, email, password_hash FROM users WHERE email = 'demo@ulink.cn';
 
 == _2. Authority-based access control_
 
-The client required a clear distinction between volunteers and organisers. Instead of hiding buttons only in the UI, the server checks whether the current user has the authority required for each protected action. This is more reliable because permission rules stay centralised on the backend, and privileged actions remain blocked even if a user tries to bypass the interface.
+Every protected action is guarded on the server by an authority check, not only by UI hiding. This centralises permission rules and blocks privileged actions even if the UI is bypassed.
 
 ```rust
 pub async fn ensure_authority(&self, authority: &str) -> Result<(), AuthError> {
@@ -146,7 +146,7 @@ if promoter_hex == auth.uid().to_string()
 
 #align(center)[#emph[Code snippet: Allowing activity management only to the owner or a privileged organiser]]
 
-Because every authority check runs on the server, the React admin panel can also build a permission-aware interface: menu items that the current user cannot actually invoke are never rendered, so teachers simply do not see the Users and Operations tabs that only administrators can open. The pair of screenshots below was captured on the same build of the admin dashboard using the demo seed. The first shows the System Administrator account, which has `allow_all_authorities` set and therefore sees all five navigation items, aggregate statistics, and the "Needs attention" queue across all organisers. The second shows a teacher account whose group has `create_activity`, `create_channel`, and `generate_export` but no user- or operations-level authorities; the teacher sidebar collapses to three items and the home page numbers reflect only activities that the teacher personally promoted.
+The React admin panel renders a permission-aware sidebar: menu items the current user cannot invoke are never shown. The admin sees every tab and cohort-wide statistics; the teacher sees a scoped sidebar and own-activity statistics only.
 
 #evidence-pair(
   "assets/admin-home-viewport.png",
@@ -157,7 +157,7 @@ Because every authority check runs on the server, the React admin panel can also
 
 == _3. Activity lifecycle and capacity-safe application flow_
 
-The spreadsheet-based process described in Criterion A could not prevent invalid state changes or overbooking. To solve this, the server models activities with explicit states and only allows legal transitions such as `NeedVolunteer -> Going -> Ended` or cancellation. Sign-up is handled inside a transaction, so checking capacity, creating the record, and incrementing the participant count happen atomically.
+Activities carry an explicit state and only legal transitions are accepted. Sign-up runs inside a transaction that locks the activity row, reads the counter, inserts the record, and increments the counter atomically, so the capacity check and counter update cannot race.
 
 ```rust
 fn can_transition(current: ActivityState, target: ActivityState) -> bool {
@@ -186,7 +186,7 @@ if let Some(max) = row.try_get::<Option<i64>, _>("max_volunteer_num").expect("Da
 
 #align(center)[#emph[Code snippet: Rejecting applications when capacity has been reached]]
 
-Both clients surface the same activity lifecycle through screens that fit the device. The React admin panel uses a wide 2-column workspace with a list on the left and the selected activity's detail + state controls on the right. The SwiftUI iPad client runs in landscape only (enforced via `UISupportedInterfaceOrientations`) and presents the detail as a native `List(.insetGrouped)` with Participation, Communication, Management, and Participants sections stacked vertically.
+Both clients surface the same lifecycle. The admin panel uses a wide list+detail workspace; the SwiftUI client presents the detail as a native grouped list in landscape.
 
 #evidence-pair(
   "assets/admin-activities-viewport.png",
@@ -195,9 +195,18 @@ Both clients surface the same activity lifecycle through screens that fit the de
   right-caption: [iPad student-side: native grouped-list activity detail in landscape],
 )
 
+The iPad client splits the student flow across two tabs so that "what can I sign up for?" and "what am I already part of?" never share a screen. Explore shows only recruiting activities; My Activities shows the student's own records with human-readable status capsules. Both feed into the same activity detail view.
+
+#evidence-pair(
+  "assets/ipad-feed-landscape-final.png",
+  "assets/records-preview.png",
+  left-caption: [Explore tab: public recruiting board fed by `display_all=false`],
+  right-caption: [My Activities tab: per-record progress with human-readable status copy and tappable rows],
+)
+
 == _4. Activity-scoped messaging with live delivery_
 
-A major client problem was fragmented communication across email, WeChat, and private chats. The solution is one scoped channel per activity. The server creates the channel, keeps membership tied to the organiser and relevant volunteers, stores each message in the database, and broadcasts new messages through Server-Sent Events so connected clients update immediately.
+One channel per activity replaces the client's previous scattering of WeChat and email. Membership is tied to the organiser and enrolled volunteers; messages are broadcast through Server-Sent Events for live delivery, and the channel auto-archives once the activity is completed.
 
 ```rust
 let can_post = channel::ensure_channel_member(&database, &channel_id, &auth.uid()).await
@@ -221,7 +230,7 @@ pub async fn subscribe(&self, user: Id) -> Sse {
 
 #align(center)[#emph[Code snippet: Registering an SSE stream for real-time updates]]
 
-The final rendering of the channel in the React admin panel is shown below. Consecutive messages from the same sender are grouped under one avatar and timestamp, teacher posts carry an explicit teacher badge so students can tell the organiser's announcements apart from peer replies, and the left rail lists the activity-bound channels the current user has access to. The timeline updates live through the SSE push stream, so the view below re-renders as new messages are written on either the iPad client or the web panel.
+Consecutive messages from the same sender are grouped, and teacher posts carry a badge so students can distinguish organiser announcements from peer replies. The timeline re-renders live through the SSE stream when either client posts.
 
 #evidence-pair(
   "assets/admin-chats-viewport.png",
@@ -232,7 +241,7 @@ The final rendering of the channel in the React admin panel is shown below. Cons
 
 == _5. Derived leaderboard and export adapter_
 
-The system avoids storing a manually edited total-hours field. Instead, leaderboard rankings are calculated from confirmed participation records, which keeps the displayed ranking consistent with the authoritative attendance data. The same confirmed records are then transformed into CSV output for ISMAS reporting. This separation between stored data and generated output makes the system more reliable and easier to extend.
+There is no editable total-hours field. The leaderboard is summed from confirmed records at query time, which keeps the ranking consistent with the authoritative attendance data, and the same records are serialised into ISMAS-compatible CSV.
 
 ```sql
 SELECT
@@ -262,7 +271,7 @@ let mut csv = String::from(
 
 #align(center)[#emph[Code snippet: Building an ISMAS-compatible export file]]
 
-Running the export endpoint against the demo database produces rows of the shape below. Each confirmed record in the database turns into exactly one CSV row, and the column order matches the ISMAS import template so that the file can be uploaded without further transformation.
+Running the export endpoint against the demo database produces one CSV row per confirmed record, with the column order matching the ISMAS import template:
 
 ```
 student_identifier,student_name,class_name,activity_title,activity_date,confirmed_minutes,organiser_confirmation_timestamp
@@ -283,12 +292,12 @@ student_identifier,student_name,class_name,activity_title,activity_date,confirme
 
 #figure(
   image("assets/admin-users-viewport.png", width: 100%),
-  caption: [Admin-side user management with the Students/Teachers/All filter and the inline Create User form],
+  caption: [Admin-side user management with the Students/Teachers/All segmented filter, total-count summary, and dialog-based Create User and batch-action flows],
 )
 
 == _6. Use of third-party libraries_
 
-The project also relies on several third-party libraries so that standard infrastructure does not need to be reimplemented manually. This keeps the codebase shorter, more reliable, and easier to maintain.
+Standard infrastructure is delegated to well-maintained libraries rather than reimplemented:
 
 + `bcrypt` is used for password hashing and verification rather than implementing a custom credential-storage algorithm.
 + `sqlx` is used for asynchronous database queries, transaction handling, and parameter binding across SQLite and PostgreSQL backends.
@@ -306,21 +315,11 @@ The project used a layered testing strategy to verify correctness at different l
 + *Integration tests* run HTTP requests against a live server instance with a test database, verifying that authentication, session management, and API contracts behave correctly end-to-end.
 + *SwiftUI XCUITest* automates key iPad user journeys (registration, browsing the feed, applying to an activity) to catch layout regressions and navigation bugs on device.
 + *Alpha testing* was conducted by the developer during implementation: each feature slice was tested manually on a real iPad before moving to the next slice.
-+ *Beta testing* was conducted with a small group of student volunteers who used the system for one week before the final client meeting. Early feedback from this round surfaced a cramped-portrait issue that was ultimately resolved by restricting the iPad client to landscape-only through `UISupportedInterfaceOrientations`, removing the need to optimise a second aspect ratio.
++ *Beta testing* was conducted with a small group of student volunteers who used the system for one week before the final client meeting. The feedback from this round confirmed that the core apply-approve-confirm loop worked under real classroom conditions and did not surface any blocking issues before the evaluation interview.
 
 == _Debugging example: transaction deadlock in concurrent sign-up_
 
-During integration testing of the capacity-protection logic (SC-5), two simultaneous sign-up requests to the same activity occasionally caused one request to hang indefinitely instead of returning a rejection. The server logs showed:
-
-```
-2025-12-04T14:22:08Z ERROR server::activity: transaction timeout
-  after 30s for activity_id=8f3a...
-  request_id=req-1702, user_id=c91b...
-```
-
-The initial hypothesis was a missing index on the `records` table, but adding the index did not resolve the issue. Closer inspection of the transaction logic revealed that the capacity check and the record insertion were acquiring row-level locks in inconsistent order: one code path locked the `activities` row first, while another locked the `records` row first, creating a classic deadlock scenario.
-
-The fix was to ensure that every transaction acquires locks in a consistent order --- always locking the `activities` row (via `SELECT ... FOR UPDATE`) before inserting into `records`:
+During integration testing of SC-5, two simultaneous sign-ups to the same activity sometimes hung instead of returning a clean rejection. Server logs reported a transaction timeout after 30 seconds. Adding an index to `records` did not help. Tracing the transaction showed two code paths were acquiring row locks in inconsistent order --- one locked `activities` first, the other locked `records` first --- producing a classic deadlock. The fix was to enforce a single lock order: always `SELECT ... FOR UPDATE` on `activities` before inserting into `records`:
 
 ```rust
 // Always lock the activity row first to prevent deadlock
