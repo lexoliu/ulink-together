@@ -8,7 +8,7 @@ mod database;
 #[path = "../schema.rs"]
 mod schema;
 
-use bootstrap::{SeedGroup, SeedUser};
+use bootstrap::SeedUser;
 use tracing::info;
 
 #[derive(Debug)]
@@ -43,15 +43,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    let admin_group = bootstrap::ensure_group(
-        &connected.database,
-        &SeedGroup {
-            code: "admin",
-            allow_all_authorities: true,
-            authorities: &[],
-        },
-    )
-    .await?;
+    // Built-in roles are seeded by `prepare_database` above; the deploy
+    // helper only needs the admin group id to bind the new admin user to it.
+    let admin_group = bootstrap::lookup_group(&connected.database, "admin").await?;
 
     let mut rng = rand::thread_rng();
     bootstrap::insert_user(

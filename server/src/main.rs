@@ -78,12 +78,7 @@ pub fn api() -> Route {
             .post(resource::create)
             .route(("/{filename}".at(resource::access).delete(resource::delete),)),
         "/push".at(push::handler),
-        "/auth".route((
-            "/check/{authority}".at(check_authority),
-            "/groups"
-                .at(auth::list_groups)
-                .route(("/{code}".put(auth::update_group),)),
-        )),
+        "/auth".route(("/check/{authority}".at(check_authority),)),
         "/login".post(login::handler),
         "/logout".post(login::logout),
         "/password".route((

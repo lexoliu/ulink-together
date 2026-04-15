@@ -5,10 +5,7 @@ use tracing_subscriber::EnvFilter;
 
 use crate::{
     database::{build_database, database_kind_from_url, AppDatabase},
-    schema::{
-        apply_schema_any, ensure_group_any, ensure_group_authority_any, reset_schema_any,
-        seed_builtin_groups_any,
-    },
+    schema::{apply_schema_any, reset_schema_any, seed_builtin_groups_any},
 };
 
 const STRING_MAP: &[u8] = b"1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -16,12 +13,6 @@ const STRING_MAP: &[u8] = b"1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOP
 pub struct ConnectedDatabase {
     pub database: AppDatabase,
     pub database_url: String,
-}
-
-pub struct SeedGroup<'a> {
-    pub code: &'a str,
-    pub allow_all_authorities: bool,
-    pub authorities: &'a [&'a str],
 }
 
 pub struct SeedUser<'a> {
@@ -133,22 +124,49 @@ pub async fn user_exists(database: &AppDatabase, email: &str) -> Result<bool, sq
     .is_some())
 }
 
-pub async fn ensure_group(
-    database: &AppDatabase,
-    group: &SeedGroup<'_>,
-) -> Result<Id, sqlx::Error> {
-    let group_id =
-        ensure_group_any(database.sqlx(), group.code, group.allow_all_authorities).await?;
-    for authority in group.authorities {
-        ensure_group_authority_any(database.sqlx(), &group_id, authority).await?;
-    }
-    group_id
-        .parse()
+/// Look up a built-in role by its code (`"admin"`, `"teacher"`, `"student"`).
+///
+/// `prepare_database` (called from every binary's startup path) seeds the
+/// `groups` table from the hardcoded catalogue in
+/// [`crate::schema::seed_builtin_groups_any`], so callers can rely on these
+/// rows always being present after database initialization. Returning a
+/// `Result` here keeps the helper symmetric with the other bootstrap helpers
+/// and surfaces a clear error if a role somehow disappeared from the
+/// database (e.g. a manual edit) instead of silently producing a garbage id.
+pub async fn lookup_group(database: &AppDatabase, code: &str) -> Result<Id, sqlx::Error> {
+    let row = sqlx::query(
+        database
+            .sql("SELECT id FROM groups WHERE code = ?1")
+            .as_ref(),
+    )
+    .bind(code)
+    .fetch_optional(database.sqlx())
+    .await?
+    .ok_or_else(|| sqlx::Error::RowNotFound)?;
+    let id: String = row.try_get("id")?;
+    id.parse()
         .map_err(|error| sqlx::Error::Decode(Box::new(error)))
 }
 
 pub fn hash_password(password: &str) -> String {
-    bcrypt::hash(password, bcrypt::DEFAULT_COST).expect("bcrypt hash password")
+    hash_password_with_cost(password, bcrypt::DEFAULT_COST)
+}
+
+/// Hash a password with an explicit bcrypt cost parameter.
+///
+/// Production code paths should always use [`hash_password`], which pins
+/// the cost to `bcrypt::DEFAULT_COST` (12). This lower-level entry point
+/// exists so that the demo seeder can trade security for speed when
+/// provisioning fixtures — a cost of 4 (the bcrypt minimum) turns a
+/// single hash from ~300ms into a sub-millisecond operation in debug
+/// builds, which is the dominant term in `demo_seed` startup time.
+///
+/// The produced string is still a standard `$2b$<cost>$...` bcrypt hash,
+/// so Section 1 of the recording script can still point at the `$2b$`
+/// prefix in a terminal query to prove the password is not stored in
+/// plain text — the cost digit is just 04 instead of 12.
+pub fn hash_password_with_cost(password: &str, cost: u32) -> String {
+    bcrypt::hash(password, cost).expect("bcrypt hash password")
 }
 
 pub fn rand_string<R: Rng + ?Sized>(rng: &mut R, len: usize) -> String {
@@ -170,8 +188,27 @@ where
     E: Executor<'e, Database = Any>,
     R: Rng + ?Sized,
 {
-    let id = Id::new();
+    let _ = rng; // id generation currently does not need the rng
     let password_hash = hash_password(user.password);
+    insert_user_prehashed(database, executor, user, &password_hash).await
+}
+
+/// Insert a seed user whose password has already been hashed by the caller.
+///
+/// This lets bulk seeding paths (the demo seeder) parallelise bcrypt work
+/// across the blocking thread pool and then serialise the actual database
+/// writes, avoiding the serial bcrypt bottleneck inside a single
+/// transaction. Production code should continue to use [`insert_user`].
+pub async fn insert_user_prehashed<'e, E>(
+    database: &AppDatabase,
+    executor: E,
+    user: &SeedUser<'_>,
+    password_hash: &str,
+) -> Result<Id, sqlx::Error>
+where
+    E: Executor<'e, Database = Any>,
+{
+    let id = Id::new();
 
     sqlx::query(
         database

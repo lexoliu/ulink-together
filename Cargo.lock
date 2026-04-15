@@ -7026,6 +7026,7 @@ dependencies = [
  "log",
  "models",
  "rand 0.8.5",
+ "rayon",
  "ring 0.16.20",
  "serde",
  "serde_json",

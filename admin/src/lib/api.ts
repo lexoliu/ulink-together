@@ -14,7 +14,6 @@ import type {
   ChannelMessage,
   ChannelResponse,
   ExportBatchResponse,
-  GroupAuthoritySummary,
   NotificationPreference,
   NotificationResponse,
   RecordEntry,
@@ -36,16 +35,22 @@ export class ApiError extends Error {
 }
 
 const authorityNames: AuthorityName[] = [
-  'create_activity',
-  'create_channel',
-  'manage_record_anyway',
-  'manage_comment_anyway',
-  'manage_authority_anyway',
   'view_user',
-  'generate_export',
   'update_user_anyway',
   'delete_user',
+  'create_activity',
+  'manage_activity_anyway',
+  'delete_activity_anyway',
   'view_all_activities',
+  'manage_record_anyway',
+  'view_record_anyway',
+  'manage_comment_anyway',
+  'create_channel',
+  'view_channel_anyway',
+  'delete_channel_anyway',
+  'send_message_anyway',
+  'delete_message_anyway',
+  'generate_export',
 ]
 
 function apiOrigin(): string {
@@ -377,23 +382,6 @@ export class AdminApiClient {
 
   async deleteUser(userId: string): Promise<void> {
     await request<ApiMessage>(this.client, `/user/${userId}`, { method: 'DELETE' })
-  }
-
-  async authorityGroups(): Promise<GroupAuthoritySummary[]> {
-    return request<GroupAuthoritySummary[]>(this.client, '/auth/groups')
-  }
-
-  async updateAuthorityGroup(
-    code: string,
-    payload: {
-      allow_all_authorities: boolean
-      authorities: string[]
-    },
-  ): Promise<GroupAuthoritySummary> {
-    return request<GroupAuthoritySummary>(this.client, `/auth/groups/${code}`, {
-      method: 'PUT',
-      data: payload,
-    })
   }
 
   pushURL(): string {

@@ -1,14 +1,20 @@
 export type AuthorityName =
-  | 'create_activity'
-  | 'create_channel'
-  | 'manage_record_anyway'
-  | 'manage_comment_anyway'
-  | 'manage_authority_anyway'
   | 'view_user'
-  | 'generate_export'
   | 'update_user_anyway'
   | 'delete_user'
+  | 'create_activity'
+  | 'manage_activity_anyway'
+  | 'delete_activity_anyway'
   | 'view_all_activities'
+  | 'manage_record_anyway'
+  | 'view_record_anyway'
+  | 'manage_comment_anyway'
+  | 'create_channel'
+  | 'view_channel_anyway'
+  | 'delete_channel_anyway'
+  | 'send_message_anyway'
+  | 'delete_message_anyway'
+  | 'generate_export'
 
 export type UserGroup = 'admin' | 'teacher' | 'student'
 
@@ -200,12 +206,6 @@ export interface UserBatchResult {
 export interface UserClassSummary {
   classname: string
   count: number
-}
-
-export interface GroupAuthoritySummary {
-  code: string
-  allow_all_authorities: boolean
-  authorities: string[]
 }
 
 const activityTransitionsByState = {

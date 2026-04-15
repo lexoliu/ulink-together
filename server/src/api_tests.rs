@@ -2,7 +2,6 @@ use crate::{
     build_router,
     database::{build_test_database, AppDatabase},
     push::PushHub,
-    schema::ensure_group_authority_any,
     utils::{hash_password, verify_password, Id},
 };
 use async_std::fs;
@@ -290,14 +289,9 @@ async fn owner_can_update_activity() {
 #[tokio::test]
 async fn apply_does_not_add_channel_membership_or_allow_message_post_before_approval() {
     let database = build_test_database().await;
-    let owner = insert_user(&database, "student", "owner3@example.com", "Owner").await;
-    ensure_group_authority_any(
-        database.sqlx(),
-        &group_id(&database, "student").await.to_string(),
-        "create_channel",
-    )
-    .await
-    .expect("grant create_channel");
+    // Owner needs `create_channel`; the built-in teacher role carries it as
+    // part of the canonical permission catalogue.
+    let owner = insert_user(&database, "teacher", "owner3@example.com", "Owner").await;
     let volunteer = insert_user(&database, "student", "vol@example.com", "Volunteer").await;
     let activity = insert_activity(&database, owner, "Cleanup", "need_volunteer", 120).await;
     let channel = insert_channel(&database, owner, activity, "Cleanup Channel").await;
@@ -335,14 +329,9 @@ async fn apply_does_not_add_channel_membership_or_allow_message_post_before_appr
 #[tokio::test]
 async fn activity_create_auto_creates_activity_channel() {
     let database = build_test_database().await;
-    let owner = insert_user(&database, "student", "owner-auto@example.com", "Owner").await;
-    ensure_group_authority_any(
-        database.sqlx(),
-        &group_id(&database, "student").await.to_string(),
-        "create_activity",
-    )
-    .await
-    .expect("grant create_activity");
+    // Activity creation requires both `create_activity` and `create_channel`,
+    // both of which the built-in teacher role carries.
+    let owner = insert_user(&database, "teacher", "owner-auto@example.com", "Owner").await;
     let cookie = insert_session(&database, owner).await;
     let client = test_client(database.clone());
 
@@ -1153,14 +1142,19 @@ async fn admin_can_delete_activity_comment() {
     assert!(row.is_none());
 }
 
+/// Replaces the deleted `authority_group_update_changes_auth_check_result`
+/// test. The dynamic authority-group API has been removed; what we still
+/// want to verify is that the seeded role catalogue is the source of truth
+/// for `/auth/check`, i.e. a freshly-seeded student does not see organiser
+/// permissions and a freshly-seeded teacher does.
 #[tokio::test]
-async fn authority_group_update_changes_auth_check_result() {
+async fn auth_check_reflects_seeded_role_catalogue() {
     let database = build_test_database().await;
-    let admin = insert_user(
+    let teacher = insert_user(
         &database,
-        "admin",
-        "authority-admin@example.com",
-        "Authority Admin",
+        "teacher",
+        "authority-teacher@example.com",
+        "Authority Teacher",
     )
     .await;
     let student = insert_user(
@@ -1170,34 +1164,39 @@ async fn authority_group_update_changes_auth_check_result() {
         "Authority Student",
     )
     .await;
-    let admin_cookie = insert_session(&database, admin).await;
+    let teacher_cookie = insert_session(&database, teacher).await;
     let student_cookie = insert_session(&database, student).await;
     let client = test_client(database);
 
-    client
-        .put("/api/v1/auth/groups/student")
-        .header("Cookie", &admin_cookie)
-        .json(&json!({
-            "allow_all_authorities": false,
-            "authorities": ["view_user"]
-        }))
-        .send()
-        .await
-        .assert_status_success();
-
-    let check_view_user = client
-        .get("/api/v1/auth/check/view_user")
-        .header("Cookie", &student_cookie)
+    let teacher_create_activity = client
+        .get("/api/v1/auth/check/create_activity")
+        .header("Cookie", &teacher_cookie)
         .send()
         .await;
-    check_view_user.assert_status_success();
-    check_view_user.assert_json_path("result", &json!(true));
+    teacher_create_activity.assert_status_success();
+    teacher_create_activity.assert_json_path("result", &json!(true));
 
-    let check_create_activity = client
+    let teacher_view_user = client
+        .get("/api/v1/auth/check/view_user")
+        .header("Cookie", &teacher_cookie)
+        .send()
+        .await;
+    teacher_view_user.assert_status_success();
+    teacher_view_user.assert_json_path("result", &json!(true));
+
+    let student_create_activity = client
         .get("/api/v1/auth/check/create_activity")
         .header("Cookie", &student_cookie)
         .send()
         .await;
-    check_create_activity.assert_status_success();
-    check_create_activity.assert_json_path("result", &json!(false));
+    student_create_activity.assert_status_success();
+    student_create_activity.assert_json_path("result", &json!(false));
+
+    let student_view_user = client
+        .get("/api/v1/auth/check/view_user")
+        .header("Cookie", &student_cookie)
+        .send()
+        .await;
+    student_view_user.assert_status_success();
+    student_view_user.assert_json_path("result", &json!(false));
 }

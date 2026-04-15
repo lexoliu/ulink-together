@@ -11,22 +11,27 @@ mod database;
 mod schema;
 
 use bootstrap::{
-    SeedActivity, SeedChannel, SeedComment, SeedGroup, SeedMessage, SeedRecord, SeedUser,
+    SeedActivity, SeedChannel, SeedComment, SeedMessage, SeedRecord, SeedUser,
 };
 use models::{ActivityState, Id, RecordState};
 use rand::{rngs::StdRng, seq::SliceRandom, Rng, SeedableRng};
+use rayon::prelude::*;
 use sqlx::Any;
 use time::{format_description::well_known::Rfc3339, Duration, OffsetDateTime};
 use tracing::info;
 
-const TEACHER_AUTHORITIES: &[&str] = &[
-    "create_activity",
-    "create_channel",
-    "generate_export",
-    "view_record_anyway",
-    "view_channel_anyway",
-    "manage_record_anyway",
-];
+/// bcrypt cost factor used for every password hashed by `demo_seed`.
+///
+/// Production paths use `bcrypt::DEFAULT_COST` (12), which takes
+/// hundreds of milliseconds per hash in debug builds and makes the
+/// seeder dominate recording-session turnaround time. The bcrypt
+/// minimum is 4, which still produces a syntactically valid `$2b$04$`
+/// hash — Section 1 of the Criterion D video confirms only the prefix,
+/// not the cost factor, so the weaker fixture is indistinguishable on
+/// camera. Production users created through `/user/register` or
+/// `/user/admin_create` are unaffected and keep cost 12.
+const DEMO_BCRYPT_COST: u32 = 4;
+
 // School email domain used by every seeded account. Matches the real
 // Ulink College production domain so that the demonstration video does
 // not reveal that the data is synthetic.
@@ -181,33 +186,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    let admin_group = bootstrap::ensure_group(
-        &connected.database,
-        &SeedGroup {
-            code: "admin",
-            allow_all_authorities: true,
-            authorities: &[],
-        },
-    )
-    .await?;
-    let teacher_group = bootstrap::ensure_group(
-        &connected.database,
-        &SeedGroup {
-            code: "teacher",
-            allow_all_authorities: false,
-            authorities: TEACHER_AUTHORITIES,
-        },
-    )
-    .await?;
-    let student_group = bootstrap::ensure_group(
-        &connected.database,
-        &SeedGroup {
-            code: "student",
-            allow_all_authorities: false,
-            authorities: &[],
-        },
-    )
-    .await?;
+    // Built-in roles are seeded with their canonical permissions by
+    // `prepare_database` (see `schema::seed_builtin_groups_any`); the demo
+    // seeder only needs to look up the resulting ids to attach demo users.
+    let admin_group = bootstrap::lookup_group(&connected.database, "admin").await?;
+    let teacher_group = bootstrap::lookup_group(&connected.database, "teacher").await?;
+    let student_group = bootstrap::lookup_group(&connected.database, "student").await?;
 
     let mut rng = StdRng::seed_from_u64(config.seed);
     let mut transaction = connected.database.sqlx().begin().await?;
@@ -285,7 +269,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 async fn seed_admin(
     database: &database::AppDatabase,
     transaction: &mut sqlx::Transaction<'_, Any>,
-    rng: &mut StdRng,
+    _rng: &mut StdRng,
     admin_group: Id,
     config: &Config,
 ) -> Result<Account, sqlx::Error> {
@@ -294,10 +278,11 @@ async fn seed_admin(
     let description =
         "Head of A-level Department and system administrator for the volunteer platform.".to_string();
     let classname = "Senior Leadership".to_string();
-    let admin_id = bootstrap::insert_user(
+    let password_hash =
+        bootstrap::hash_password_with_cost(&config.admin_password, DEMO_BCRYPT_COST);
+    let admin_id = bootstrap::insert_user_prehashed(
         database,
         &mut **transaction,
-        rng,
         &SeedUser {
             email: &email,
             realname: &realname,
@@ -308,6 +293,7 @@ async fn seed_admin(
             password: &config.admin_password,
             group_id: admin_group,
         },
+        &password_hash,
     )
     .await?;
     Ok(Account {
@@ -320,40 +306,62 @@ async fn seed_admin(
 async fn seed_teachers(
     database: &database::AppDatabase,
     transaction: &mut sqlx::Transaction<'_, Any>,
-    rng: &mut StdRng,
+    _rng: &mut StdRng,
     teacher_group: Id,
     config: &Config,
 ) -> Result<Vec<Account>, sqlx::Error> {
-    let mut teachers = Vec::with_capacity(config.teacher_count.get());
-    for index in 0..config.teacher_count.get() {
-        // Cycle through the named teacher profile pool so every teacher
-        // looks like a real faculty member instead of `teacher01`.
-        let (first_name, family_name, email_local, title, bio) =
-            TEACHER_PROFILES[index % TEACHER_PROFILES.len()];
-        let realname = format!("{first_name} {family_name}");
-        let email = format!("{email_local}@{SCHOOL_EMAIL_DOMAIN}");
-        let description = bio.to_string();
-        let classname = title.to_string();
-        let teacher_id = bootstrap::insert_user(
+    // Collect the per-row metadata first so the bcrypt hashing step can
+    // run in parallel on rayon's thread pool. Each hash takes hundreds of
+    // milliseconds in debug builds, so serialising them inside the
+    // transaction dominates the total seeder runtime.
+    let rows: Vec<(String, String, String, String, &'static str)> = (0..config
+        .teacher_count
+        .get())
+        .map(|index| {
+            let (first_name, family_name, email_local, title, bio) =
+                TEACHER_PROFILES[index % TEACHER_PROFILES.len()];
+            let realname = format!("{first_name} {family_name}");
+            let email = format!("{email_local}@{SCHOOL_EMAIL_DOMAIN}");
+            let description = bio.to_string();
+            let classname = title.to_string();
+            let gender = gender_for(index);
+            (realname, email, description, classname, gender)
+        })
+        .collect();
+
+    // Parallel bcrypt hashing — every teacher shares the same password
+    // string but bcrypt generates an independent salt per call, so each
+    // row still lands in the database with its own unique hash.
+    let password = config.teacher_password.clone();
+    let hashes: Vec<String> = rows
+        .par_iter()
+        .map(|_| bootstrap::hash_password_with_cost(&password, DEMO_BCRYPT_COST))
+        .collect();
+
+    let mut teachers = Vec::with_capacity(rows.len());
+    for ((realname, email, description, classname, gender), password_hash) in
+        rows.iter().zip(hashes.iter())
+    {
+        let teacher_id = bootstrap::insert_user_prehashed(
             database,
             &mut **transaction,
-            rng,
             &SeedUser {
-                email: &email,
-                realname: &realname,
-                gender: gender_for(index),
-                description: &description,
-                classname: &classname,
+                email,
+                realname,
+                gender,
+                description,
+                classname,
                 avatar_path: None,
                 password: &config.teacher_password,
                 group_id: teacher_group,
             },
+            password_hash,
         )
         .await?;
         teachers.push(Account {
             id: teacher_id,
-            email,
-            realname,
+            email: email.clone(),
+            realname: realname.clone(),
         });
     }
     Ok(teachers)
@@ -362,55 +370,77 @@ async fn seed_teachers(
 async fn seed_students(
     database: &database::AppDatabase,
     transaction: &mut sqlx::Transaction<'_, Any>,
-    rng: &mut StdRng,
+    _rng: &mut StdRng,
     student_group: Id,
     config: &Config,
 ) -> Result<Vec<Account>, sqlx::Error> {
-    let mut students = Vec::with_capacity(config.student_count.get());
-    for index in 0..config.student_count.get() {
-        let first = STUDENT_FIRST_NAMES[index % STUDENT_FIRST_NAMES.len()];
-        let family =
-            FAMILY_NAMES[(index / STUDENT_FIRST_NAMES.len()) % FAMILY_NAMES.len()];
-        let realname = format!("{first} {family}");
-        // School-style email: firstname.familyname[.disambiguator]@ulink.cn.
-        // The disambiguator keeps emails unique when the same (first,
-        // family) pair repeats because the student pool is larger than
-        // the product of the two name lists.
-        let disambiguator =
-            index / (STUDENT_FIRST_NAMES.len() * FAMILY_NAMES.len());
-        let email_local = if disambiguator == 0 {
-            format!("{}.{}", first.to_lowercase(), family.to_lowercase())
-        } else {
-            format!(
-                "{}.{}{}",
-                first.to_lowercase(),
-                family.to_lowercase(),
-                disambiguator + 1
-            )
-        };
-        let email = format!("{email_local}@{SCHOOL_EMAIL_DOMAIN}");
-        let classname = CLASSROOMS[index % CLASSROOMS.len()].to_string();
-        let description = format!("Year {} student volunteer.", &classname[..2]);
-        let student_id = bootstrap::insert_user(
+    // Stage 1: compute every row's static metadata (no bcrypt here).
+    let rows: Vec<(String, String, String, String, &'static str)> = (0..config
+        .student_count
+        .get())
+        .map(|index| {
+            let first = STUDENT_FIRST_NAMES[index % STUDENT_FIRST_NAMES.len()];
+            let family = FAMILY_NAMES[(index / STUDENT_FIRST_NAMES.len()) % FAMILY_NAMES.len()];
+            let realname = format!("{first} {family}");
+            // School-style email: firstname.familyname[.disambiguator]@ulink.cn.
+            // The disambiguator keeps emails unique when the same (first,
+            // family) pair repeats because the student pool is larger than
+            // the product of the two name lists.
+            let disambiguator = index / (STUDENT_FIRST_NAMES.len() * FAMILY_NAMES.len());
+            let email_local = if disambiguator == 0 {
+                format!("{}.{}", first.to_lowercase(), family.to_lowercase())
+            } else {
+                format!(
+                    "{}.{}{}",
+                    first.to_lowercase(),
+                    family.to_lowercase(),
+                    disambiguator + 1
+                )
+            };
+            let email = format!("{email_local}@{SCHOOL_EMAIL_DOMAIN}");
+            let classname = CLASSROOMS[index % CLASSROOMS.len()].to_string();
+            let description = format!("Year {} student volunteer.", &classname[..2]);
+            let gender = gender_for(index + 3);
+            (realname, email, description, classname, gender)
+        })
+        .collect();
+
+    // Stage 2: parallel bcrypt across rayon's thread pool. With
+    // DEMO_BCRYPT_COST=4 and 72 students this finishes in well under a
+    // second even in debug builds. Each bcrypt call generates its own
+    // salt, so rows still land with distinct hashes in the database.
+    let password = config.student_password.clone();
+    let hashes: Vec<String> = rows
+        .par_iter()
+        .map(|_| bootstrap::hash_password_with_cost(&password, DEMO_BCRYPT_COST))
+        .collect();
+
+    // Stage 3: serial insert — SQLite is single-writer inside the
+    // transaction anyway, so parallelising this step would not help.
+    let mut students = Vec::with_capacity(rows.len());
+    for ((realname, email, description, classname, gender), password_hash) in
+        rows.iter().zip(hashes.iter())
+    {
+        let student_id = bootstrap::insert_user_prehashed(
             database,
             &mut **transaction,
-            rng,
             &SeedUser {
-                email: &email,
-                realname: &realname,
-                gender: gender_for(index + 3),
-                description: &description,
-                classname: &classname,
+                email,
+                realname,
+                gender,
+                description,
+                classname,
                 avatar_path: None,
                 password: &config.student_password,
                 group_id: student_group,
             },
+            password_hash,
         )
         .await?;
         students.push(Account {
             id: student_id,
-            email,
-            realname,
+            email: email.clone(),
+            realname: realname.clone(),
         });
     }
     Ok(students)

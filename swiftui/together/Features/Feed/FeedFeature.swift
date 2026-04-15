@@ -1,12 +1,8 @@
 import SwiftUI
 
 private enum FeedFilter: String, CaseIterable, Identifiable {
-    case all
-    case recruiting
-    case pendingApproval
-    case participating
-    case inProgress
-    case completed
+    case openForSignup
+    case notYetApplied
 
     var id: String {
         rawValue
@@ -14,18 +10,10 @@ private enum FeedFilter: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .all:
-            "All"
-        case .recruiting:
-            "Recruiting"
-        case .pendingApproval:
-            "Pending"
-        case .participating:
-            "Participating"
-        case .inProgress:
-            "In Progress"
-        case .completed:
-            "Completed"
+        case .openForSignup:
+            "Open for sign up"
+        case .notYetApplied:
+            "New to me"
         }
     }
 }
@@ -36,7 +24,7 @@ struct FeedHomeView: View {
     @State private var activities: [ActivitySummary] = []
     @State private var selectedActivityID: String?
     @State private var searchText = ""
-    @State private var filter: FeedFilter = .recruiting
+    @State private var filter: FeedFilter = .openForSignup
     @State private var isLoading = true
     @State private var errorMessage: String?
 
@@ -76,8 +64,8 @@ struct FeedHomeView: View {
                             }
                         }
                     } label: {
-                        Label(filter == .all ? "Filter" : filter.title, systemImage: "line.3.horizontal.decrease.circle")
-                            .symbolVariant(filter == .all ? .none : .fill)
+                        Label(filter.title, systemImage: "line.3.horizontal.decrease.circle")
+                            .symbolVariant(.fill)
                     }
                 }
             }
@@ -123,18 +111,13 @@ struct FeedHomeView: View {
                 || activity.briefDescription.localizedCaseInsensitiveContains(searchText)
 
             let matchesFilter: Bool = switch filter {
-            case .all:
+            case .openForSignup:
+                // The server only returns activities in the `need_volunteer` state
+                // when `display_all` is not set, so every row in `activities` is
+                // open for sign up; this filter is here for labeling consistency.
                 true
-            case .recruiting:
-                activity.state == .needVolunteer
-            case .pendingApproval:
-                activity.viewerRecordState == .pendingApproval
-            case .participating:
-                activity.viewerParticipating
-            case .inProgress:
-                activity.state == .going
-            case .completed:
-                activity.state == .ended
+            case .notYetApplied:
+                activity.viewerRecordState == nil
             }
 
             return matchesSearch && matchesFilter
@@ -162,7 +145,12 @@ struct FeedHomeView: View {
         }
 
         do {
-            let loaded = try await session.apiClient.fetchActivities(baseURL: serverURL, displayAll: true)
+            // Explore is the public recruiting feed. We must not pass
+            // `displayAll: true` because the backend scopes that to the viewer's
+            // own promoted activities for non-admin users, which would hide
+            // everything from students. With `displayAll: false` the backend
+            // returns every activity currently in the `need_volunteer` state.
+            let loaded = try await session.apiClient.fetchActivities(baseURL: serverURL, displayAll: false)
             activities = loaded
             if selectedActivityID == nil {
                 selectedActivityID = loaded.first?.id

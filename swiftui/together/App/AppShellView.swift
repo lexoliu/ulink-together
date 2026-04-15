@@ -31,7 +31,7 @@ struct AppShellView: View {
                 FeedHomeView()
             }
 
-            Tab("Records", systemImage: "clock.badge.checkmark.fill", value: .records) {
+            Tab("My Activities", systemImage: "clock.badge.checkmark.fill", value: .records) {
                 NavigationStack {
                     RecordsHomeView()
                 }

@@ -9,12 +9,9 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
-  Save,
   Search,
   Trash2,
-  Upload,
   Users,
-  ShieldCheck,
 } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -22,9 +19,9 @@ import { toast } from 'sonner'
 import './App.css'
 import { ActivityRecordsTable } from '@/components/activity-records-table'
 import { CommandPalette } from '@/components/command-palette'
+import { UsersPage } from '@/components/users-page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
@@ -35,9 +32,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Textarea } from '@/components/ui/textarea'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { AdminApiClient, ApiError } from '@/lib/api'
 import {
@@ -54,12 +49,9 @@ import type {
   AdminCreateUserForm,
   AuthorityName,
   ActivityTransitionAction,
-  GroupAuthoritySummary,
   ExportBatchResponse,
   RecordEntry,
   UpdateUserForm,
-  UserClassSummary,
-  UserGroup,
   UserProfile,
 } from '@/lib/types'
 import {
@@ -69,15 +61,7 @@ import {
 type PanelTab = 'overview' | 'records' | 'channel' | 'comments'
 type ActivityScope = 'all' | 'mine'
 type ActivityFilter = 'all' | 'need_volunteer' | 'going' | 'ended' | 'canceled'
-type AdminView = 'home' | 'activities' | 'chats' | 'students' | 'operations'
-
-type StudentEditorDraft = {
-  realname: string
-  gender: string
-  classname: string
-  description: string
-  avatar: string
-}
+type AdminView = 'home' | 'activities' | 'chats' | 'students'
 
 const api = new AdminApiClient()
 const ActivityFormDialog = lazy(async () =>
@@ -281,15 +265,8 @@ function App() {
     queryFn: () => api.userClasses({ group: userGroupFilter }),
     enabled: Boolean(currentUser) && authorities.view_user === true,
   })
-  const authorityGroupsQuery = useQuery({
-    queryKey: ['authority-groups', currentUser?.id],
-    queryFn: () => api.authorityGroups(),
-    enabled: Boolean(currentUser) && authorities.manage_authority_anyway === true,
-  })
-
   const students = studentsQuery.data ?? emptyStudents
   const studentClasses = studentClassesQuery.data ?? []
-  const authorityGroups = authorityGroupsQuery.data ?? []
   const resolvedSelectedStudentId =
     selectedStudentId &&
     (studentsQuery.isLoading || students.some((student) => student.id === selectedStudentId))
@@ -626,27 +603,6 @@ function App() {
     },
   })
 
-  const updateAuthorityGroupMutation = useMutation({
-    mutationFn: ({
-      code,
-      allowAllAuthorities,
-      authorities: groupAuthorities,
-    }: {
-      code: string
-      allowAllAuthorities: boolean
-      authorities: string[]
-    }) =>
-      api.updateAuthorityGroup(code, {
-        allow_all_authorities: allowAllAuthorities,
-        authorities: groupAuthorities,
-      }),
-    onSuccess: async (group) => {
-      toast.success(`Updated ${group.code} permissions.`)
-      await queryClient.invalidateQueries({ queryKey: ['authority-groups'] })
-    },
-    onError: showMutationError,
-  })
-
   const participantNames = participantNamesQuery.data ?? {}
   const chatSenderNames = {
     ...(chatMessageNamesQuery.data ?? {}),
@@ -701,14 +657,6 @@ function App() {
     })
   }
 
-  const navigateOperations = () => {
-    startTransition(() => {
-      navigate({
-        pathname: '/operations',
-      })
-    })
-  }
-
   const recentActivities = useMemo(
     () =>
       (activitiesQuery.data ?? [])
@@ -753,8 +701,6 @@ function App() {
   const canEditStudents = authorities.update_user_anyway === true
   const canDeleteStudents = authorities.delete_user === true
   const canManageComments = authorities.manage_comment_anyway === true
-  const canManageAuthorities = authorities.manage_authority_anyway === true
-  const canViewOperations = canManageAuthorities
   const canManageSelectedActivity =
     selectedDetail !== null &&
     (selectedDetail.promoter === currentUser?.id || authorities.manage_record_anyway === true)
@@ -816,15 +762,6 @@ function App() {
                   label="Users"
                   collapsed={sidebarCollapsed}
                   onClick={() => navigateStudents(selectedStudentId ?? undefined)}
-                />
-              ) : null}
-              {canViewOperations ? (
-                <SidebarItem
-                  active={currentView === 'operations'}
-                  icon={<ShieldCheck className="size-4" />}
-                  label="Operations"
-                  collapsed={sidebarCollapsed}
-                  onClick={navigateOperations}
                 />
               ) : null}
             </nav>
@@ -893,16 +830,8 @@ function App() {
                 <SidebarItem
                   active={currentView === 'students'}
                   icon={<Users className="size-4" />}
-                  label="Students"
+                  label="Users"
                   onClick={() => navigateStudents(selectedStudentId ?? undefined)}
-                />
-              ) : null}
-              {canViewOperations ? (
-                <SidebarItem
-                  active={currentView === 'operations'}
-                  icon={<ShieldCheck className="size-4" />}
-                  label="Operations"
-                  onClick={navigateOperations}
                 />
               ) : null}
             </nav>
@@ -953,8 +882,7 @@ function App() {
                 </Suspense>
               </div>
             ) : currentView === 'students' ? (
-              <StudentsPage
-                key={resolvedSelectedStudentId ?? 'no-student-selected'}
+              <UsersPage
                 search={studentSearch}
                 students={students}
                 studentsLoading={studentsQuery.isLoading}
@@ -997,20 +925,6 @@ function App() {
                 }}
                 onDeleteStudent={async (studentId) => {
                   await deleteStudentMutation.mutateAsync(studentId)
-                }}
-              />
-            ) : currentView === 'operations' ? (
-              <OperationsPage
-                groups={authorityGroups}
-                groupsLoading={authorityGroupsQuery.isLoading}
-                canManageAuthorities={canManageAuthorities}
-                updatingAuthorityGroup={updateAuthorityGroupMutation.isPending}
-                onSaveGroup={async (code, allowAllAuthorities, groupAuthorities) => {
-                  await updateAuthorityGroupMutation.mutateAsync({
-                    code,
-                    allowAllAuthorities,
-                    authorities: groupAuthorities,
-                  })
                 }}
               />
             ) : (
@@ -1076,7 +990,6 @@ function App() {
         activities={activitiesQuery.data ?? []}
         onOpenHome={navigateHome}
         onOpenStudents={canViewStudents ? () => navigateStudents(selectedStudentId ?? undefined) : undefined}
-        onOpenOperations={canViewOperations ? navigateOperations : undefined}
         onOpenActivity={(activityId) => navigateActivities(activityId)}
         onOpenChat={(activityId) => navigateChats(activityId)}
         onCreateActivity={
@@ -1569,782 +1482,6 @@ function ActivitiesPage({
   )
 }
 
-function StudentsPage({
-  search,
-  students,
-  studentsLoading,
-  classSummaries,
-  classSummariesLoading,
-  selectedStudentId,
-  selectedStudent,
-  selectedStudentPending,
-  canViewStudents,
-  canEditStudents,
-  canDeleteStudents,
-  canCreateUsers,
-  savingStudentId,
-  deletingStudentId,
-  importingStudents,
-  batchUpdatingClass,
-  batchDeletingClass,
-  creatingUser,
-  userGroupFilter,
-  onUserGroupFilterChange,
-  onCreateUser,
-  onSearchChange,
-  onSelectStudent,
-  onImportStudents,
-  onBatchUpdateClass,
-  onBatchDeleteClass,
-  onSaveStudent,
-  onDeleteStudent,
-}: {
-  search: string
-  students: UserProfile[]
-  studentsLoading: boolean
-  classSummaries: UserClassSummary[]
-  classSummariesLoading: boolean
-  selectedStudentId: string | null
-  selectedStudent: UserProfile | null
-  selectedStudentPending: boolean
-  canViewStudents: boolean
-  canEditStudents: boolean
-  canDeleteStudents: boolean
-  canCreateUsers: boolean
-  savingStudentId: string | null
-  deletingStudentId: string | null
-  importingStudents: boolean
-  batchUpdatingClass: boolean
-  batchDeletingClass: boolean
-  creatingUser: boolean
-  userGroupFilter: 'student' | 'teacher' | 'all'
-  onUserGroupFilterChange: (value: 'student' | 'teacher' | 'all') => void
-  onCreateUser: (form: AdminCreateUserForm) => Promise<void>
-  onSearchChange: (value: string) => void
-  onSelectStudent: (studentId: string) => void
-  onImportStudents: (csvText: string, defaultPassword: string) => Promise<void>
-  onBatchUpdateClass: (fromClassname: string, toClassname: string) => Promise<void>
-  onBatchDeleteClass: (classname: string) => Promise<void>
-  onSaveStudent: (studentId: string, draft: UpdateUserForm) => Promise<void>
-  onDeleteStudent: (studentId: string) => Promise<void>
-}) {
-  const [draft, setDraft] = useState<StudentEditorDraft | null>(() =>
-    selectedStudent ? studentToDraft(selectedStudent) : null,
-  )
-  const [defaultImportPassword, setDefaultImportPassword] = useState('change-me-2026')
-  const [importInputKey, setImportInputKey] = useState(0)
-  const [pendingImportFile, setPendingImportFile] = useState<File | null>(null)
-  const [bulkClassFrom, setBulkClassFrom] = useState('')
-  const [bulkClassTo, setBulkClassTo] = useState('')
-  const [bulkDeleteClassArmed, setBulkDeleteClassArmed] = useState(false)
-  const [deleteArmed, setDeleteArmed] = useState(false)
-  const [createUserOpen, setCreateUserOpen] = useState(false)
-  const [createUserForm, setCreateUserForm] = useState<AdminCreateUserForm>({
-    email: '',
-    realname: '',
-    password: '',
-    gender: 'other',
-    classname: '',
-    avatar: null,
-    group: 'student',
-  })
-
-  if (!canViewStudents) {
-    return (
-      <Card className="h-full border bg-white">
-        <CardContent className="flex min-h-[520px] items-center justify-center">
-          <p className="text-sm text-slate-600">
-            You do not have permission to view student profiles.
-          </p>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  const savingCurrentStudent =
-    selectedStudent !== null &&
-    savingStudentId !== null &&
-    savingStudentId === selectedStudent.id
-  const deletingCurrentStudent =
-    selectedStudent !== null &&
-    deletingStudentId !== null &&
-    deletingStudentId === selectedStudent.id
-  const draftChanged =
-    selectedStudent !== null &&
-    draft !== null &&
-    !studentDraftMatchesProfile(draft, selectedStudent)
-  const bulkClassSource = bulkClassFrom || classSummaries[0]?.classname || ''
-
-  return (
-    <div className="flex h-full min-h-0 flex-col gap-4">
-      <div className="shrink-0 flex items-center justify-between gap-3">
-        <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1 text-sm">
-          <button
-            type="button"
-            onClick={() => onUserGroupFilterChange('student')}
-            className={`rounded-md px-4 py-1.5 transition ${
-              userGroupFilter === 'student'
-                ? 'bg-slate-900 text-white'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Students
-          </button>
-          <button
-            type="button"
-            onClick={() => onUserGroupFilterChange('teacher')}
-            className={`rounded-md px-4 py-1.5 transition ${
-              userGroupFilter === 'teacher'
-                ? 'bg-slate-900 text-white'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Teachers
-          </button>
-          <button
-            type="button"
-            onClick={() => onUserGroupFilterChange('all')}
-            className={`rounded-md px-4 py-1.5 transition ${
-              userGroupFilter === 'all'
-                ? 'bg-slate-900 text-white'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            All
-          </button>
-        </div>
-        {canCreateUsers ? (
-          <Button
-            type="button"
-            onClick={() => {
-              setCreateUserForm({
-                email: '',
-                realname: '',
-                password: '',
-                gender: 'other',
-                classname: '',
-                avatar: null,
-                group: userGroupFilter === 'all' ? 'student' : userGroupFilter,
-              })
-              setCreateUserOpen(true)
-            }}
-          >
-            Create User
-          </Button>
-        ) : null}
-      </div>
-
-      {createUserOpen ? (
-        <Card className="shrink-0 border bg-white">
-          <CardHeader className="p-5">
-            <CardTitle className="text-lg">New User</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-3 px-5 pb-5 pt-0 md:grid-cols-2">
-            <div className="grid gap-1">
-              <label className="text-xs font-medium text-slate-500">Group</label>
-              <select
-                value={createUserForm.group}
-                onChange={(event) =>
-                  setCreateUserForm((form) => ({
-                    ...form,
-                    group: event.target.value as UserGroup,
-                  }))
-                }
-                className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm"
-              >
-                <option value="student">Student</option>
-                <option value="teacher">Teacher</option>
-                <option value="admin">Admin</option>
-              </select>
-            </div>
-            <div className="grid gap-1">
-              <label className="text-xs font-medium text-slate-500">Real Name</label>
-              <Input
-                value={createUserForm.realname}
-                onChange={(event) =>
-                  setCreateUserForm((form) => ({ ...form, realname: event.target.value }))
-                }
-              />
-            </div>
-            <div className="grid gap-1">
-              <label className="text-xs font-medium text-slate-500">Email</label>
-              <Input
-                type="email"
-                value={createUserForm.email}
-                onChange={(event) =>
-                  setCreateUserForm((form) => ({ ...form, email: event.target.value }))
-                }
-              />
-            </div>
-            <div className="grid gap-1">
-              <label className="text-xs font-medium text-slate-500">Password</label>
-              <Input
-                type="password"
-                value={createUserForm.password}
-                onChange={(event) =>
-                  setCreateUserForm((form) => ({ ...form, password: event.target.value }))
-                }
-              />
-            </div>
-            <div className="grid gap-1">
-              <label className="text-xs font-medium text-slate-500">Class</label>
-              <Input
-                value={createUserForm.classname}
-                onChange={(event) =>
-                  setCreateUserForm((form) => ({ ...form, classname: event.target.value }))
-                }
-                placeholder={createUserForm.group === 'teacher' ? 'Faculty' : '10A'}
-              />
-            </div>
-            <div className="grid gap-1">
-              <label className="text-xs font-medium text-slate-500">Gender</label>
-              <select
-                value={createUserForm.gender}
-                onChange={(event) =>
-                  setCreateUserForm((form) => ({ ...form, gender: event.target.value }))
-                }
-                className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm"
-              >
-                <option value="female">Female</option>
-                <option value="male">Male</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
-            <div className="col-span-full flex items-center justify-end gap-2 pt-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setCreateUserOpen(false)}
-                disabled={creatingUser}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                disabled={
-                  creatingUser
-                  || !createUserForm.email.trim()
-                  || !createUserForm.realname.trim()
-                  || !createUserForm.password.trim()
-                }
-                onClick={async () => {
-                  try {
-                    await onCreateUser(createUserForm)
-                    setCreateUserOpen(false)
-                  } catch {
-                    // error is already reported via toast by the caller
-                  }
-                }}
-              >
-                {creatingUser ? 'Creating…' : 'Create'}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {userGroupFilter === 'student' ? (
-      <div className="shrink-0 grid gap-4 xl:grid-cols-2">
-        <Card className="border bg-white">
-          <CardHeader className="p-5">
-            <CardTitle className="text-lg">Batch Import (CSV)</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-3 px-5 pb-5 pt-0">
-            <Input
-              key={`student-import-${importInputKey}`}
-              type="file"
-              accept=".csv,text/csv"
-              disabled={importingStudents}
-              onChange={(event) => {
-                setPendingImportFile(event.target.files?.[0] ?? null)
-              }}
-            />
-            <Input
-              type="password"
-              value={defaultImportPassword}
-              disabled={importingStudents}
-              placeholder="Default password for rows without password column"
-              onChange={(event) => setDefaultImportPassword(event.target.value)}
-            />
-            <Button
-              disabled={importingStudents}
-              onClick={async () => {
-                if (!pendingImportFile) {
-                  toast.error('Please choose a CSV file first.')
-                  return
-                }
-                const defaultPassword = defaultImportPassword.trim()
-                if (!defaultPassword) {
-                  toast.error('Default password cannot be empty.')
-                  return
-                }
-                const csvText = await pendingImportFile.text()
-                await onImportStudents(csvText, defaultPassword)
-                setPendingImportFile(null)
-                setImportInputKey((value) => value + 1)
-              }}
-            >
-              <Upload className="mr-2 size-4" />
-              {importingStudents ? 'Importing…' : 'Import students'}
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="border bg-white">
-          <CardHeader className="p-5">
-            <CardTitle className="text-lg">Batch By Class</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-3 px-5 pb-5 pt-0">
-            <Select
-              value={bulkClassSource || undefined}
-              onValueChange={(value) => {
-                setBulkClassFrom(value)
-                setBulkDeleteClassArmed(false)
-              }}
-              disabled={classSummariesLoading || classSummaries.length === 0}
-            >
-              <SelectTrigger className="rounded-lg border-slate-200/80 bg-white/90">
-                <SelectValue placeholder="Choose source class" />
-              </SelectTrigger>
-              <SelectContent>
-                {classSummaries.map((entry) => (
-                  <SelectItem key={entry.classname} value={entry.classname}>
-                    {entry.classname} ({entry.count})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Input
-              value={bulkClassTo}
-              disabled={batchUpdatingClass || classSummaries.length === 0}
-              placeholder="Target class name"
-              onChange={(event) => setBulkClassTo(event.target.value)}
-            />
-
-            <div className="grid gap-2 sm:grid-cols-2">
-              <Button
-                variant="outline"
-                disabled={batchUpdatingClass || batchDeletingClass || classSummaries.length === 0}
-                onClick={async () => {
-                  const fromClassname = bulkClassSource.trim()
-                  const toClassname = bulkClassTo.trim()
-                  if (!fromClassname || !toClassname) {
-                    toast.error('Both source and target classes are required.')
-                    return
-                  }
-                  if (fromClassname === toClassname) {
-                    toast.error('Source and target classes must be different.')
-                    return
-                  }
-                  await onBatchUpdateClass(fromClassname, toClassname)
-                  setBulkClassTo('')
-                }}
-              >
-                {batchUpdatingClass ? 'Updating…' : 'Rename class'}
-              </Button>
-
-              <Button
-                variant={bulkDeleteClassArmed ? 'destructive' : 'outline'}
-                disabled={batchUpdatingClass || batchDeletingClass || classSummaries.length === 0}
-                onClick={async () => {
-                  const classname = bulkClassSource.trim()
-                  if (!classname) {
-                    toast.error('Choose a class to delete.')
-                    return
-                  }
-                  if (!bulkDeleteClassArmed) {
-                    setBulkDeleteClassArmed(true)
-                    return
-                  }
-                  await onBatchDeleteClass(classname)
-                  setBulkDeleteClassArmed(false)
-                }}
-              >
-                {batchDeletingClass
-                  ? 'Deleting…'
-                  : bulkDeleteClassArmed
-                    ? 'Confirm delete class'
-                    : 'Delete class users'}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-      ) : null}
-
-      <div className="min-h-0 flex-1 rounded-xl border bg-white p-3">
-        <div className="grid h-full min-h-0 gap-2 xl:grid-cols-[340px_minmax(0,1fr)]">
-          <aside className="flex min-h-0 flex-col rounded-lg bg-[linear-gradient(180deg,rgba(240,245,250,0.98),rgba(234,240,246,0.84))] p-5">
-            <div className="shrink-0">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Student rail</p>
-              <h3 className="mt-2 text-lg font-semibold text-slate-950">Find and select a student.</h3>
-            </div>
-
-            <div className="mt-5 shrink-0">
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  className="rounded-lg border-slate-200/80 bg-white/90 pl-9"
-                  placeholder="Search student by name, class, or email"
-                  value={search}
-                  onChange={(event) => onSearchChange(event.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="mt-5 min-h-0 flex-1 rounded-[1.8rem] bg-white/72 p-2 ring-1 ring-white/80">
-              <ScrollArea className="h-full pr-2">
-                <div className="grid gap-4 pb-4">
-                  {studentsLoading ? (
-                    <>
-                      <Skeleton className="h-28 rounded-lg" />
-                      <Skeleton className="h-28 rounded-lg" />
-                    </>
-                  ) : students.length > 0 ? (
-                    students.map((student) => (
-                      <button
-                        key={student.id}
-                        type="button"
-                        onClick={() => onSelectStudent(student.id)}
-                        className={`rounded-lg border px-4 py-4 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-slate-300/80 focus-visible:ring-offset-2 ${
-                          student.id === selectedStudentId
-                            ? 'border-white bg-white shadow-[0_18px_40px_-26px_rgba(15,23,42,0.28)] ring-1 ring-slate-200/90'
-                            : 'border-transparent bg-transparent hover:bg-white/85'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <h3 className="truncate text-[15px] font-semibold leading-6 text-slate-950">
-                              {student.realname}
-                            </h3>
-                            <p className="mt-1 truncate text-sm text-slate-500">{student.email}</p>
-                          </div>
-                          <Badge variant="secondary">{student.classname}</Badge>
-                        </div>
-                      </button>
-                    ))
-                    ) : (
-                      <div className="rounded-lg border border-dashed border-slate-200 bg-white/80 p-6 text-sm text-slate-500">
-                      No students.
-                      </div>
-                    )}
-                </div>
-              </ScrollArea>
-            </div>
-          </aside>
-
-          <div className="min-h-0 rounded-lg bg-white px-5 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
-            {selectedStudent && draft ? (
-              <div className="flex h-full min-h-0 flex-col gap-4">
-                <Card className="shrink-0 border-slate-200/70 bg-[linear-gradient(180deg,rgba(255,255,255,1),rgba(248,251,255,0.96))] shadow-none">
-                  <CardHeader className="gap-4 p-5">
-                    <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                      <div className="space-y-3">
-                        <Badge variant="secondary">{selectedStudent.classname}</Badge>
-                        <CardTitle className="text-3xl font-semibold tracking-tight text-slate-950">
-                          {selectedStudent.realname}
-                        </CardTitle>
-                        <p className="text-sm text-slate-600">{selectedStudent.email}</p>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          size="sm"
-                          disabled={
-                            !canEditStudents ||
-                            !draftChanged ||
-                            savingCurrentStudent ||
-                            deletingCurrentStudent
-                          }
-                          onClick={async () => {
-                            if (!selectedStudent || !draft) {
-                              throw new Error('Selected student and draft are required before saving.')
-                            }
-                            const normalized = normalizeStudentDraft(draft)
-                            if (
-                              !normalized.realname ||
-                              !normalized.gender ||
-                              !normalized.classname
-                            ) {
-                              toast.error('Name, gender, and class are required.')
-                              return
-                            }
-                            await onSaveStudent(selectedStudent.id, normalized)
-                          }}
-                        >
-                          <Save className="mr-2 size-4" />
-                          {savingCurrentStudent ? 'Saving…' : 'Save changes'}
-                        </Button>
-
-                        {canDeleteStudents ? (
-                          <Button
-                            size="sm"
-                            variant={deleteArmed ? 'destructive' : 'outline'}
-                            disabled={savingCurrentStudent || deletingCurrentStudent}
-                            onClick={async () => {
-                              if (!selectedStudent) {
-                                throw new Error('Selected student is required before deletion.')
-                              }
-                              if (!deleteArmed) {
-                                setDeleteArmed(true)
-                                return
-                              }
-                              await onDeleteStudent(selectedStudent.id)
-                              setDeleteArmed(false)
-                            }}
-                          >
-                            <Trash2 className="mr-2 size-4" />
-                            {deletingCurrentStudent
-                              ? 'Deleting…'
-                              : deleteArmed
-                                ? 'Confirm delete'
-                                : 'Delete student'}
-                          </Button>
-                        ) : null}
-                      </div>
-                    </div>
-                  </CardHeader>
-                </Card>
-
-                <ScrollArea className="min-h-0 flex-1 pr-2">
-                  <div className="grid gap-4 pb-4 md:grid-cols-2">
-                    <Card className="border-slate-200/70 bg-slate-50/65 shadow-none">
-                      <CardHeader className="p-5">
-                        <CardTitle>Identity</CardTitle>
-                      </CardHeader>
-                      <CardContent className="grid gap-4 px-5 pb-5 pt-0">
-                        <LabeledField label="Real name">
-                          <Input
-                            value={draft.realname}
-                            disabled={!canEditStudents || deletingCurrentStudent}
-                            onChange={(event) =>
-                              setDraft((current) => {
-                                if (!current) {
-                                  return current
-                                }
-                                return {
-                                  ...current,
-                                  realname: event.target.value,
-                                }
-                              })
-                            }
-                          />
-                        </LabeledField>
-
-                        <LabeledField label="Gender">
-                          <Input
-                            value={draft.gender}
-                            disabled={!canEditStudents || deletingCurrentStudent}
-                            onChange={(event) =>
-                              setDraft((current) => {
-                                if (!current) {
-                                  return current
-                                }
-                                return {
-                                  ...current,
-                                  gender: event.target.value,
-                                }
-                              })
-                            }
-                          />
-                        </LabeledField>
-
-                        <LabeledField label="Class">
-                          <Input
-                            value={draft.classname}
-                            disabled={!canEditStudents || deletingCurrentStudent}
-                            onChange={(event) =>
-                              setDraft((current) => {
-                                if (!current) {
-                                  return current
-                                }
-                                return {
-                                  ...current,
-                                  classname: event.target.value,
-                                }
-                              })
-                            }
-                          />
-                        </LabeledField>
-                      </CardContent>
-                    </Card>
-
-                    <Card className="border-slate-200/70 bg-slate-50/65 shadow-none">
-                      <CardHeader className="p-5">
-                        <CardTitle>Profile</CardTitle>
-                      </CardHeader>
-                      <CardContent className="grid gap-4 px-5 pb-5 pt-0">
-                        <LabeledField label="Avatar URL">
-                          <Input
-                            value={draft.avatar}
-                            disabled={!canEditStudents || deletingCurrentStudent}
-                            placeholder="/api/v1/resource/..."
-                            onChange={(event) =>
-                              setDraft((current) => {
-                                if (!current) {
-                                  return current
-                                }
-                                return {
-                                  ...current,
-                                  avatar: event.target.value,
-                                }
-                              })
-                            }
-                          />
-                        </LabeledField>
-
-                        <LabeledField label="Description">
-                          <Textarea
-                            value={draft.description}
-                            disabled={!canEditStudents || deletingCurrentStudent}
-                            rows={8}
-                            onChange={(event) =>
-                              setDraft((current) => {
-                                if (!current) {
-                                  return current
-                                }
-                                return {
-                                  ...current,
-                                  description: event.target.value,
-                                }
-                              })
-                            }
-                          />
-                        </LabeledField>
-                      </CardContent>
-                    </Card>
-                  </div>
-                </ScrollArea>
-              </div>
-            ) : selectedStudentPending ? (
-              <Card className="h-full border-slate-200/70 bg-slate-50/65 shadow-none">
-                <CardContent className="flex h-full min-h-[480px] flex-col gap-4 p-6">
-                  <Skeleton className="h-28 rounded-3xl" />
-                  <Skeleton className="h-full rounded-3xl" />
-                </CardContent>
-              </Card>
-            ) : (
-              <Card className="h-full border-slate-200/70 bg-slate-50/65 shadow-none">
-                <CardContent className="flex h-full min-h-[480px] flex-col items-center justify-center gap-4 text-center">
-                  <div className="flex size-14 items-center justify-center rounded-lg bg-slate-950 text-white">
-                    <Users className="size-6" />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-semibold text-slate-950">Choose a student</h2>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function OperationsPage({
-  groups,
-  groupsLoading,
-  canManageAuthorities,
-  updatingAuthorityGroup,
-  onSaveGroup,
-}: {
-  groups: GroupAuthoritySummary[]
-  groupsLoading: boolean
-  canManageAuthorities: boolean
-  updatingAuthorityGroup: boolean
-  onSaveGroup: (
-    code: string,
-    allowAllAuthorities: boolean,
-    authorities: string[],
-  ) => Promise<void>
-}) {
-  const [groupCode, setGroupCode] = useState('')
-  const [allowAllAuthoritiesOverride, setAllowAllAuthoritiesOverride] = useState<boolean | null>(null)
-  const [authorityTextOverride, setAuthorityTextOverride] = useState<string | null>(null)
-
-  const effectiveGroupCode = groupCode || groups[0]?.code || ''
-  const selectedGroup = groups.find((group) => group.code === effectiveGroupCode) ?? null
-  const effectiveAllowAllAuthorities =
-    allowAllAuthoritiesOverride ?? selectedGroup?.allow_all_authorities ?? false
-  const effectiveAuthorityText = authorityTextOverride ?? selectedGroup?.authorities.join('\n') ?? ''
-
-  return (
-    <div className="mx-auto max-w-xl space-y-4 py-4">
-      <Select
-        value={effectiveGroupCode || undefined}
-        onValueChange={(value) => {
-          setGroupCode(value)
-          setAllowAllAuthoritiesOverride(null)
-          setAuthorityTextOverride(null)
-        }}
-        disabled={groupsLoading || groups.length === 0}
-      >
-        <SelectTrigger>
-          <SelectValue placeholder="Select group" />
-        </SelectTrigger>
-        <SelectContent>
-          {groups.map((g) => (
-            <SelectItem key={g.code} value={g.code}>{g.code}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-
-      <div className="flex items-center justify-between rounded-lg border px-4 py-3">
-        <span className="text-sm font-medium">Allow all authorities</span>
-        <Switch
-          checked={effectiveAllowAllAuthorities}
-          onCheckedChange={setAllowAllAuthoritiesOverride}
-          disabled={!canManageAuthorities || selectedGroup === null}
-        />
-      </div>
-
-      <Textarea
-        value={effectiveAuthorityText}
-        rows={10}
-        placeholder="One authority per line"
-        onChange={(e) => setAuthorityTextOverride(e.target.value)}
-        disabled={!canManageAuthorities || selectedGroup === null}
-      />
-
-      <Button
-        className="w-full"
-        disabled={!canManageAuthorities || selectedGroup === null || updatingAuthorityGroup}
-        onClick={async () => {
-          if (!selectedGroup) {
-            toast.error('Select a group first.')
-            return
-          }
-          const authorities = effectiveAuthorityText
-            .split('\n')
-            .map((v) => v.trim())
-            .filter(Boolean)
-          await onSaveGroup(selectedGroup.code, effectiveAllowAllAuthorities, authorities)
-          setAllowAllAuthoritiesOverride(null)
-          setAuthorityTextOverride(null)
-        }}
-      >
-        {updatingAuthorityGroup ? 'Saving…' : 'Save permissions'}
-      </Button>
-    </div>
-  )
-}
-
-function LabeledField({
-  label,
-  children,
-}: {
-  label: string
-  children: React.ReactNode
-}) {
-  return (
-    <label className="grid gap-2">
-      <span className="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">{label}</span>
-      {children}
-    </label>
-  )
-}
 function SidebarItem({
   active,
   icon,
@@ -2372,38 +1509,6 @@ function SidebarItem({
       {icon}
       {collapsed ? null : <span>{label}</span>}
     </button>
-  )
-}
-
-function studentToDraft(student: UserProfile): StudentEditorDraft {
-  return {
-    realname: student.realname,
-    gender: student.gender,
-    classname: student.classname,
-    description: student.description,
-    avatar: student.avatar ?? '',
-  }
-}
-
-function normalizeStudentDraft(draft: StudentEditorDraft): UpdateUserForm {
-  const normalizedAvatar = draft.avatar.trim()
-  return {
-    realname: draft.realname.trim(),
-    gender: draft.gender.trim(),
-    classname: draft.classname.trim(),
-    description: draft.description.trim(),
-    avatar: normalizedAvatar ? normalizedAvatar : null,
-  }
-}
-
-function studentDraftMatchesProfile(draft: StudentEditorDraft, student: UserProfile): boolean {
-  const normalized = normalizeStudentDraft(draft)
-  return (
-    normalized.realname === student.realname.trim() &&
-    normalized.gender === student.gender.trim() &&
-    normalized.classname === student.classname.trim() &&
-    normalized.description === student.description.trim() &&
-    normalized.avatar === (student.avatar?.trim() || null)
   )
 }
 
@@ -2498,9 +1603,6 @@ function viewFromPath(pathname: string): AdminView {
   }
   if (pathname.startsWith('/students')) {
     return 'students'
-  }
-  if (pathname.startsWith('/operations')) {
-    return 'operations'
   }
   return 'home'
 }

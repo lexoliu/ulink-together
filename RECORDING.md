@@ -61,7 +61,7 @@ Optional but recommended:
 
 ## 2. Seed the demo database
 
-The demo seeder produces a deterministic, realistic data set: one admin, four teachers, seventy-two students, twenty-four activities across all four lifecycle states, plus records, comments, and channel messages. This is the state every video section assumes.
+The demo seeder produces a deterministic, realistic data set: one admin, four teachers, seventy-two students, twenty-five activities across all four lifecycle states (twenty-four regular activities plus one seeded-full `Library Reshelving Day` used by Section 4's capacity demo), plus records, comments, and channel messages. This is the state every video section assumes.
 
 ### Why this matters
 
