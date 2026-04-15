@@ -10,8 +10,25 @@ xcuserdata/
 Appendix_3_Source_Code.typ
 appendix/source-code-manifest.json
 *.mp4
+*.mov
+*.m4v
 ia_guide/
 .claude-render/
 .playwright-cli/
 output/
 .playwright-mcp/*
+
+# Python venv used by the banner-burning pipeline
+.venv/
+.ruff_cache/
+__pycache__/
+*.pyc
+
+# FCPXML / SRT artifacts generated for the Criterion D video
+*.fcpxml
+*.srt
+
+# Server-side uploaded user content (avatars etc). Created at runtime by
+# server/src/resource.rs — the directory is `./resource/` relative to the
+# server's working directory (repo root when running via `cargo run`).
+resource/
