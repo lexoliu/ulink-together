@@ -1,38 +1,73 @@
 # ULink Together
 
-`ULink Together` is a volunteer management system with:
+Volunteer management system built for Ulink College of Shanghai. Students browse and join volunteer activities from school-managed iPads; teachers publish activities, confirm hours, and export records from a web panel. Written as an IB Computer Science IA project.
 
-- a Rust backend in `server/`
-- a teacher/admin web panel in `admin/`
-- a student iPad app in `swiftui/`
+## Student iPad app (SwiftUI)
 
-This README explains how to start the backend, run the web panel, and build the student app.
+![iPad feed and activity detail](design/assets/ipad-feed-landscape-final.png)
 
-## Prerequisites
+The iPad UI is landscape-only with a persistent split view. Activities list on the left, detail on the right. Students can filter by status, join activities, track their hours, and message within activity channels.
+
+Other screens:
+
+| Records | Leaderboard | Account |
+|---------|-------------|---------|
+| ![Records](design/assets/records-preview.png) | ![Leaderboard](design/assets/leaderboard-preview.png) | ![Account](design/assets/account-preview.png) |
+
+## Admin web panel (React + Tailwind)
+
+| Activities | Students | Operations |
+|------------|----------|------------|
+| ![Activities](design/assets/admin-activities-viewport.png) | ![Students](design/assets/admin-students-viewport.png) | ![Operations](design/assets/admin-operations-viewport.png) |
+
+The admin panel gives teachers a sidebar-driven workspace. They can search and filter activities, drill into participation records and export them, batch-import students from CSV, edit individual profiles, and send push notifications scoped by activity or class. Organiser permissions are managed through a group authority system rather than fixed roles.
+
+## Architecture
+
+```
+┌─────────────┐      ┌─────────────┐
+│  iPad app   │      │ Admin panel │
+│  (SwiftUI)  │      │ (React/TS)  │
+└──────┬──────┘      └──────┬──────┘
+       │    HTTP + SSE      │
+       └────────┬───────────┘
+                │
+         ┌──────┴──────┐
+         │   Backend   │
+         │ (Rust/SQLx) │
+         └──────┬──────┘
+                │
+         ┌──────┴──────┐
+         │   SQLite /  │
+         │  PostgreSQL  │
+         └─────────────┘
+```
+
+The backend is built on [Skyzen](https://github.com/aspect-build/skyzen) (a Rust HTTP framework) with SQLx for database access. Auth is cookie-based. Real-time updates go over SSE at `/api/v1/push`. Organiser permissions use an authority model rather than hard-coded roles.
+
+## Tech stack
+
+| Layer | Stack |
+|-------|-------|
+| iPad client | SwiftUI, iPadOS 17.5+, landscape-locked |
+| Admin panel | React 19, TypeScript, Tailwind CSS 4, Vite, TanStack Query |
+| Backend | Rust, Skyzen, SQLx, Tokio |
+| Database | SQLite (dev) / PostgreSQL (prod) |
+| API docs | utoipa (OpenAPI) |
+
+## Running locally
+
+### Prerequisites
 
 - Rust stable toolchain
 - Bun
 - Xcode
 
-## Repository Layout
-
-- `server/`: backend API and database bootstrap
-- `admin/`: teacher/admin web panel
-- `swiftui/`: student iPad app
-
-## 1. Start the Backend
-
-### 1.1 Initialize the database
-
-If you use SQLite, create the database file first:
+### 1. Backend
 
 ```bash
+# create the database and seed an admin account
 touch together.db
-```
-
-Create tables and seed the first admin user:
-
-```bash
 cargo run -p together-server --bin deploy -- \
   --database-url sqlite://./together.db \
   --admin-email admin@example.com \
@@ -41,207 +76,31 @@ cargo run -p together-server --bin deploy -- \
   --admin-gender unspecified \
   --admin-classname Admin \
   --non-interactive
-```
 
-### 1.2 Run the backend on a fixed port
-
-Choose the host based on where the student app will run:
-
-- iPad simulator on the same Mac: bind `127.0.0.1`
-- Physical iPad on the same LAN: bind `0.0.0.0`
-
-Simulator / local web-panel setup:
-
-```bash
+# start the server
+# use 127.0.0.1 for simulator, 0.0.0.0 for physical iPad on LAN
 cargo run -p together-server --bin together-server -- \
   --database-url sqlite://./together.db \
   --host 127.0.0.1 \
   --port 8000
 ```
 
-Physical iPad setup:
-
-```bash
-cargo run -p together-server --bin together-server -- \
-  --database-url sqlite://./together.db \
-  --host 0.0.0.0 \
-  --port 8000
-```
-
-After startup, the backend listens on port `8000`.
-
-For local browser access on the same Mac, use:
-
-```text
-http://127.0.0.1:8000
-```
-
-If port `8000` is already occupied, either stop the conflicting process or pick another free port such as `8001`. If you change the backend port, update both:
-
-- `VITE_BACKEND_ORIGIN` for the admin web panel
-- the server URL entered in the student app login screen
-
-## 2. Start the Teacher/Admin Web Panel
-
-Install dependencies:
+### 2. Admin panel
 
 ```bash
 cd admin
 bun install
-```
-
-Run the dev server and point it at the backend:
-
-```bash
 VITE_BACKEND_ORIGIN=http://127.0.0.1:8000 bun run dev --host 127.0.0.1 --port 4173
 ```
 
-Then open:
+Opens at `http://127.0.0.1:4173`.
 
-```text
-http://127.0.0.1:4173
-```
+### 3. iPad app
 
-Use the admin account you created in the backend bootstrap step.
+Open `swiftui/together.xcodeproj` in Xcode, pick an iPad target, and run. On the login screen, enter the backend URL (`http://127.0.0.1:8000` for simulator, `http://<your-mac-ip>:8000` for a physical device).
 
-### Production build
-
-```bash
-cd admin
-bun run build
-```
-
-## 3. Build the Student iPad App
-
-The student app lives in:
-
-```text
-swiftui/together.xcodeproj
-```
-
-### Option A: Build in Xcode
-
-Open the project:
-
-```bash
-open swiftui/together.xcodeproj
-```
-
-Then:
-
-1. Select scheme `together`
-2. Choose an iPad simulator or a physical iPad
-3. Build or run from Xcode
-
-### Option B: Build from the command line
-
-Simulator build:
-
-```bash
-xcodebuild \
-  -project swiftui/together.xcodeproj \
-  -scheme together \
-  -destination 'generic/platform=iOS Simulator' \
-  build
-```
-
-Device build:
-
-```bash
-xcodebuild \
-  -project swiftui/together.xcodeproj \
-  -scheme together \
-  -destination 'generic/platform=iOS' \
-  build
-```
-
-Note:
-
-- Simulator builds should work without Apple code-signing setup.
-- Physical device builds require a valid Xcode signing configuration on the local machine.
-
-## 4. Configure the Student App to Use the Backend
-
-The SwiftUI app no longer hardcodes the backend address.
-
-After launching the app:
-
-1. Open the login screen
-2. Enter the server URL that matches your environment:
-
-Simulator on the same Mac:
-
-```text
-http://127.0.0.1:8000
-```
-
-Physical iPad on the same LAN:
-
-```text
-http://<your-mac-lan-ip>:8000
-```
-
-Example:
-
-```text
-http://192.168.1.23:8000
-```
-
-3. Sign in with a valid account
-
-You can also change the server URL later from the `Account` screen and tap `Reconnect`.
-
-## 5. Recommended Local Startup Order
-
-1. Initialize the database
-2. Start the backend on port `8000`
-3. Start the admin web panel on port `4173`
-4. Build and run the SwiftUI app
-5. Enter the backend server URL inside the student app
-
-## 6. Build the Source Code Appendix
-
-Generate the IB source-code appendix Typst source and PDF from the current repository state:
-
-```bash
-./scripts/build-source-appendix.sh
-```
-
-This regenerates:
-- `doc/Appendix_3_Source_Code.typ`
-- `appendix/source-code-manifest.json`
-- `doc/Appendix_3_Source_Code.pdf`
-
-If you only want to regenerate the source appendix inputs without compiling the PDF, run:
-
-```bash
-python3 scripts/generate-source-appendix.py \
-  --root . \
-  --manifest-output appendix/source-code-manifest.json \
-  --typst-output doc/Appendix_3_Source_Code.typ
-```
-
-## 7. Verification Commands
-
-Backend tests:
+### Tests
 
 ```bash
 cargo test -p together-server
-```
-
-Admin web build:
-
-```bash
-cd admin
-bun run build
-```
-
-SwiftUI simulator build:
-
-```bash
-xcodebuild \
-  -project swiftui/together.xcodeproj \
-  -scheme together \
-  -destination 'generic/platform=iOS Simulator' \
-  build
 ```
