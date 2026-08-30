@@ -32,3 +32,6 @@ __pycache__/
 # server/src/resource.rs — the directory is `./resource/` relative to the
 # server's working directory (repo root when running via `cargo run`).
 resource/
+
+# Whitelist design assets
+!design/assets/*.png
