@@ -1,13 +1,57 @@
 export type AuthorityName =
-  | 'create_activity'
-  | 'create_channel'
-  | 'manage_record_anyway'
   | 'view_user'
+  | 'update_user_anyway'
+  | 'delete_user'
+  | 'create_activity'
+  | 'manage_activity_anyway'
+  | 'delete_activity_anyway'
+  | 'view_all_activities'
+  | 'manage_record_anyway'
+  | 'view_record_anyway'
+  | 'manage_comment_anyway'
+  | 'create_channel'
+  | 'view_channel_anyway'
+  | 'delete_channel_anyway'
+  | 'send_message_anyway'
+  | 'delete_message_anyway'
   | 'generate_export'
 
-export type ActivityState = 'need_volunteer' | 'going' | 'ended' | 'canceled'
+export type UserGroup = 'admin' | 'teacher' | 'student'
 
-export type RecordState = 'todo' | 'done' | 'canceled'
+export interface AdminCreateUserForm {
+  email: string
+  realname: string
+  password: string
+  gender: string
+  classname: string
+  avatar?: string | null
+  group: UserGroup
+}
+
+export type NotificationTypeName =
+  | 'new_channel_message'
+  | 'teacher_channel_post'
+  | 'activity_state_change'
+  | 'record_state_change'
+
+export interface NotificationResponse {
+  id: string
+  user_id: string
+  notification_type: NotificationTypeName
+  payload: Record<string, unknown>
+  read_at: string | null
+  created_at: string
+}
+
+export interface NotificationPreference {
+  notification_type: NotificationTypeName
+  enabled: boolean
+}
+
+export type ActivityState = 'need_volunteer' | 'going' | 'ended' | 'canceled'
+export type ActivityTransitionAction = 'need_volunteer' | 'go' | 'end' | 'cancel'
+
+export type RecordState = 'pending_approval' | 'approved' | 'confirmed' | 'canceled'
 
 export interface UserProfile {
   id: string
@@ -32,7 +76,7 @@ export interface ActivitySummary {
   brief_description: string
   duration: number
   state: ActivityState
-  viewer_joined: boolean
+  viewer_participating: boolean
   viewer_record_state: RecordState | null
 }
 
@@ -49,7 +93,7 @@ export interface ActivityDetail {
   volunteers: string[]
   duration: number
   state: ActivityState
-  viewer_joined: boolean
+  viewer_participating: boolean
   viewer_record_state: RecordState | null
 }
 
@@ -80,6 +124,14 @@ export interface ChannelMessage {
   sender: string
   content: string
   datetime: string
+}
+
+export interface ActivityComment {
+  id: string
+  author: string
+  author_name: string
+  content: string
+  date: string
 }
 
 export interface ChannelCreatedResponse {
@@ -137,6 +189,34 @@ export interface ActivityDraft {
   briefDescription: string
   description: string
   duration: number
+}
+
+export interface UpdateUserForm {
+  realname?: string
+  gender?: string
+  description?: string
+  classname?: string
+  avatar?: string | null
+}
+
+export interface UserBatchResult {
+  affected: number
+}
+
+export interface UserClassSummary {
+  classname: string
+  count: number
+}
+
+const activityTransitionsByState = {
+  need_volunteer: ['go', 'cancel'],
+  going: ['end', 'cancel'],
+  ended: [],
+  canceled: [],
+} as const satisfies Record<ActivityState, readonly ActivityTransitionAction[]>
+
+export function activityTransitionActions(state: ActivityState): readonly ActivityTransitionAction[] {
+  return activityTransitionsByState[state]
 }
 
 export function activityChannelIsReadOnly(state: ActivityState): boolean {

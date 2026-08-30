@@ -1,0 +1,23 @@
+sequenceDiagram
+    actor Volunteer
+    participant App as SwiftUI iPad App
+    participant Server as Rust Server
+    participant DB as Database
+
+    Volunteer->>App: Tap Join
+    App->>Server: POST /api/v1/activity/{id}/apply
+    Server->>DB: Begin transaction
+    Server->>DB: Read activity state and capacity
+    DB-->>Server: Current values
+    Server->>DB: Check existing record
+    alt recruitable and available and not duplicate
+        Server->>DB: Insert participation record
+        Server->>DB: Update volunteer count
+        Server->>DB: Commit
+        Server-->>App: 200 OK
+        App-->>Volunteer: Show applied state
+    else any rule fails
+        Server->>DB: Roll back
+        Server-->>App: 4xx error
+        App-->>Volunteer: Show validation message
+    end

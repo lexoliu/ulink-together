@@ -6,7 +6,7 @@ import tailwindcss from '@tailwindcss/vite'
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  const backendOrigin = env.VITE_BACKEND_ORIGIN || 'http://127.0.0.1:8000'
+  const backendOrigin = env.BACKEND_TARGET || env.VITE_BACKEND_ORIGIN
 
   return {
     plugins: [react(), tailwindcss()],
@@ -18,8 +18,13 @@ export default defineConfig(({ mode }) => {
     server: {
       proxy: {
         '/api': {
-          target: backendOrigin,
+          target: backendOrigin ?? 'http://backend-not-configured.invalid',
           changeOrigin: true,
+          configure: () => {
+            if (!backendOrigin) {
+              throw new Error('Set BACKEND_TARGET or VITE_BACKEND_ORIGIN to the backend server URL.')
+            }
+          },
         },
       },
     },

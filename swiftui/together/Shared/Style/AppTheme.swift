@@ -3,23 +3,15 @@ import SwiftUI
 
 enum AppTheme {
     static let contentWidth: CGFloat = 960
-    static let cardRadius: CGFloat = 30
-    static let compactCardRadius: CGFloat = 22
+    static let cardRadius: CGFloat = 16
+    static let compactCardRadius: CGFloat = 12
 
     static var pageBackground: some ShapeStyle {
-        LinearGradient(
-            colors: [
-                Color(red: 0.97, green: 0.96, blue: 0.94),
-                Color(red: 0.95, green: 0.95, blue: 0.93),
-                Color(red: 0.97, green: 0.96, blue: 0.94),
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+        Color(uiColor: .systemGroupedBackground)
     }
 
     static var accentTint: Color {
-        Color(red: 0.16, green: 0.28, blue: 0.44)
+        Color(red: 0.20, green: 0.36, blue: 0.56)
     }
 
     static var neutralTint: Color {
@@ -29,24 +21,26 @@ enum AppTheme {
     static func stateTint(for state: ActivityState) -> Color {
         switch state {
         case .needVolunteer:
-            Color(red: 0.37, green: 0.47, blue: 0.33)
+            Color(red: 0.30, green: 0.55, blue: 0.35)
         case .going:
             accentTint
         case .ended:
             neutralTint
         case .canceled:
-            Color(red: 0.63, green: 0.30, blue: 0.27)
+            Color(red: 0.70, green: 0.30, blue: 0.28)
         }
     }
 
     static func stateTint(for state: RecordState) -> Color {
         switch state {
-        case .todo:
-            Color(red: 0.64, green: 0.46, blue: 0.23)
-        case .done:
-            Color(red: 0.37, green: 0.47, blue: 0.33)
+        case .pendingApproval:
+            Color(red: 0.72, green: 0.52, blue: 0.22)
+        case .approved:
+            Color(red: 0.30, green: 0.55, blue: 0.35)
+        case .confirmed:
+            accentTint
         case .canceled:
-            Color(red: 0.63, green: 0.30, blue: 0.27)
+            Color(red: 0.70, green: 0.30, blue: 0.28)
         }
     }
 }

@@ -2,7 +2,9 @@
 
 use models::CreateActivityForm;
 use waterui::component::TextField;
-use waterui::graphics::{AnimatedMeshGradient, AnimatedMeshGradientConfig, Gradient, ResolvedColor};
+use waterui::graphics::{
+    AnimatedMeshGradient, AnimatedMeshGradientConfig, Gradient, ResolvedColor,
+};
 use waterui::layout::padding::EdgeInsets;
 use waterui::navigation::NavigationView;
 use waterui::prelude::*;
@@ -15,7 +17,13 @@ use crate::state::AppState;
 
 /// Helper to create resolved colors for gradients
 fn rc(r: f32, g: f32, b: f32) -> ResolvedColor {
-    ResolvedColor { red: r, green: g, blue: b, opacity: 1.0, headroom: 0.0 }
+    ResolvedColor {
+        red: r,
+        green: g,
+        blue: b,
+        opacity: 1.0,
+        headroom: 0.0,
+    }
 }
 
 /// Create activity view
@@ -102,18 +110,25 @@ pub fn view(state: &AppState) -> NavigationView {
         let white = white.clone();
         let accent = accent.clone();
         move |submitting| {
-            let label_text = if submitting { "Creating..." } else { "Create Activity" };
+            let label_text = if submitting {
+                "Creating..."
+            } else {
+                "Create Activity"
+            };
 
             if submitting {
                 AnyView::new(
                     hstack((
                         spacer(),
-                        text(Str::from(label_text)).font(font::Body).bold().foreground(white.clone().with_opacity(0.5)),
+                        text(Str::from(label_text))
+                            .font(font::Body)
+                            .bold()
+                            .foreground(white.clone().with_opacity(0.5)),
                         spacer(),
                     ))
                     .padding_with(EdgeInsets::symmetric(24.0, 16.0))
                     .background(accent.clone().with_opacity(0.3))
-                    .clip(RoundedRectangle::new(14.0))
+                    .clip(RoundedRectangle::new(14.0)),
                 )
             } else {
                 let state = state.clone();
@@ -130,7 +145,7 @@ pub fn view(state: &AppState) -> NavigationView {
                 let accent = accent.clone();
                 let button_gradient = Gradient::linear(
                     vec![
-                        (0.0, rc(0.3, 0.7, 0.5)),  // green accent
+                        (0.0, rc(0.3, 0.7, 0.5)), // green accent
                         (1.0, rc(0.4, 0.6, 0.7)),
                     ],
                     [0.0, 0.5],
@@ -141,7 +156,10 @@ pub fn view(state: &AppState) -> NavigationView {
                         button_gradient.clip(RoundedRectangle::new(14.0)),
                         hstack((
                             spacer(),
-                            text(Str::from(label_text)).font(font::Body).bold().foreground(white.clone()),
+                            text(Str::from(label_text))
+                                .font(font::Body)
+                                .bold()
+                                .foreground(white.clone()),
                             spacer(),
                         ))
                         .padding_with(EdgeInsets::symmetric(24.0, 16.0)),
@@ -164,7 +182,7 @@ pub fn view(state: &AppState) -> NavigationView {
                             is_submitting.clone(),
                             error_message.clone(),
                         );
-                    })
+                    }),
                 )
             }
         }
@@ -202,12 +220,8 @@ pub fn view(state: &AppState) -> NavigationView {
         text!("Create Activity"),
         zstack((
             background,
-            scroll(vstack((
-                spacer_min(24.0),
-                card_content,
-                spacer_min(60.0),
-            )))
-            .padding_with(EdgeInsets::symmetric(24.0, 0.0)),
+            scroll(vstack((spacer_min(24.0), card_content, spacer_min(60.0))))
+                .padding_with(EdgeInsets::symmetric(24.0, 0.0)),
         )),
     )
 }
@@ -259,7 +273,11 @@ fn submit_activity(
         // Parse date (optional)
         let date_val = {
             let val = date.get();
-            if val.is_empty() { None } else { Some(val.to_string()) }
+            if val.is_empty() {
+                None
+            } else {
+                Some(val.to_string())
+            }
         };
 
         let form = CreateActivityForm {

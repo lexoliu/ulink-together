@@ -1,8 +1,8 @@
 import { useEffect } from 'react'
 import { Command as CommandPrimitive } from 'cmdk'
-import { Download, FolderKanban, House, MessageSquareMore, Plus } from 'lucide-react'
+import { Download, FolderKanban, House, MessageSquareMore, Plus, Users } from 'lucide-react'
 
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { activityStateLabel, formatDateOnly } from '@/lib/format'
 import type { ActivitySummary } from '@/lib/types'
 
@@ -11,6 +11,7 @@ interface CommandPaletteProps {
   onOpenChange: (open: boolean) => void
   activities: ActivitySummary[]
   onOpenHome: () => void
+  onOpenStudents?: () => void
   onOpenActivity: (activityId: string) => void
   onOpenChat: (activityId: string) => void
   onCreateActivity?: () => void
@@ -22,6 +23,7 @@ export function CommandPalette({
   onOpenChange,
   activities,
   onOpenHome,
+  onOpenStudents,
   onOpenActivity,
   onOpenChat,
   onCreateActivity,
@@ -45,12 +47,9 @@ export function CommandPalette({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl overflow-hidden rounded-[2rem] border-white/70 bg-white/95 p-0 shadow-2xl shadow-slate-300/35 backdrop-blur-xl sm:max-w-2xl" showCloseButton={false}>
+        <DialogContent className="max-w-2xl overflow-hidden rounded-[2rem] border-white/70 bg-white/95 p-0 shadow-2xl shadow-slate-300/35 backdrop-blur-xl sm:max-w-2xl" showCloseButton={false}>
         <DialogHeader className="border-b border-slate-200/70 px-5 pt-5 pb-4">
           <DialogTitle className="text-lg font-semibold text-slate-950">Quick switch</DialogTitle>
-          <DialogDescription>
-            Jump between workspaces, open an activity, or trigger common actions without leaving the keyboard.
-          </DialogDescription>
         </DialogHeader>
 
         <CommandPrimitive
@@ -80,6 +79,16 @@ export function CommandPalette({
                   onOpenHome()
                 }}
               />
+              {onOpenStudents ? (
+                <CommandItem
+                  icon={<Users className="size-4" />}
+                  title="Users"
+                  onSelect={() => {
+                    onOpenChange(false)
+                    onOpenStudents()
+                  }}
+                />
+              ) : null}
             </CommandGroup>
 
             {onCreateActivity || onGenerateExport ? (

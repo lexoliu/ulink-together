@@ -1,10 +1,11 @@
 use crate::{
     auth::AuthSession,
     database::AppDatabase,
-    utils::{sha256, ApiMessage, Id},
+    utils::{hash_password, verify_password, ApiMessage, Id},
 };
 
-use serde::Deserialize;
+use rand::{distributions::Uniform, prelude::Distribution};
+use serde::{Deserialize, Serialize};
 use skyzen::utils::cookie::{Cookie, CookieJar};
 use skyzen::utils::Json;
 use skyzen::{extract::ClientIp, utils::State};
@@ -28,19 +29,21 @@ pub async fn handler(
 ) -> Result<(ApiMessage, CookieJar), LoginError> {
     let Json(form) = form;
 
-    let users =
-        sqlx::query(database.sql("SELECT id, password_hash, salt FROM users WHERE email = ?1").as_ref())
-        .bind(form.email.as_ref())
-        .fetch_optional(database.sqlx())
-        .await
-        .expect("Database error");
+    let users = sqlx::query(
+        database
+            .sql("SELECT id, password_hash FROM users WHERE email = ?1")
+            .as_ref(),
+    )
+    .bind(form.email.as_ref())
+    .fetch_optional(database.sqlx())
+    .await
+    .expect("Database error");
 
     let row = users.ok_or(LoginError::NotFound)?;
     let user_id: String = row.get("id");
     let password_hash: String = row.get("password_hash");
-    let salt: String = row.get("salt");
 
-    if sha256(form.password + &salt) == password_hash {
+    if verify_password(&form.password, &password_hash).expect("bcrypt verify password") {
         let session = generate_session(&database, &user_id, ip.0).await;
         cookies.add(
             Cookie::build(("uid", user_id.clone()))
@@ -96,6 +99,247 @@ pub async fn logout(
     Ok((ApiMessage::new("Logout successfully"), cookies))
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ChangePasswordForm {
+    current_password: String,
+    new_password: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ResetPasswordRequestForm {
+    email: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ResetPasswordRequestResult {
+    pub code: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ResetPasswordConfirmForm {
+    email: String,
+    code: String,
+    new_password: String,
+}
+
+#[skyzen::error]
+pub enum ChangePasswordError {
+    #[error("Session expired", status = FORBIDDEN)]
+    SessionExpired,
+
+    #[error("Current password is incorrect", status = FORBIDDEN)]
+    WrongCurrentPassword,
+
+    #[error("New password must be at least 6 characters", status = BAD_REQUEST)]
+    InvalidNewPassword,
+
+    #[error("User not exists", status = NOT_FOUND)]
+    UserNotFound,
+}
+
+#[skyzen::openapi]
+pub async fn change_password(
+    database: State<AppDatabase>,
+    session: AuthSession,
+    form: Json<ChangePasswordForm>,
+) -> Result<ApiMessage, ChangePasswordError> {
+    let auth = session
+        .into_auth()
+        .await
+        .map_err(|_| ChangePasswordError::SessionExpired)?;
+    let Json(form) = form;
+    if form.new_password.chars().count() < 6 {
+        return Err(ChangePasswordError::InvalidNewPassword);
+    }
+
+    let row = sqlx::query(
+        database
+            .sql("SELECT password_hash FROM users WHERE id = ?1")
+            .as_ref(),
+    )
+    .bind(auth.uid().to_string())
+    .fetch_optional(database.sqlx())
+    .await
+    .expect("Database error")
+    .ok_or(ChangePasswordError::UserNotFound)?;
+
+    let password_hash: String = row.try_get("password_hash").expect("Database error");
+    if !verify_password(&form.current_password, &password_hash).expect("bcrypt verify password") {
+        return Err(ChangePasswordError::WrongCurrentPassword);
+    }
+
+    let next_hash = hash_password(&form.new_password).expect("bcrypt hash password");
+    sqlx::query(
+        database
+            .sql("UPDATE users SET password_hash = ?1 WHERE id = ?2")
+            .as_ref(),
+    )
+    .bind(next_hash)
+    .bind(auth.uid().to_string())
+    .execute(database.sqlx())
+    .await
+    .expect("Database error");
+
+    Ok(ApiMessage::new("Password changed successfully"))
+}
+
+#[skyzen::error]
+pub enum RequestResetPasswordError {
+    #[error("Email is required", status = BAD_REQUEST)]
+    EmptyEmail,
+
+    #[error("User not exists", status = NOT_FOUND)]
+    UserNotFound,
+}
+
+#[skyzen::openapi]
+pub async fn request_password_reset(
+    database: State<AppDatabase>,
+    form: Json<ResetPasswordRequestForm>,
+) -> Result<Json<ResetPasswordRequestResult>, RequestResetPasswordError> {
+    let Json(form) = form;
+    let email = form.email.trim();
+    if email.is_empty() {
+        return Err(RequestResetPasswordError::EmptyEmail);
+    }
+
+    let user_exists = sqlx::query(
+        database
+            .sql("SELECT 1 FROM users WHERE email = ?1 LIMIT 1")
+            .as_ref(),
+    )
+    .bind(email)
+    .fetch_optional(database.sqlx())
+    .await
+    .expect("Database error")
+    .is_some();
+    if !user_exists {
+        return Err(RequestResetPasswordError::UserNotFound);
+    }
+
+    let code = rand_numeric_code(6);
+    let now = OffsetDateTime::now_utc().to_string();
+    sqlx::query(
+        database
+            .sql("DELETE FROM check_mails WHERE email = ?1")
+            .as_ref(),
+    )
+    .bind(email)
+    .execute(database.sqlx())
+    .await
+    .expect("Database error");
+    sqlx::query(
+        database
+            .sql("INSERT INTO check_mails (id, email, code, created_at) VALUES (?1, ?2, ?3, ?4)")
+            .as_ref(),
+    )
+    .bind(Id::new().to_string())
+    .bind(email)
+    .bind(&code)
+    .bind(now)
+    .execute(database.sqlx())
+    .await
+    .expect("Database error");
+
+    Ok(Json(ResetPasswordRequestResult { code }))
+}
+
+#[skyzen::error]
+pub enum ConfirmResetPasswordError {
+    #[error("Email is required", status = BAD_REQUEST)]
+    EmptyEmail,
+
+    #[error("Code is required", status = BAD_REQUEST)]
+    EmptyCode,
+
+    #[error("New password must be at least 6 characters", status = BAD_REQUEST)]
+    InvalidNewPassword,
+
+    #[error("Invalid reset code", status = FORBIDDEN)]
+    InvalidCode,
+
+    #[error("User not exists", status = NOT_FOUND)]
+    UserNotFound,
+}
+
+#[skyzen::openapi]
+pub async fn confirm_password_reset(
+    database: State<AppDatabase>,
+    form: Json<ResetPasswordConfirmForm>,
+) -> Result<ApiMessage, ConfirmResetPasswordError> {
+    let Json(form) = form;
+    let email = form.email.trim();
+    let code = form.code.trim();
+    if email.is_empty() {
+        return Err(ConfirmResetPasswordError::EmptyEmail);
+    }
+    if code.is_empty() {
+        return Err(ConfirmResetPasswordError::EmptyCode);
+    }
+    if form.new_password.chars().count() < 6 {
+        return Err(ConfirmResetPasswordError::InvalidNewPassword);
+    }
+
+    let valid_code = sqlx::query(
+        database
+            .sql("SELECT 1 FROM check_mails WHERE email = ?1 AND code = ?2 ORDER BY created_at DESC LIMIT 1")
+            .as_ref(),
+    )
+    .bind(email)
+    .bind(code)
+    .fetch_optional(database.sqlx())
+    .await
+    .expect("Database error")
+    .is_some();
+    if !valid_code {
+        return Err(ConfirmResetPasswordError::InvalidCode);
+    }
+
+    let user_row = sqlx::query(
+        database
+            .sql("SELECT id FROM users WHERE email = ?1 LIMIT 1")
+            .as_ref(),
+    )
+    .bind(email)
+    .fetch_optional(database.sqlx())
+    .await
+    .expect("Database error")
+    .ok_or(ConfirmResetPasswordError::UserNotFound)?;
+    let user_id: String = user_row.try_get("id").expect("Database error");
+
+    let next_hash = hash_password(&form.new_password).expect("bcrypt hash password");
+    sqlx::query(
+        database
+            .sql("UPDATE users SET password_hash = ?1 WHERE id = ?2")
+            .as_ref(),
+    )
+    .bind(next_hash)
+    .bind(&user_id)
+    .execute(database.sqlx())
+    .await
+    .expect("Database error");
+    sqlx::query(
+        database
+            .sql("DELETE FROM check_mails WHERE email = ?1")
+            .as_ref(),
+    )
+    .bind(email)
+    .execute(database.sqlx())
+    .await
+    .expect("Database error");
+    sqlx::query(
+        database
+            .sql("DELETE FROM sessions WHERE user_id = ?1")
+            .as_ref(),
+    )
+    .bind(user_id)
+    .execute(database.sqlx())
+    .await
+    .expect("Database error");
+
+    Ok(ApiMessage::new("Password reset successfully"))
+}
+
 async fn generate_session(database: &AppDatabase, uid_hex: &str, ip: IpAddr) -> String {
     let session_id = Id::new().to_string();
 
@@ -104,15 +348,42 @@ async fn generate_session(database: &AppDatabase, uid_hex: &str, ip: IpAddr) -> 
             .sql("INSERT INTO sessions (id, user_id, generated_at, ip) VALUES (?1, ?2, ?3, ?4)")
             .as_ref(),
     )
-        .bind(&session_id)
-        .bind(uid_hex)
-        .bind(OffsetDateTime::now_utc().to_string())
-        .bind(ip.to_string())
-        .execute(database.sqlx())
-        .await
-        .expect("Database error");
+    .bind(&session_id)
+    .bind(uid_hex)
+    .bind(OffsetDateTime::now_utc().to_string())
+    .bind(ip.to_string())
+    .execute(database.sqlx())
+    .await
+    .expect("Database error");
 
     session_id
+}
+
+fn rand_string(length: usize) -> String {
+    let mut rng = rand::thread_rng();
+    let distribution = Uniform::new_inclusive(0_u8, 61_u8);
+    let mut result = String::with_capacity(length);
+    for _ in 0..length {
+        let value = distribution.sample(&mut rng);
+        let ch = match value {
+            0..=9 => (b'0' + value) as char,
+            10..=35 => (b'a' + (value - 10)) as char,
+            _ => (b'A' + (value - 36)) as char,
+        };
+        result.push(ch);
+    }
+    result
+}
+
+fn rand_numeric_code(length: usize) -> String {
+    let mut rng = rand::thread_rng();
+    let distribution = Uniform::new_inclusive(0_u8, 9_u8);
+    let mut result = String::with_capacity(length);
+    for _ in 0..length {
+        let value = distribution.sample(&mut rng);
+        result.push((b'0' + value) as char);
+    }
+    result
 }
 
 #[skyzen::error]
@@ -136,8 +407,7 @@ mod tests {
     async fn setup_db_with_user(email: &str, password: &str) -> (AppDatabase, String) {
         let database = build_test_database().await;
         let user_id = Id::new().to_string();
-        let salt = "salty";
-        let password_hash = sha256(password.to_string() + salt);
+        let password_hash = hash_password(password).expect("bcrypt hash password");
         let group_id = Id::new().to_string();
 
         sqlx::query(
@@ -152,9 +422,8 @@ mod tests {
                 description,
                 classname,
                 password_hash,
-                salt,
                 group_id
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
             "#,
                 )
                 .as_ref(),
@@ -166,7 +435,6 @@ mod tests {
         .bind("")
         .bind("Class A")
         .bind(password_hash)
-        .bind(salt)
         .bind(group_id)
         .execute(database.sqlx())
         .await
@@ -185,8 +453,9 @@ mod tests {
         let cookies = CookieJar::from_str("").expect("cookie jar");
         let ip = ClientIp(IpAddr::from([127, 0, 0, 1]));
 
-        let (_message, jar) =
-            handler(State(database.clone()), ip, cookies, Json(form)).await.unwrap();
+        let (_message, jar) = handler(State(database.clone()), ip, cookies, Json(form))
+            .await
+            .unwrap();
         assert_eq!(jar.get("uid").unwrap().value(), user_id);
         assert!(jar.get("session").is_some());
 

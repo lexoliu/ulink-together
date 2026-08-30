@@ -70,6 +70,47 @@ Supported flags:
 If you pass a `d1://` URL, the deploy CLI will translate it to a SQLite URL
 and initialize the schema using SQLite-compatible SQL.
 
+## Demo bootstrap
+
+Use the demo seed CLI to create a clean showcase database with teachers,
+students, activities, comments, channel traffic, completed hours, and exportable
+records.
+
+One-command flow from the repository root:
+
+```bash
+./scripts/init-demo.sh
+```
+
+Direct CLI usage:
+
+```bash
+cargo run -p together-server --bin demo_seed -- --reset
+```
+
+Default demo database:
+
+```
+sqlite://./together-demo.db
+```
+
+Default sample credentials:
+
+- admin: `rachel.ho@ulink.cn` / `DemoAdmin123!`
+- teacher: `jamie.wu@ulink.cn` / `DemoTeacher123!`
+- student: `alex.chen@ulink.cn` / `DemoStudent123!`
+
+The shell script accepts environment overrides such as:
+
+- `DEMO_DATABASE_URL`
+- `DEMO_TEACHER_COUNT`
+- `DEMO_STUDENT_COUNT`
+- `DEMO_ACTIVITIES_PER_TEACHER`
+- `DEMO_ADMIN_PASSWORD`
+- `DEMO_TEACHER_PASSWORD`
+- `DEMO_STUDENT_PASSWORD`
+- `DEMO_SEED`
+
 ## Push (SSE)
 
 Clients can subscribe to server-sent events at:

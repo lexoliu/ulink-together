@@ -1,11 +1,8 @@
 import SwiftUI
 
 private enum FeedFilter: String, CaseIterable, Identifiable {
-    case all
-    case recruiting
-    case joined
-    case inProgress
-    case completed
+    case openForSignup
+    case notYetApplied
 
     var id: String {
         rawValue
@@ -13,16 +10,10 @@ private enum FeedFilter: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .all:
-            "All"
-        case .recruiting:
-            "Recruiting"
-        case .joined:
-            "Joined"
-        case .inProgress:
-            "In Progress"
-        case .completed:
-            "Completed"
+        case .openForSignup:
+            "Open for sign up"
+        case .notYetApplied:
+            "New to me"
         }
     }
 }
@@ -33,76 +24,67 @@ struct FeedHomeView: View {
     @State private var activities: [ActivitySummary] = []
     @State private var selectedActivityID: String?
     @State private var searchText = ""
-    @State private var filter: FeedFilter = .recruiting
+    @State private var filter: FeedFilter = .openForSignup
     @State private var isLoading = true
     @State private var errorMessage: String?
 
     var body: some View {
         NavigationSplitView {
-            Group {
+            List(selection: $selectedActivityID) {
                 if isLoading {
-                    List {
-                        LoadingCard(title: "Loading activities")
-                            .listRowSeparator(.hidden)
-                            .listRowBackground(Color.clear)
-                    }
-                    .listStyle(.plain)
-                } else if filteredActivities.isEmpty {
-                    List {
-                        EmptyStateCard(
-                            title: "No activities here yet",
-                            message: "Try a different filter, refresh the feed, or wait for organisers to publish the next opportunity.",
-                            systemImage: "calendar.badge.exclamationmark"
-                        )
+                    ProgressView()
+                        .frame(maxWidth: .infinity, alignment: .center)
                         .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                    }
-                    .listStyle(.plain)
+                } else if filteredActivities.isEmpty {
+                    ContentUnavailableView(
+                        "No Activities",
+                        systemImage: "calendar.badge.exclamationmark",
+                        description: Text("Nothing matches the current filter.")
+                    )
+                    .listRowSeparator(.hidden)
                 } else {
-                    List(selection: $selectedActivityID) {
-                        Section {
-                            ForEach(filteredActivities) { activity in
-                                NavigationLink(value: activity.id) {
-                                    ActivityCard(activity: activity, action: nil)
-                                }
-                                .listRowSeparator(.hidden)
-                                .listRowBackground(Color.clear)
-                            }
-                        }
+                    ForEach(filteredActivities) { activity in
+                        ActivityListRow(activity: activity)
+                            .tag(activity.id)
                     }
-                    .listStyle(.plain)
                 }
             }
-            .scrollContentBackground(.hidden)
-            .background(AppBackgroundView())
+            .listStyle(.sidebar)
             .navigationTitle("Feed")
-            .navigationBarTitleDisplayMode(.large)
             .searchable(text: $searchText, prompt: "Search activities")
             .refreshable {
                 await loadFeed()
             }
-            .safeAreaInset(edge: .top) {
-                filterBar
-                    .padding(.horizontal, 20)
-                    .padding(.top, 12)
-                    .padding(.bottom, 8)
-                    .background(.clear)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Picker("Filter", selection: $filter) {
+                            ForEach(FeedFilter.allCases) { item in
+                                Text(item.title).tag(item)
+                            }
+                        }
+                    } label: {
+                        Label(filter.title, systemImage: "line.3.horizontal.decrease.circle")
+                            .symbolVariant(.fill)
+                    }
+                }
             }
         } detail: {
-            if let selectedActivityID {
+            if let resolvedSelectedActivityID {
                 NavigationStack {
-                    ActivityDetailView(activityID: selectedActivityID)
+                    ActivityDetailView(activityID: resolvedSelectedActivityID)
                 }
             } else {
-                ContentUnavailableView("Choose an Activity", systemImage: "rectangle.and.text.magnifyingglass", description: Text("Browse open opportunities and inspect the full activity plan here."))
-                    .background(AppBackgroundView())
+                ContentUnavailableView(
+                    "Select an Activity",
+                    systemImage: "rectangle.and.text.magnifyingglass",
+                    description: Text("Choose an activity from the list to view its details.")
+                )
             }
         }
+        .navigationSplitViewStyle(.balanced)
         .task {
             await loadFeed()
-        }
-        .navigationDestination(for: String.self) { activityID in
-            ActivityDetailView(activityID: activityID)
         }
         .alert("Unable to Load Feed", isPresented: Binding(get: {
             errorMessage != nil
@@ -117,6 +99,10 @@ struct FeedHomeView: View {
         }
     }
 
+    private var resolvedSelectedActivityID: String? {
+        selectedActivityID ?? filteredActivities.first?.id ?? activities.first?.id
+    }
+
     private var filteredActivities: [ActivitySummary] {
         activities.filter { activity in
             let matchesSearch = searchText.isEmpty
@@ -125,35 +111,16 @@ struct FeedHomeView: View {
                 || activity.briefDescription.localizedCaseInsensitiveContains(searchText)
 
             let matchesFilter: Bool = switch filter {
-            case .all:
+            case .openForSignup:
+                // The server only returns activities in the `need_volunteer` state
+                // when `display_all` is not set, so every row in `activities` is
+                // open for sign up; this filter is here for labeling consistency.
                 true
-            case .recruiting:
-                activity.state == .needVolunteer
-            case .joined:
-                activity.viewerJoined
-            case .inProgress:
-                activity.state == .going
-            case .completed:
-                activity.state == .ended
+            case .notYetApplied:
+                activity.viewerRecordState == nil
             }
 
             return matchesSearch && matchesFilter
-        }
-    }
-
-    private var filterBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                ForEach(FeedFilter.allCases) { item in
-                    Button(item.title) {
-                        filter = item
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(filter == item ? .blue : .gray.opacity(0.25))
-                    .buttonBorderShape(.capsule)
-                    .foregroundStyle(filter == item ? .white : .primary)
-                }
-            }
         }
     }
 
@@ -167,7 +134,7 @@ struct FeedHomeView: View {
         }
 
         guard let serverURL = session.serverURL else {
-            errorMessage = "The server URL is invalid."
+            errorMessage = "Enter a valid service address."
             isLoading = false
             return
         }
@@ -178,7 +145,12 @@ struct FeedHomeView: View {
         }
 
         do {
-            let loaded = try await session.apiClient.fetchActivities(baseURL: serverURL, displayAll: true)
+            // Explore is the public recruiting feed. We must not pass
+            // `displayAll: true` because the backend scopes that to the viewer's
+            // own promoted activities for non-admin users, which would hide
+            // everything from students. With `displayAll: false` the backend
+            // returns every activity currently in the `need_volunteer` state.
+            let loaded = try await session.apiClient.fetchActivities(baseURL: serverURL, displayAll: false)
             activities = loaded
             if selectedActivityID == nil {
                 selectedActivityID = loaded.first?.id
@@ -198,38 +170,31 @@ struct ActivityDetailView: View {
     @State private var detail: ActivityDetail?
     @State private var records: [RecordEntry] = []
     @State private var participantNames: [String: String] = [:]
-    @State private var exportBatch: ExportBatchResponse?
     @State private var isLoading = true
     @State private var isUpdating = false
     @State private var errorMessage: String?
     @State private var showingEditor = false
 
     var body: some View {
-        PageWidthReader {
+        Group {
             if isLoading {
-                LoadingCard(title: "Loading activity")
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let detail {
-                header(for: detail)
-                detailSummary(for: detail)
-                actionPanel(for: detail)
-                if canManage(detail: detail) {
-                    managementPanel(for: detail)
-                    participantPanel
-                }
+                detailList(for: detail)
             } else {
-                EmptyStateCard(
-                    title: "Activity unavailable",
-                    message: "The selected activity could not be loaded.",
-                    systemImage: "xmark.circle"
+                ContentUnavailableView(
+                    "Activity Unavailable",
+                    systemImage: "xmark.circle",
+                    description: Text(errorMessage ?? "This activity could not be loaded.")
                 )
-            }
-
-            if let message = errorMessage {
-                InlineErrorBanner(message: message)
             }
         }
         .navigationTitle(detail?.name ?? "Activity")
         .navigationBarTitleDisplayMode(.inline)
+        .refreshable {
+            await load()
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 if canEditCurrentActivity {
@@ -264,218 +229,142 @@ struct ActivityDetailView: View {
                 }
             }
         }
-        .sheet(item: $exportBatch) { batch in
-            ExportPreviewView(batch: batch)
-        }
     }
 
-    private var participantPanel: some View {
-        CardPanel {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Participants")
-                    .font(.title3.weight(.semibold))
-
-                if records.isEmpty {
-                    Text("No participant records yet.")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(records) { record in
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(participantTitle(for: record))
-                                        .font(.headline)
-                                    Text(record.activityName ?? "Untitled activity")
-                                        .font(.subheadline)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                StateChip(title: record.state.title, tint: AppTheme.stateTint(for: record.state))
-                            }
-
-                            Text("Confirmed: \(DisplayText.hours(minutes: record.confirmedMinutes))")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-
-                            HStack {
-                                Button("Approve") {
-                                    Task {
-                                        await updateRecord(recordID: record.id, action: "approve_apply")
-                                    }
-                                }
-                                .buttonStyle(.bordered)
-
-                                Button("Mark Done") {
-                                    Task {
-                                        await updateRecord(recordID: record.id, action: "done")
-                                    }
-                                }
-                                .buttonStyle(.borderedProminent)
-
-                                Button("Cancel", role: .destructive) {
-                                    Task {
-                                        await updateRecord(recordID: record.id, action: "disapprove_apply")
-                                    }
-                                }
-                                .buttonStyle(.bordered)
-                            }
-                        }
-                        .padding(.vertical, 8)
-
-                        if record.id != (records.last?.id ?? "") {
-                            Divider()
-                        }
+    private func detailList(for detail: ActivityDetail) -> some View {
+        List {
+            // MARK: - Header
+            Section {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(detail.name)
+                            .font(.title2.bold())
+                        Spacer()
+                        StateChip(title: detail.state.title, tint: AppTheme.stateTint(for: detail.state))
                     }
+
+                    Text(detail.description)
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+
+                    Text(headerMetadata(for: detail))
+                        .font(.subheadline)
+                        .foregroundStyle(.tertiary)
+
+                    CapacityBar(current: detail.volunteerNum, limit: detail.maxVolunteerNum)
                 }
             }
-        }
-    }
 
-    private func header(for detail: ActivityDetail) -> some View {
-        CardPanel {
-            VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(detail.name)
-                            .font(.system(.largeTitle, design: .rounded).weight(.bold))
-                            .fixedSize(horizontal: false, vertical: true)
-                        Text(detail.description)
-                            .font(.body)
+            // MARK: - Participation
+            Section("Participation") {
+                HStack {
+                    Text("Your status")
+                    Spacer()
+                    if let recordState = detail.viewerRecordState {
+                        StateChip(title: recordState.title, tint: AppTheme.stateTint(for: recordState))
+                    } else {
+                        Text("Not applied")
                             .foregroundStyle(.secondary)
                     }
-                    StateChip(title: detail.state.title, tint: AppTheme.stateTint(for: detail.state))
                 }
 
-                Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 10) {
-                    GridRow {
-                        meta("Organiser", systemImage: "person.crop.circle")
-                        Text(detail.promoterName)
-                    }
-                    GridRow {
-                        meta("Date", systemImage: "calendar")
-                        Text(ServerDate.dateTimeText(detail.date))
-                    }
-                    GridRow {
-                        meta("Location", systemImage: "mappin.and.ellipse")
-                        Text(detail.location)
-                    }
-                    GridRow {
-                        meta("Duration", systemImage: "clock")
-                        Text(DisplayText.duration(minutes: detail.duration))
-                    }
-                }
-
-                CapacityBar(current: detail.volunteerNum, limit: detail.maxVolunteerNum)
-            }
-        }
-    }
-
-    private func detailSummary(for detail: ActivityDetail) -> some View {
-        CardPanel {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Participation")
-                    .font(.title3.weight(.semibold))
-
-                if let recordState = detail.viewerRecordState {
-                    StateChip(title: recordState.title, tint: AppTheme.stateTint(for: recordState))
-                } else {
-                    Text("You have not joined this activity yet.")
-                        .foregroundStyle(.secondary)
-                }
-
-                if detail.state == .needVolunteer && !detail.viewerJoined {
-                    Button {
-                        Task {
-                            await join()
-                        }
+                if detail.viewerRecordState == .pendingApproval && detail.state == .needVolunteer {
+                    Button(role: .destructive) {
+                        Task { await withdraw() }
                     } label: {
-                        if isUpdating {
-                            ProgressView()
-                                .frame(maxWidth: .infinity)
-                        } else {
-                            Text("Join Activity")
-                                .frame(maxWidth: .infinity)
+                        HStack {
+                            Spacer()
+                            if isUpdating { ProgressView() } else { Text("Withdraw Application") }
+                            Spacer()
                         }
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
+                    .disabled(isUpdating)
+                } else if detail.state == .needVolunteer && !detail.viewerParticipating && detail.viewerRecordState != .pendingApproval {
+                    Button {
+                        Task { await apply() }
+                    } label: {
+                        HStack {
+                            Spacer()
+                            if isUpdating {
+                                ProgressView()
+                            } else {
+                                Text(detail.viewerRecordState == .canceled ? "Reapply" : "Apply")
+                            }
+                            Spacer()
+                        }
+                    }
                     .disabled(isUpdating)
                 }
             }
-        }
-    }
 
-    private func actionPanel(for detail: ActivityDetail) -> some View {
-        CardPanel {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Conversation")
-                    .font(.title3.weight(.semibold))
+            // MARK: - Communication
+            Section("Communication") {
                 NavigationLink {
                     CommentsView(activityID: detail.id)
                 } label: {
-                    labelRow(title: "Comments", subtitle: "Read organiser notes and volunteer replies.", systemImage: "text.bubble")
+                    Label("Public Notes", systemImage: "text.bubble")
                 }
 
-                NavigationLink {
-                    ActivityChannelView(activity: detail)
-                } label: {
-                    labelRow(title: "Channel", subtitle: "Activity-scoped messaging and coordination.", systemImage: "message")
+                if canAccessChannel(detail: detail) {
+                    NavigationLink {
+                        ActivityChannelView(activity: detail)
+                    } label: {
+                        Label("Team Chat", systemImage: "message")
+                    }
+                } else {
+                    Label("Team Chat", systemImage: "lock.message")
+                        .foregroundStyle(.tertiary)
+                }
+            }
+
+            // MARK: - Management
+            if canManage(detail: detail) {
+                Section("Manage") {
+                    Button("Recruiting") { Task { await transition(path: "need_volunteer") } }
+                    Button("Start") { Task { await transition(path: "go") } }
+                    Button("End") { Task { await transition(path: "end") } }
+                    Button("Cancel", role: .destructive) { Task { await transition(path: "cancel") } }
+                }
+
+                // MARK: - Participants
+                Section("Participants (\(records.count))") {
+                    if records.isEmpty {
+                        Text("No records yet.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(records) { record in
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Text(participantTitle(for: record))
+                                        .font(.headline)
+                                    Spacer()
+                                    StateChip(title: record.state.title, tint: AppTheme.stateTint(for: record.state))
+                                }
+                                Text("Confirmed: \(DisplayText.hours(minutes: record.confirmedMinutes))")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                participantControls(for: record)
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
+                }
+            }
+
+            // MARK: - Error
+            if let message = errorMessage {
+                Section {
+                    InlineErrorBanner(message: message)
                 }
             }
         }
+        .listStyle(.insetGrouped)
     }
 
-    private func managementPanel(for detail: ActivityDetail) -> some View {
-        CardPanel {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Manage Activity")
-                    .font(.title3.weight(.semibold))
-                Text("Organiser controls stay in the detail screen so state, participant progress, and reporting remain in one place.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-
-                HStack {
-                    Button("Recruiting") {
-                        Task {
-                            await transition(path: "need_volunteer")
-                        }
-                    }
-                    .buttonStyle(.bordered)
-
-                    Button("Start") {
-                        Task {
-                            await transition(path: "go")
-                        }
-                    }
-                    .buttonStyle(.bordered)
-
-                    Button("End") {
-                        Task {
-                            await transition(path: "end")
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
-
-                HStack {
-                    Button("Cancel", role: .destructive) {
-                        Task {
-                            await transition(path: "cancel")
-                        }
-                    }
-                    .buttonStyle(.bordered)
-
-                    if session.canGenerateExport {
-                        Button("Export Hours") {
-                            Task {
-                                await exportHours()
-                            }
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
-                }
-            }
-        }
+    private func headerMetadata(for detail: ActivityDetail) -> String {
+        let date = ServerDate.dateTimeText(detail.date)
+        let duration = DisplayText.duration(minutes: detail.duration)
+        return [detail.promoterName, date, detail.location, duration].joined(separator: " · ")
     }
 
     private var canEditCurrentActivity: Bool {
@@ -487,6 +376,10 @@ struct ActivityDetailView: View {
 
     private func canManage(detail: ActivityDetail) -> Bool {
         detail.promoter == session.currentUser?.id || session.canManageRecords || session.canCreateActivities
+    }
+
+    private func canAccessChannel(detail: ActivityDetail) -> Bool {
+        detail.viewerParticipating || canManage(detail: detail)
     }
 
     private func load() async {
@@ -501,7 +394,7 @@ struct ActivityDetailView: View {
 
         guard let serverURL = session.serverURL else {
             isLoading = false
-            errorMessage = "The server URL is invalid."
+            errorMessage = "Enter a valid service address."
             return
         }
 
@@ -526,14 +419,14 @@ struct ActivityDetailView: View {
         }
     }
 
-    private func join() async {
+    private func apply() async {
         if session.demoData != nil {
-            errorMessage = "Joining is disabled in demo mode."
+            errorMessage = "Applying is disabled in demo mode."
             return
         }
 
         guard let serverURL = session.serverURL else {
-            errorMessage = "The server URL is invalid."
+            errorMessage = "Enter a valid service address."
             return
         }
 
@@ -543,7 +436,31 @@ struct ActivityDetailView: View {
         }
 
         do {
-            try await session.apiClient.joinActivity(baseURL: serverURL, activityID: activityID)
+            try await session.apiClient.applyActivity(baseURL: serverURL, activityID: activityID)
+            await load()
+        } catch {
+            errorMessage = session.readableError(error)
+        }
+    }
+
+    private func withdraw() async {
+        if session.demoData != nil {
+            errorMessage = "Withdrawal is disabled in demo mode."
+            return
+        }
+
+        guard let serverURL = session.serverURL else {
+            errorMessage = "Enter a valid service address."
+            return
+        }
+
+        isUpdating = true
+        defer {
+            isUpdating = false
+        }
+
+        do {
+            try await session.apiClient.withdrawActivity(baseURL: serverURL, activityID: activityID)
             await load()
         } catch {
             errorMessage = session.readableError(error)
@@ -557,7 +474,7 @@ struct ActivityDetailView: View {
         }
 
         guard let serverURL = session.serverURL else {
-            errorMessage = "The server URL is invalid."
+            errorMessage = "Enter a valid service address."
             return
         }
 
@@ -576,7 +493,7 @@ struct ActivityDetailView: View {
         }
 
         guard let serverURL = session.serverURL else {
-            errorMessage = "The server URL is invalid."
+            errorMessage = "Enter a valid service address."
             return
         }
 
@@ -590,7 +507,7 @@ struct ActivityDetailView: View {
 
     private func updateActivity(with request: CreateActivityRequest) async throws {
         if session.demoData != nil {
-            throw APIError.transport("Editing is disabled in demo mode.")
+            throw APIError.transport(code: nil, message: "Editing is disabled in demo mode.")
         }
 
         guard let serverURL = session.serverURL else {
@@ -599,29 +516,6 @@ struct ActivityDetailView: View {
         _ = try await session.apiClient.updateActivity(baseURL: serverURL, activityID: activityID, request: request)
         await load()
         showingEditor = false
-    }
-
-    private func exportHours() async {
-        if let batch = session.demoData?.exportBatch {
-            exportBatch = batch
-            return
-        }
-
-        guard let serverURL = session.serverURL else {
-            errorMessage = "The server URL is invalid."
-            return
-        }
-
-        do {
-            exportBatch = try await session.apiClient.generateExport(baseURL: serverURL)
-        } catch {
-            errorMessage = session.readableError(error)
-        }
-    }
-
-    private func meta(_ title: String, systemImage: String) -> some View {
-        Label(title, systemImage: systemImage)
-            .foregroundStyle(.secondary)
     }
 
     private func participantTitle(for record: RecordEntry) -> String {
@@ -655,32 +549,63 @@ struct ActivityDetailView: View {
         participantNames = nextNames
     }
 
-    private func labelRow(title: String, subtitle: String, systemImage: String) -> some View {
-        HStack(spacing: 14) {
-            Image(systemName: systemImage)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(.blue)
-                .frame(width: 28)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.headline)
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+    @ViewBuilder
+    private func participantControls(for record: RecordEntry) -> some View {
+        switch record.state {
+        case .pendingApproval:
+            HStack(spacing: 12) {
+                Button("Approve") {
+                    Task {
+                        await updateRecord(recordID: record.id, action: "approve")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button("Reject", role: .destructive) {
+                    Task {
+                        await updateRecord(recordID: record.id, action: "cancel")
+                    }
+                }
+                .buttonStyle(.bordered)
             }
-            Spacer()
-            Image(systemName: "chevron.right")
-                .foregroundStyle(.tertiary)
+        case .approved:
+            HStack(spacing: 12) {
+                if detail?.state == .ended {
+                    Button("Confirm") {
+                        Task {
+                            await updateRecord(recordID: record.id, action: "confirm")
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+
+                Button("Cancel", role: .destructive) {
+                    Task {
+                        await updateRecord(recordID: record.id, action: "cancel")
+                    }
+                }
+                .buttonStyle(.bordered)
+            }
+        case .confirmed:
+            recordStatusLabel(title: "Confirmed", systemImage: "checkmark.circle.fill", tint: AppTheme.stateTint(for: RecordState.confirmed))
+        case .canceled:
+            recordStatusLabel(title: "Cancelled", systemImage: "xmark.circle.fill", tint: AppTheme.stateTint(for: RecordState.canceled))
         }
+    }
+
+    private func recordStatusLabel(title: String, systemImage: String, tint: Color) -> some View {
+        Label(title, systemImage: systemImage)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(tint)
     }
 }
 
-#Preview("Feed") {
+#Preview("Feed", traits: .landscapeLeft) {
     FeedHomeView()
         .environmentObject(SessionStore.previewVolunteer())
 }
 
-#Preview("Activity Detail") {
+#Preview("Activity Detail", traits: .landscapeLeft) {
     NavigationStack {
         ActivityDetailView(activityID: AppDemoData.primaryActivityID)
     }

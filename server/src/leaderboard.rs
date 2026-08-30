@@ -66,7 +66,7 @@ pub async fn list(
                     records.confirmed_minutes
                 FROM records
                 JOIN users ON users.id = records.user_id
-                WHERE records.state = 'done'
+                WHERE records.state = 'confirmed'
                 ORDER BY users.realname ASC
                 "#,
             )
@@ -97,9 +97,9 @@ pub async fn list(
             },
             total_minutes: 0,
         });
-        entry.total_minutes += row
-            .try_get::<i64, _>("confirmed_minutes")
-            .map_err(|_| ListLeaderboardError::CorruptedData)? as u32;
+        entry.total_minutes +=
+            row.try_get::<i64, _>("confirmed_minutes")
+                .map_err(|_| ListLeaderboardError::CorruptedData)? as u32;
     }
 
     let mut result: Vec<_> = totals.into_values().collect();

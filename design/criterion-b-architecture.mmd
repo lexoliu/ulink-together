@@ -1,0 +1,11 @@
+flowchart LR
+    Volunteer["Volunteer / Organiser\nSwiftUI iPad App"]
+    Admin["Administrator\nReact Admin Panel"]
+    Server["Rust Server\nAuthentication, permissions, activity lifecycle, messaging, export"]
+    DB[("PostgreSQL / SQLite\nusers, activities, records, channels, messages, exports")]
+    Storage["File storage\navatars and attachments"]
+
+    Volunteer -->|"HTTPS / JSON API"| Server
+    Admin -->|"HTTPS / JSON API"| Server
+    Server -->|"SQL queries / transactions"| DB
+    Server -->|"Read / write"| Storage

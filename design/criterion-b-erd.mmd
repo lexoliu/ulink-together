@@ -1,0 +1,92 @@
+erDiagram
+    GROUPS ||--o{ USERS : assigns
+    GROUPS ||--o{ GROUP_AUTHORITIES : grants
+    USERS ||--o{ SESSIONS : owns
+    USERS ||--o{ ACTIVITIES : creates
+    USERS ||--o{ RECORDS : holds
+    ACTIVITIES ||--o{ RECORDS : contains
+    ACTIVITIES ||--o| CHANNELS : opens
+    CHANNELS ||--o{ CHANNEL_MEMBERS : includes
+    USERS ||--o{ CHANNEL_MEMBERS : joins
+    CHANNELS ||--o{ MESSAGES : stores
+    USERS ||--o{ MESSAGES : sends
+    ACTIVITIES ||--o{ ACTIVITY_COMMENTS : receives
+    USERS ||--o{ ACTIVITY_COMMENTS : writes
+    USERS ||--o{ EXPORT_BATCHES : triggers
+    EXPORT_BATCHES ||--o{ EXPORT_ITEMS : contains
+    USERS ||--o{ EXPORT_ITEMS : references
+    ACTIVITIES ||--o{ EXPORT_ITEMS : references
+
+    GROUPS {
+        string id PK
+        string code UK
+        bool allow_all_authorities
+    }
+    GROUP_AUTHORITIES {
+        string group_id FK
+        string authority PK
+    }
+    USERS {
+        uuid id PK
+        string email UK
+        string realname
+        string classname
+        string group_id FK
+    }
+    SESSIONS {
+        uuid id PK
+        uuid user_id FK
+        datetime generated_at
+        string ip
+    }
+    ACTIVITIES {
+        uuid id PK
+        uuid promoter_id FK
+        string name
+        string state
+        int volunteer_num
+        int max_volunteer_num
+    }
+    RECORDS {
+        uuid id PK
+        uuid activity_id FK
+        uuid user_id FK
+        string state
+        int confirmed_minutes
+        datetime confirmed_at
+    }
+    CHANNELS {
+        uuid id PK
+        uuid owner_id FK
+        uuid activity_id FK
+    }
+    CHANNEL_MEMBERS {
+        uuid channel_id PK
+        uuid user_id PK
+    }
+    MESSAGES {
+        uuid id PK
+        uuid channel_id FK
+        uuid sender_id FK
+        text content
+        datetime sent_at
+    }
+    ACTIVITY_COMMENTS {
+        uuid id PK
+        uuid activity_id FK
+        uuid author_id FK
+        text content
+    }
+    EXPORT_BATCHES {
+        uuid id PK
+        uuid creator_id FK
+        string target_format
+        string status
+    }
+    EXPORT_ITEMS {
+        uuid id PK
+        uuid batch_id FK
+        uuid user_id FK
+        uuid activity_id FK
+        int confirmed_minutes
+    }

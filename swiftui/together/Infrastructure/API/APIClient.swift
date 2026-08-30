@@ -6,20 +6,27 @@ enum APIError: LocalizedError, Sendable {
     case invalidResponse
     case http(statusCode: Int, message: String)
     case decoding(String)
-    case transport(String)
+    case transport(code: URLError.Code?, message: String)
 
     var errorDescription: String? {
         switch self {
         case .invalidBaseURL:
-            "The server URL is invalid."
+            "Enter a valid service address."
         case .invalidResponse:
-            "The server returned an invalid response."
+            "The service did not respond correctly. Make sure the Together server is running."
         case let .http(_, message):
-            message
-        case let .decoding(message):
-            "Failed to decode server response: \(message)"
-        case let .transport(message):
-            message
+            Self.normalizeServerMessage(message)
+        case .decoding:
+            "The address responded, but it did not look like a Together server."
+        case let .transport(code, message):
+            switch code {
+            case .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed, .networkConnectionLost, .notConnectedToInternet, .timedOut:
+                "Could not reach the service. Check the address and make sure the server is running."
+            case .secureConnectionFailed, .serverCertificateHasBadDate, .serverCertificateHasUnknownRoot, .serverCertificateNotYetValid, .serverCertificateUntrusted:
+                "Could not establish a secure connection to the service."
+            default:
+                message
+            }
         }
     }
 
@@ -30,6 +37,15 @@ enum APIError: LocalizedError, Sendable {
         default:
             false
         }
+    }
+
+    static func normalizeServerMessage(_ message: String) -> String {
+        let prefix = "Endpoint error: "
+        var normalized = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        while normalized.hasPrefix(prefix) {
+            normalized = String(normalized.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return normalized
     }
 }
 
@@ -61,8 +77,9 @@ struct APIClient: Sendable {
         let configuration = URLSessionConfiguration.default
         configuration.httpCookieStorage = HTTPCookieStorage.shared
         configuration.httpShouldSetCookies = true
-        configuration.waitsForConnectivity = true
-        configuration.timeoutIntervalForRequest = 30
+        configuration.waitsForConnectivity = false
+        configuration.timeoutIntervalForRequest = 10
+        configuration.timeoutIntervalForResource = 10
         configuration.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
 
         self.decoder = JSONDecoder()
@@ -78,12 +95,67 @@ struct APIClient: Sendable {
         ) as APIMessageResponse
     }
 
+    func healthCheck(baseURL: URL) async throws {
+        let response: ServiceHealthResponse = try await request(baseURL: baseURL, path: "/health")
+        guard response.status == "ok" else {
+            throw APIError.decoding("Unexpected health status.")
+        }
+    }
+
     func logout(baseURL: URL) async throws {
         _ = try await request(baseURL: baseURL, path: "/logout", method: .post) as APIMessageResponse
     }
 
+    func deleteResource(baseURL: URL, filename: String) async throws {
+        _ = try await request(baseURL: baseURL, path: "/resource/\(filename)", method: .delete) as APIMessageResponse
+    }
+
     func register(baseURL: URL, request payload: RegisterRequest) async throws {
         _ = try await request(baseURL: baseURL, path: "/user", method: .post, body: payload) as APIMessageResponse
+    }
+
+    func uploadResource(
+        baseURL: URL,
+        filename: String,
+        data: Data,
+        mimeType: String?
+    ) async throws -> ResourceCreatedResponse {
+        let url = try makeURL(
+            baseURL: baseURL,
+            path: "/resource",
+            queryItems: [URLQueryItem(name: "name", value: filename)]
+        )
+        var headers: HTTPHeaders = [.accept("application/json")]
+        if let mimeType {
+            headers.add(.contentType(mimeType))
+        }
+
+        let request = session.upload(data, to: url, method: .post, headers: headers)
+        do {
+            let response = await request.serializingData().response
+            guard let httpResponse = response.response else {
+                throw APIError.invalidResponse
+            }
+            let responseData = response.data ?? Data()
+            guard (200 ..< 300).contains(httpResponse.statusCode) else {
+                let message = decodeErrorMessage(from: responseData) ?? HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)
+                throw APIError.http(statusCode: httpResponse.statusCode, message: message)
+            }
+
+            do {
+                return try decoder.decode(ResourceCreatedResponse.self, from: responseData)
+            } catch {
+                throw APIError.decoding(error.localizedDescription)
+            }
+        } catch let error as APIError {
+            throw error
+        } catch let error as AFError {
+            let urlError = error.underlyingError as? URLError
+            throw APIError.transport(code: urlError?.code, message: error.localizedDescription)
+        } catch {
+            let urlError = error as? URLError
+            throw APIError.transport(code: urlError?.code, message: error.localizedDescription)
+        }
     }
 
     func fetchCurrentUser(baseURL: URL) async throws -> UserProfile {
@@ -133,8 +205,12 @@ struct APIClient: Sendable {
         try await request(baseURL: baseURL, path: "/activity/\(activityID)", method: .put, body: payload)
     }
 
-    func joinActivity(baseURL: URL, activityID: String) async throws {
+    func applyActivity(baseURL: URL, activityID: String) async throws {
         _ = try await request(baseURL: baseURL, path: "/activity/\(activityID)/apply", method: .post) as APIMessageResponse
+    }
+
+    func withdrawActivity(baseURL: URL, activityID: String) async throws {
+        _ = try await request(baseURL: baseURL, path: "/activity/\(activityID)/withdraw", method: .post) as APIMessageResponse
     }
 
     func transitionActivity(baseURL: URL, activityID: String, pathComponent: String) async throws {
@@ -200,6 +276,50 @@ struct APIClient: Sendable {
         )
     }
 
+    func changePassword(
+        baseURL: URL,
+        currentPassword: String,
+        newPassword: String
+    ) async throws {
+        _ = try await request(
+            baseURL: baseURL,
+            path: "/password/change",
+            method: .post,
+            body: ChangePasswordRequest(
+                currentPassword: currentPassword,
+                newPassword: newPassword
+            )
+        ) as APIMessageResponse
+    }
+
+    func requestPasswordReset(baseURL: URL, email: String) async throws -> String {
+        let response: ResetPasswordRequestResult = try await request(
+            baseURL: baseURL,
+            path: "/password/reset/request",
+            method: .post,
+            body: ResetPasswordRequestPayload(email: email)
+        )
+        return response.code
+    }
+
+    func confirmPasswordReset(
+        baseURL: URL,
+        email: String,
+        code: String,
+        newPassword: String
+    ) async throws {
+        _ = try await request(
+            baseURL: baseURL,
+            path: "/password/reset/confirm",
+            method: .post,
+            body: ResetPasswordConfirmRequest(
+                email: email,
+                code: code,
+                newPassword: newPassword
+            )
+        ) as APIMessageResponse
+    }
+
     func fetchRecords(
         baseURL: URL,
         user: String? = nil,
@@ -229,6 +349,63 @@ struct APIClient: Sendable {
 
     func generateExport(baseURL: URL) async throws -> ExportBatchResponse {
         try await request(baseURL: baseURL, path: "/export", method: .post)
+    }
+
+    func fetchNotifications(
+        baseURL: URL,
+        unreadOnly: Bool = false,
+        limit: Int? = nil
+    ) async throws -> [NotificationResponse] {
+        var queryItems = [URLQueryItem]()
+        if unreadOnly {
+            queryItems.append(URLQueryItem(name: "unread_only", value: "1"))
+        }
+        if let limit {
+            queryItems.append(URLQueryItem(name: "limit", value: String(limit)))
+        }
+        return try await request(baseURL: baseURL, path: "/notification", queryItems: queryItems)
+    }
+
+    func fetchNotificationUnreadCount(baseURL: URL) async throws -> Int {
+        let response: NotificationUnreadCountResponse = try await request(
+            baseURL: baseURL,
+            path: "/notification/unread_count"
+        )
+        return response.count
+    }
+
+    func markNotificationsRead(baseURL: URL, ids: [String]) async throws {
+        _ = try await request(
+            baseURL: baseURL,
+            path: "/notification/read",
+            method: .post,
+            body: MarkNotificationsReadRequest(ids: ids, all: nil)
+        ) as APIMessageResponse
+    }
+
+    func markAllNotificationsRead(baseURL: URL) async throws {
+        _ = try await request(
+            baseURL: baseURL,
+            path: "/notification/read",
+            method: .post,
+            body: MarkNotificationsReadRequest(ids: nil, all: true)
+        ) as APIMessageResponse
+    }
+
+    func fetchNotificationPreferences(baseURL: URL) async throws -> [NotificationPreference] {
+        try await request(baseURL: baseURL, path: "/notification/preferences")
+    }
+
+    func updateNotificationPreferences(
+        baseURL: URL,
+        preferences: [NotificationPreference]
+    ) async throws {
+        _ = try await request(
+            baseURL: baseURL,
+            path: "/notification/preferences",
+            method: .put,
+            body: UpdateNotificationPreferencesRequest(preferences: preferences)
+        ) as APIMessageResponse
     }
 
     func loadDisplayNameIfPossible(baseURL: URL, userID: String) async throws -> String {
@@ -277,7 +454,7 @@ struct APIClient: Sendable {
         body: Body?
     ) async throws -> Response {
         let url = try makeURL(baseURL: baseURL, path: path, queryItems: queryItems)
-        var headers: HTTPHeaders = [.accept("application/json")]
+        let headers: HTTPHeaders = [.accept("application/json")]
         let request: DataRequest
         if let body {
             request = session.request(
@@ -309,9 +486,11 @@ struct APIClient: Sendable {
         } catch let error as APIError {
             throw error
         } catch let error as AFError {
-            throw APIError.transport(error.localizedDescription)
+            let urlError = error.underlyingError as? URLError
+            throw APIError.transport(code: urlError?.code, message: error.localizedDescription)
         } catch {
-            throw APIError.transport(error.localizedDescription)
+            let urlError = error as? URLError
+            throw APIError.transport(code: urlError?.code, message: error.localizedDescription)
         }
     }
 

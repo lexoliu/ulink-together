@@ -2,7 +2,9 @@
 
 use waterui::component::TextField;
 use waterui::form::secure::{Secure, SecureField};
-use waterui::graphics::{AnimatedMeshGradient, AnimatedMeshGradientConfig, Gradient, ResolvedColor};
+use waterui::graphics::{
+    AnimatedMeshGradient, AnimatedMeshGradientConfig, Gradient, ResolvedColor,
+};
 use waterui::layout::padding::EdgeInsets;
 use waterui::prelude::*;
 use waterui::reactive::binding;
@@ -14,7 +16,13 @@ use crate::state::AppState;
 
 /// Helper to create resolved colors for gradients
 fn rc(r: f32, g: f32, b: f32) -> ResolvedColor {
-    ResolvedColor { red: r, green: g, blue: b, opacity: 1.0, headroom: 0.0 }
+    ResolvedColor {
+        red: r,
+        green: g,
+        blue: b,
+        opacity: 1.0,
+        headroom: 0.0,
+    }
 }
 
 /// Login/Register view with modern glassmorphism design
@@ -133,19 +141,30 @@ pub fn view(state: &AppState) -> impl View {
         move |loading| {
             let is_register = is_register_mode.get();
             let label_text = if loading {
-                if is_register { "Creating account..." } else { "Signing in..." }
-            } else if is_register { "Create Account" } else { "Sign In" };
+                if is_register {
+                    "Creating account..."
+                } else {
+                    "Signing in..."
+                }
+            } else if is_register {
+                "Create Account"
+            } else {
+                "Sign In"
+            };
 
             if loading {
                 AnyView::new(
                     hstack((
                         spacer(),
-                        text(Str::from(label_text)).font(font::Body).bold().foreground(white.clone().with_opacity(0.5)),
+                        text(Str::from(label_text))
+                            .font(font::Body)
+                            .bold()
+                            .foreground(white.clone().with_opacity(0.5)),
                         spacer(),
                     ))
                     .padding_with(EdgeInsets::symmetric(24.0, 16.0))
                     .background(accent.clone().with_opacity(0.3))
-                    .clip(RoundedRectangle::new(14.0))
+                    .clip(RoundedRectangle::new(14.0)),
                 )
             } else {
                 let state = state.clone();
@@ -158,10 +177,7 @@ pub fn view(state: &AppState) -> impl View {
                 let accent = accent.clone();
                 // Create gradient inline since it doesn't implement Clone
                 let button_gradient = Gradient::linear(
-                    vec![
-                        (0.0, rc(0.4, 0.6, 1.0)),
-                        (1.0, rc(0.6, 0.4, 1.0)),
-                    ],
+                    vec![(0.0, rc(0.4, 0.6, 1.0)), (1.0, rc(0.6, 0.4, 1.0))],
                     [0.0, 0.5],
                     [1.0, 0.5],
                 );
@@ -170,7 +186,10 @@ pub fn view(state: &AppState) -> impl View {
                         button_gradient.clip(RoundedRectangle::new(14.0)),
                         hstack((
                             spacer(),
-                            text(Str::from(label_text)).font(font::Body).bold().foreground(white.clone()),
+                            text(Str::from(label_text))
+                                .font(font::Body)
+                                .bold()
+                                .foreground(white.clone()),
                             spacer(),
                         ))
                         .padding_with(EdgeInsets::symmetric(24.0, 16.0)),
@@ -183,10 +202,20 @@ pub fn view(state: &AppState) -> impl View {
                     .on_tap({
                         let is_register_mode = is_register_mode.clone();
                         move || {
-                            let register_fields = if is_register { Some((realname.clone(), gender.clone(), classname.clone())) } else { None };
-                            submit_form(state.clone(), email.clone(), password.clone(), register_fields, is_register_mode.clone());
+                            let register_fields = if is_register {
+                                Some((realname.clone(), gender.clone(), classname.clone()))
+                            } else {
+                                None
+                            };
+                            submit_form(
+                                state.clone(),
+                                email.clone(),
+                                password.clone(),
+                                register_fields,
+                                is_register_mode.clone(),
+                            );
                         }
-                    })
+                    }),
                 )
             }
         }

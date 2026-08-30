@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -43,7 +42,6 @@ type ActivityDraftForm = z.infer<typeof activityDraftSchema>
 interface ActivityFormDialogProps {
   open: boolean
   title: string
-  description: string
   initialValue: ActivityDraft
   onOpenChange: (open: boolean) => void
   onSubmit: (draft: ActivityDraft) => Promise<void>
@@ -52,7 +50,6 @@ interface ActivityFormDialogProps {
 export function ActivityFormDialog({
   open,
   title,
-  description,
   initialValue,
   onOpenChange,
   onSubmit,
@@ -77,117 +74,108 @@ export function ActivityFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl p-0 sm:max-w-2xl">
-        <DialogHeader className="px-6 pt-6">
+      <DialogContent className="flex max-h-[calc(100dvh-2rem)] max-w-2xl flex-col overflow-hidden p-0 sm:max-w-2xl">
+        <DialogHeader className="shrink-0 px-6 pt-6">
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
 
         <form
-          className="grid gap-6 px-6 pb-6"
+          className="flex min-h-0 flex-1 flex-col"
           onSubmit={form.handleSubmit(async (values) => {
             await onSubmit(values)
           })}
         >
-          <section className="grid gap-4 sm:grid-cols-2">
-            <div className="grid gap-2 sm:col-span-2">
-              <Label htmlFor="name">Activity name</Label>
-              <Input id="name" {...form.register('name')} />
-              <FieldError message={form.formState.errors.name?.message} />
-            </div>
+          <div className="grid min-h-0 flex-1 gap-6 overflow-y-auto px-6 pb-6">
+            <section className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-2 sm:col-span-2">
+                <Label htmlFor="name">Activity name</Label>
+                <Input id="name" {...form.register('name')} />
+                <FieldError message={form.formState.errors.name?.message} />
+              </div>
 
-            <div className="grid gap-3 rounded-xl border border-border/70 bg-muted/20 p-4 sm:col-span-2">
-              <div className="flex items-center justify-between gap-4">
-                <div>
+              <div className="grid gap-3 rounded-xl border border-border/70 bg-muted/20 p-4 sm:col-span-2">
+                <div className="flex items-center justify-between gap-4">
                   <p className="text-sm font-medium">Scheduled date</p>
-                  <p className="text-xs text-muted-foreground">
-                    Leave this off for drafts that are still being coordinated.
-                  </p>
-                </div>
-                <Switch
-                  checked={dateEnabled}
-                  onCheckedChange={(checked) => form.setValue('dateEnabled', checked)}
-                />
-              </div>
-              {dateEnabled ? (
-                <div className="grid gap-2">
-                  <Label htmlFor="dateValue">Date and time</Label>
-                  <Input
-                    id="dateValue"
-                    type="datetime-local"
-                    {...form.register('dateValue')}
+                  <Switch
+                    checked={dateEnabled}
+                    onCheckedChange={(checked) => form.setValue('dateEnabled', checked)}
                   />
-                  <FieldError message={form.formState.errors.dateValue?.message} />
                 </div>
-              ) : null}
-            </div>
+                {dateEnabled ? (
+                  <div className="grid gap-2">
+                    <Label htmlFor="dateValue">Date and time</Label>
+                    <Input
+                      id="dateValue"
+                      type="datetime-local"
+                      {...form.register('dateValue')}
+                    />
+                    <FieldError message={form.formState.errors.dateValue?.message} />
+                  </div>
+                ) : null}
+              </div>
 
-            <div className="grid gap-2">
-              <Label htmlFor="location">Location</Label>
-              <Input id="location" {...form.register('location')} />
-              <FieldError message={form.formState.errors.location?.message} />
-            </div>
+              <div className="grid gap-2">
+                <Label htmlFor="location">Location</Label>
+                <Input id="location" {...form.register('location')} />
+                <FieldError message={form.formState.errors.location?.message} />
+              </div>
 
-            <div className="grid gap-2">
-              <Label htmlFor="duration">Duration in minutes</Label>
-              <Input
-                id="duration"
-                type="number"
-                min={30}
-                step={30}
-                {...form.register('duration', { valueAsNumber: true })}
-              />
-              <FieldError message={form.formState.errors.duration?.message} />
-            </div>
+              <div className="grid gap-2">
+                <Label htmlFor="duration">Duration in minutes</Label>
+                <Input
+                  id="duration"
+                  type="number"
+                  min={30}
+                  step={30}
+                  {...form.register('duration', { valueAsNumber: true })}
+                />
+                <FieldError message={form.formState.errors.duration?.message} />
+              </div>
 
-            <div className="grid gap-3 rounded-xl border border-border/70 bg-muted/20 p-4 sm:col-span-2">
-              <div className="flex items-center justify-between gap-4">
-                <div>
+              <div className="grid gap-3 rounded-xl border border-border/70 bg-muted/20 p-4 sm:col-span-2">
+                <div className="flex items-center justify-between gap-4">
                   <p className="text-sm font-medium">Participant limit</p>
-                  <p className="text-xs text-muted-foreground">
-                    Turn this on when the activity has a fixed capacity.
-                  </p>
-                </div>
-                <Switch
-                  checked={hasParticipantLimit}
-                  onCheckedChange={(checked) => form.setValue('hasParticipantLimit', checked)}
-                />
-              </div>
-              {hasParticipantLimit ? (
-                <div className="grid gap-2">
-                  <Label htmlFor="maxVolunteerNum">Max participants</Label>
-                  <Input
-                    id="maxVolunteerNum"
-                    type="number"
-                    min={1}
-                    max={500}
-                    {...form.register('maxVolunteerNum', { valueAsNumber: true })}
+                  <Switch
+                    checked={hasParticipantLimit}
+                    onCheckedChange={(checked) => form.setValue('hasParticipantLimit', checked)}
                   />
-                  <FieldError message={form.formState.errors.maxVolunteerNum?.message} />
                 </div>
-              ) : null}
-            </div>
-          </section>
+                {hasParticipantLimit ? (
+                  <div className="grid gap-2">
+                    <Label htmlFor="maxVolunteerNum">Max participants</Label>
+                    <Input
+                      id="maxVolunteerNum"
+                      type="number"
+                      min={1}
+                      max={500}
+                      {...form.register('maxVolunteerNum', { valueAsNumber: true })}
+                    />
+                    <FieldError message={form.formState.errors.maxVolunteerNum?.message} />
+                  </div>
+                ) : null}
+              </div>
+            </section>
 
-          <section className="grid gap-4">
-            <div className="grid gap-2">
-              <Label htmlFor="briefDescription">Short summary</Label>
-              <Textarea
-                id="briefDescription"
-                rows={3}
-                {...form.register('briefDescription')}
-              />
-              <FieldError message={form.formState.errors.briefDescription?.message} />
-            </div>
+            <section className="grid gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="briefDescription">Short summary</Label>
+                <Textarea
+                  id="briefDescription"
+                  rows={3}
+                  {...form.register('briefDescription')}
+                />
+                <FieldError message={form.formState.errors.briefDescription?.message} />
+              </div>
 
-            <div className="grid gap-2">
-              <Label htmlFor="description">Full description</Label>
-              <Textarea id="description" rows={6} {...form.register('description')} />
-              <FieldError message={form.formState.errors.description?.message} />
-            </div>
-          </section>
+              <div className="grid gap-2">
+                <Label htmlFor="description">Full description</Label>
+                <Textarea id="description" rows={6} {...form.register('description')} />
+                <FieldError message={form.formState.errors.description?.message} />
+              </div>
+            </section>
+          </div>
 
-          <DialogFooter className="rounded-b-none border-t-0 bg-transparent px-0 pb-0 pt-2">
+          <DialogFooter className="mx-0 mb-0 shrink-0 rounded-none border-t bg-background px-6 py-4">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>

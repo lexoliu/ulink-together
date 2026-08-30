@@ -12,7 +12,7 @@ This document describes how the new SQL backend is structured and how it coexist
 
 The initial migration lives in `migrations/20240220100000_init.sql`. It introduces the following tables:
 
-- `groups`, `group_authorities`: represent user groups and the authorities they grant.
+- `groups`, `group_authorities`: represent user groups and the authorities they grant. Both tables are seeded once at startup from the hardcoded role catalogue in `schema::seed_builtin_groups_*` and are not exposed to any runtime mutation API; changing what a role can do is a code change, not a database edit.
 - `users`: mirrors the existing `user` collection. We reuse the Mongo `_id` (hex string) as the SQL primary key so both backends stay consistent.
 - `sessions`: mirrors login sessions (`session` collection).
 - `activities`, `activity_volunteers`, `activity_comments`: cover organizers, state, volunteers, and comments.

@@ -4,6 +4,16 @@ struct APIMessageResponse: Decodable, Sendable {
     let message: String
 }
 
+struct ServiceHealthResponse: Decodable, Sendable {
+    let status: String
+}
+
+struct ResourceCreatedResponse: Decodable, Sendable {
+    let id: String
+    let filename: String
+    let path: String
+}
+
 struct AuthorityCheckResponse: Decodable, Sendable {
     let result: Bool
 }
@@ -49,16 +59,19 @@ enum ActivityState: String, Codable, CaseIterable, Sendable {
 }
 
 enum RecordState: String, Codable, CaseIterable, Sendable {
-    case todo
-    case done
+    case pendingApproval = "pending_approval"
+    case approved
+    case confirmed
     case canceled
 
     var title: String {
         switch self {
-        case .todo:
-            "Joined"
-        case .done:
-            "Completed"
+        case .pendingApproval:
+            "Pending Approval"
+        case .approved:
+            "Approved"
+        case .confirmed:
+            "Confirmed"
         case .canceled:
             "Cancelled"
         }
@@ -77,7 +90,7 @@ struct ActivitySummary: Codable, Identifiable, Hashable, Sendable {
     let briefDescription: String
     let duration: Int
     let state: ActivityState
-    let viewerJoined: Bool
+    let viewerParticipating: Bool
     let viewerRecordState: RecordState?
 
     enum CodingKeys: String, CodingKey {
@@ -92,7 +105,7 @@ struct ActivitySummary: Codable, Identifiable, Hashable, Sendable {
         case briefDescription = "brief_description"
         case duration
         case state
-        case viewerJoined = "viewer_joined"
+        case viewerParticipating = "viewer_participating"
         case viewerRecordState = "viewer_record_state"
     }
 }
@@ -110,7 +123,7 @@ struct ActivityDetail: Codable, Identifiable, Hashable, Sendable {
     let volunteers: [String]
     let duration: Int
     let state: ActivityState
-    let viewerJoined: Bool
+    let viewerParticipating: Bool
     let viewerRecordState: RecordState?
 
     enum CodingKeys: String, CodingKey {
@@ -126,7 +139,7 @@ struct ActivityDetail: Codable, Identifiable, Hashable, Sendable {
         case volunteers
         case duration
         case state
-        case viewerJoined = "viewer_joined"
+        case viewerParticipating = "viewer_participating"
         case viewerRecordState = "viewer_record_state"
     }
 }
@@ -362,4 +375,135 @@ struct UpdateUserRequest: Encodable, Sendable {
     let description: String?
     let classname: String?
     let avatar: String?
+}
+
+struct ChangePasswordRequest: Encodable, Sendable {
+    let currentPassword: String
+    let newPassword: String
+
+    enum CodingKeys: String, CodingKey {
+        case currentPassword = "current_password"
+        case newPassword = "new_password"
+    }
+}
+
+struct ResetPasswordRequestPayload: Encodable, Sendable {
+    let email: String
+}
+
+struct ResetPasswordRequestResult: Decodable, Sendable {
+    let code: String
+}
+
+struct ResetPasswordConfirmRequest: Encodable, Sendable {
+    let email: String
+    let code: String
+    let newPassword: String
+
+    enum CodingKeys: String, CodingKey {
+        case email
+        case code
+        case newPassword = "new_password"
+    }
+}
+
+// MARK: - Notifications
+
+enum NotificationTypeName: String, Codable, CaseIterable, Sendable {
+    case newChannelMessage = "new_channel_message"
+    case teacherChannelPost = "teacher_channel_post"
+    case activityStateChange = "activity_state_change"
+    case recordStateChange = "record_state_change"
+
+    var title: String {
+        switch self {
+        case .newChannelMessage:
+            "New Message"
+        case .teacherChannelPost:
+            "Teacher Update"
+        case .activityStateChange:
+            "Activity Update"
+        case .recordStateChange:
+            "Record Update"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .newChannelMessage:
+            "bubble.left.fill"
+        case .teacherChannelPost:
+            "megaphone.fill"
+        case .activityStateChange:
+            "calendar.badge.clock"
+        case .recordStateChange:
+            "checkmark.seal.fill"
+        }
+    }
+}
+
+/// Lightweight decoded payload — all fields optional so decoding never fails.
+struct NotificationPayload: Decodable, Sendable {
+    let channelID: String?
+    let activityID: String?
+    let activityName: String?
+    let senderName: String?
+    let messagePreview: String?
+    let recordID: String?
+    let newState: String?
+
+    enum CodingKeys: String, CodingKey {
+        case channelID = "channel_id"
+        case activityID = "activity_id"
+        case activityName = "activity_name"
+        case senderName = "sender_name"
+        case messagePreview = "message_preview"
+        case recordID = "record_id"
+        case newState = "new_state"
+    }
+}
+
+struct NotificationResponse: Decodable, Identifiable, Sendable {
+    let id: String
+    let userID: String
+    let notificationType: NotificationTypeName
+    let payload: NotificationPayload
+    let readAt: String?
+    let createdAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case userID = "user_id"
+        case notificationType = "notification_type"
+        case payload
+        case readAt = "read_at"
+        case createdAt = "created_at"
+    }
+
+    var isRead: Bool {
+        readAt != nil
+    }
+}
+
+struct NotificationUnreadCountResponse: Decodable, Sendable {
+    let count: Int
+}
+
+struct NotificationPreference: Codable, Sendable {
+    let notificationType: NotificationTypeName
+    let enabled: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case notificationType = "notification_type"
+        case enabled
+    }
+}
+
+struct MarkNotificationsReadRequest: Encodable, Sendable {
+    let ids: [String]?
+    let all: Bool?
+}
+
+struct UpdateNotificationPreferencesRequest: Encodable, Sendable {
+    let preferences: [NotificationPreference]
 }

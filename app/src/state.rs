@@ -1,8 +1,8 @@
 //! Application state management
 
+use crate::api::Api;
 use models::{ActivitySummary, RecordEntry, User};
 use waterui::reactive::{Binding, Computed, SignalExt};
-use crate::api::Api;
 
 /// Global application state
 #[derive(Clone)]

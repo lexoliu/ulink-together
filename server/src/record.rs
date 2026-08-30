@@ -1,13 +1,15 @@
 use crate::{
     auth::{Auth, AuthError, AuthSession},
     database::AppDatabase,
+    notification,
+    push::PushHub,
     utils::{parse_oid, ApiMessage, Id},
 };
 
-use models::{FindRecordForm, RecordEntry, RecordState};
+use models::{ActivityState, FindRecordForm, MarkDoneCustomForm, RecordEntry, RecordState};
 use skyzen::{
     routing::Params,
-    utils::{Form, State},
+    utils::{Form, Json, State},
 };
 use sqlx::{Any, Executor, Row};
 use time::OffsetDateTime;
@@ -31,18 +33,21 @@ where
     .bind(Id::new().to_string())
     .bind(activity_id.to_string())
     .bind(uid.to_string())
-    .bind(RecordState::Todo.as_str())
+    .bind(RecordState::PendingApproval.as_str())
     .bind(OffsetDateTime::now_utc().to_string())
     .execute(executor)
     .await?;
     Ok(())
 }
 
-pub async fn get_volunteers(database: &AppDatabase, activity_id: Id) -> Result<Vec<Id>, sqlx::Error> {
+pub async fn get_volunteers(
+    database: &AppDatabase,
+    activity_id: Id,
+) -> Result<Vec<Id>, sqlx::Error> {
     let rows = sqlx::query(
         database
             .sql(
-                "SELECT user_id FROM records WHERE activity_id = ?1 AND state NOT IN ('canceled', 'canneled', 'cancelled')",
+                "SELECT user_id FROM records WHERE activity_id = ?1 AND state IN ('approved', 'confirmed')",
             )
             .as_ref(),
     )
@@ -116,9 +121,7 @@ pub async fn sync_activity_channel_member(
             if !exists {
                 sqlx::query(
                     database
-                        .sql(
-                            "INSERT INTO channel_members (channel_id, user_id) VALUES (?1, ?2)",
-                        )
+                        .sql("INSERT INTO channel_members (channel_id, user_id) VALUES (?1, ?2)")
                         .as_ref(),
                 )
                 .bind(&channel_id)
@@ -227,7 +230,10 @@ pub async fn find(
         query = query.bind(activity.to_string());
     }
 
-    let records = query.fetch_all(database.sqlx()).await.expect("Database error");
+    let records = query
+        .fetch_all(database.sqlx())
+        .await
+        .expect("Database error");
 
     let mut result = Vec::with_capacity(records.len());
     for row in records {
@@ -268,18 +274,23 @@ pub enum UpdateRecordError {
 
     #[error("You have no access to this activity", status = FORBIDDEN)]
     Forbidden,
+
+    #[error("Invalid record state transition", status = CONFLICT)]
+    InvalidTransition,
 }
 
 async fn update_record_state(
     database: &AppDatabase,
+    hub: &PushHub,
     auth: &Auth,
     record_id: Id,
     state: RecordState,
+    confirmed_minutes_override: Option<u16>,
 ) -> Result<(), UpdateRecordError> {
     let record_hex = record_id.to_string();
     let row = sqlx::query(
         database
-            .sql("SELECT activity_id, user_id FROM records WHERE id = ?1")
+            .sql("SELECT activity_id, user_id, state FROM records WHERE id = ?1")
             .as_ref(),
     )
     .bind(&record_hex)
@@ -289,10 +300,14 @@ async fn update_record_state(
     .ok_or(UpdateRecordError::RecordNotFound)?;
     let activity_hex: String = row.try_get("activity_id").expect("Database error");
     let user_hex: String = row.try_get("user_id").expect("Database error");
+    let current_state = RecordState::from_db(
+        &row.try_get::<String, _>("state").expect("Database error"),
+    )
+    .expect("Database error");
 
     let activity = sqlx::query(
         database
-            .sql("SELECT promoter_id, duration_minutes FROM activities WHERE id = ?1")
+            .sql("SELECT promoter_id, duration_minutes, state, name FROM activities WHERE id = ?1")
             .as_ref(),
     )
     .bind(&activity_hex)
@@ -301,6 +316,12 @@ async fn update_record_state(
     .expect("Database error")
     .ok_or(UpdateRecordError::ActivityNotFound)?;
     let promoter_hex: String = activity.try_get("promoter_id").expect("Database error");
+    let activity_state = ActivityState::from_db(
+        &activity
+            .try_get::<String, _>("state")
+            .expect("Database error"),
+    )
+    .expect("Database error");
 
     if promoter_hex != auth.uid().to_string()
         && !auth
@@ -311,20 +332,40 @@ async fn update_record_state(
         return Err(UpdateRecordError::Forbidden);
     }
 
+    if state == RecordState::Confirmed && activity_state != ActivityState::Ended {
+        return Err(UpdateRecordError::InvalidTransition);
+    }
+
+    let transition_allowed = match (current_state, state) {
+        (RecordState::PendingApproval, RecordState::Approved) => true,
+        (RecordState::PendingApproval, RecordState::Canceled) => true,
+        (RecordState::Approved, RecordState::Canceled) => true,
+        (RecordState::Approved, RecordState::Confirmed) => true,
+        (left, right) if left == right => true,
+        _ => false,
+    };
+    if !transition_allowed {
+        return Err(UpdateRecordError::InvalidTransition);
+    }
+
     let now = OffsetDateTime::now_utc().to_string();
-    let confirmed_minutes = if state == RecordState::Done {
-        activity
-            .try_get::<i64, _>("duration_minutes")
-            .expect("Database error")
+    let confirmed_minutes = if state == RecordState::Confirmed {
+        confirmed_minutes_override
+            .map(i64::from)
+            .unwrap_or_else(|| {
+                activity
+                    .try_get::<i64, _>("duration_minutes")
+                    .expect("Database error")
+            })
     } else {
         0
     };
-    let confirmed_at = if state == RecordState::Done {
+    let confirmed_at = if state == RecordState::Confirmed {
         Some(now.clone())
     } else {
         None
     };
-    let confirmed_by = if state == RecordState::Done {
+    let confirmed_by = if state == RecordState::Confirmed {
         Some(auth.uid().to_string())
     } else {
         None
@@ -349,16 +390,37 @@ async fn update_record_state(
 
     let activity_id: Id = activity_hex.parse().expect("Database error");
     let user_id: Id = user_hex.parse().expect("Database error");
-    let include = state != RecordState::Canceled;
+    let include = matches!(state, RecordState::Approved | RecordState::Confirmed);
     sync_activity_channel_member(database, activity_id, user_id, include)
         .await
         .expect("Database error");
+
+    // Notify the record owner about state change
+    let activity_name: String = activity
+        .try_get("name")
+        .unwrap_or_else(|_| "Activity".to_string());
+    let payload = models::RecordStatePayload {
+        activity_id: activity_id.to_string(),
+        activity_name,
+        record_id: record_id.to_string(),
+        new_state: state.as_str().to_string(),
+    };
+    if let Some(payload_json) = notification::serialize_payload(&payload) {
+        notification::create_notification(
+            database,
+            hub,
+            user_id,
+            models::NotificationType::RecordStateChange,
+            &payload_json,
+        )
+        .await;
+    }
 
     Ok(())
 }
 
 #[skyzen::error]
-pub enum MarkDoneError {
+pub enum ConfirmRecordError {
     #[error("Session expired", status = FORBIDDEN)]
     SessionExpired,
 
@@ -373,37 +435,42 @@ pub enum MarkDoneError {
 
     #[error("Activity not exists", status = NOT_FOUND)]
     ActivityNotFound,
+
+    #[error("Invalid record state transition", status = CONFLICT)]
+    InvalidTransition,
 }
 
-/// Mark a volunteer's task as done
+/// Confirm a volunteer's completed participation
 #[skyzen::openapi]
-pub async fn mark_done(
+pub async fn confirm(
     database: State<AppDatabase>,
+    hub: State<PushHub>,
     session: AuthSession,
     params: Params,
-) -> Result<ApiMessage, MarkDoneError> {
+) -> Result<ApiMessage, ConfirmRecordError> {
     let auth = session.into_auth().await.map_err(|err| match err {
-        AuthError::SessionExpired => MarkDoneError::SessionExpired,
-        _ => MarkDoneError::Forbidden,
+        AuthError::SessionExpired => ConfirmRecordError::SessionExpired,
+        _ => ConfirmRecordError::Forbidden,
     })?;
     let record_id = parse_oid(
         params
             .get("id")
-            .map_err(|_| MarkDoneError::InvalidRecordId)?,
+            .map_err(|_| ConfirmRecordError::InvalidRecordId)?,
     )
-    .map_err(|_| MarkDoneError::InvalidRecordId)?;
-    update_record_state(&database, &auth, record_id, RecordState::Done)
+    .map_err(|_| ConfirmRecordError::InvalidRecordId)?;
+    update_record_state(&database, &hub, &auth, record_id, RecordState::Confirmed, None)
         .await
         .map_err(|err| match err {
-            UpdateRecordError::RecordNotFound => MarkDoneError::NotFound,
-            UpdateRecordError::ActivityNotFound => MarkDoneError::ActivityNotFound,
-            UpdateRecordError::Forbidden => MarkDoneError::Forbidden,
+            UpdateRecordError::RecordNotFound => ConfirmRecordError::NotFound,
+            UpdateRecordError::ActivityNotFound => ConfirmRecordError::ActivityNotFound,
+            UpdateRecordError::Forbidden => ConfirmRecordError::Forbidden,
+            UpdateRecordError::InvalidTransition => ConfirmRecordError::InvalidTransition,
         })?;
-    Ok(ApiMessage::new("Mark done successfully"))
+    Ok(ApiMessage::new("Confirm participation successfully"))
 }
 
 #[skyzen::error]
-pub enum ApproveApplyError {
+pub enum ConfirmRecordCustomError {
     #[error("Session expired", status = FORBIDDEN)]
     SessionExpired,
 
@@ -418,37 +485,52 @@ pub enum ApproveApplyError {
 
     #[error("Activity not exists", status = NOT_FOUND)]
     ActivityNotFound,
+
+    #[error("Invalid record state transition", status = CONFLICT)]
+    InvalidTransition,
 }
 
-/// Approve a volunteer application
+/// Confirm a volunteer's participation with custom confirmed minutes.
 #[skyzen::openapi]
-pub async fn approve_apply(
+pub async fn confirm_custom(
     database: State<AppDatabase>,
+    hub: State<PushHub>,
     session: AuthSession,
     params: Params,
-) -> Result<ApiMessage, ApproveApplyError> {
+    form: Json<MarkDoneCustomForm>,
+) -> Result<ApiMessage, ConfirmRecordCustomError> {
     let auth = session.into_auth().await.map_err(|err| match err {
-        AuthError::SessionExpired => ApproveApplyError::SessionExpired,
-        _ => ApproveApplyError::Forbidden,
+        AuthError::SessionExpired => ConfirmRecordCustomError::SessionExpired,
+        _ => ConfirmRecordCustomError::Forbidden,
     })?;
     let record_id = parse_oid(
         params
             .get("id")
-            .map_err(|_| ApproveApplyError::InvalidRecordId)?,
+            .map_err(|_| ConfirmRecordCustomError::InvalidRecordId)?,
     )
-    .map_err(|_| ApproveApplyError::InvalidRecordId)?;
-    update_record_state(&database, &auth, record_id, RecordState::Todo)
-        .await
-        .map_err(|err| match err {
-            UpdateRecordError::RecordNotFound => ApproveApplyError::NotFound,
-            UpdateRecordError::ActivityNotFound => ApproveApplyError::ActivityNotFound,
-            UpdateRecordError::Forbidden => ApproveApplyError::Forbidden,
-        })?;
-    Ok(ApiMessage::new("Approve apply successfully"))
+    .map_err(|_| ConfirmRecordCustomError::InvalidRecordId)?;
+    let Json(form) = form;
+
+    update_record_state(
+        &database,
+        &hub,
+        &auth,
+        record_id,
+        RecordState::Confirmed,
+        Some(form.confirmed_minutes),
+    )
+    .await
+    .map_err(|err| match err {
+        UpdateRecordError::RecordNotFound => ConfirmRecordCustomError::NotFound,
+        UpdateRecordError::ActivityNotFound => ConfirmRecordCustomError::ActivityNotFound,
+        UpdateRecordError::Forbidden => ConfirmRecordCustomError::Forbidden,
+        UpdateRecordError::InvalidTransition => ConfirmRecordCustomError::InvalidTransition,
+    })?;
+    Ok(ApiMessage::new("Confirm participation successfully"))
 }
 
 #[skyzen::error]
-pub enum DisapproveApplyError {
+pub enum ApproveRecordError {
     #[error("Session expired", status = FORBIDDEN)]
     SessionExpired,
 
@@ -463,33 +545,184 @@ pub enum DisapproveApplyError {
 
     #[error("Activity not exists", status = NOT_FOUND)]
     ActivityNotFound,
+
+    #[error("Invalid record state transition", status = CONFLICT)]
+    InvalidTransition,
 }
 
-/// Disapprove a volunteer's application
+/// Approve a pending volunteer application
 #[skyzen::openapi]
-pub async fn disapprove_apply(
+pub async fn approve(
     database: State<AppDatabase>,
+    hub: State<PushHub>,
     session: AuthSession,
     params: Params,
-) -> Result<ApiMessage, DisapproveApplyError> {
+) -> Result<ApiMessage, ApproveRecordError> {
     let auth = session.into_auth().await.map_err(|err| match err {
-        AuthError::SessionExpired => DisapproveApplyError::SessionExpired,
-        _ => DisapproveApplyError::Forbidden,
+        AuthError::SessionExpired => ApproveRecordError::SessionExpired,
+        _ => ApproveRecordError::Forbidden,
     })?;
     let record_id = parse_oid(
         params
             .get("id")
-            .map_err(|_| DisapproveApplyError::InvalidRecordId)?,
+            .map_err(|_| ApproveRecordError::InvalidRecordId)?,
     )
-    .map_err(|_| DisapproveApplyError::InvalidRecordId)?;
-    update_record_state(&database, &auth, record_id, RecordState::Canceled)
+    .map_err(|_| ApproveRecordError::InvalidRecordId)?;
+    update_record_state(&database, &hub, &auth, record_id, RecordState::Approved, None)
         .await
         .map_err(|err| match err {
-            UpdateRecordError::RecordNotFound => DisapproveApplyError::NotFound,
-            UpdateRecordError::ActivityNotFound => DisapproveApplyError::ActivityNotFound,
-            UpdateRecordError::Forbidden => DisapproveApplyError::Forbidden,
+            UpdateRecordError::RecordNotFound => ApproveRecordError::NotFound,
+            UpdateRecordError::ActivityNotFound => ApproveRecordError::ActivityNotFound,
+            UpdateRecordError::Forbidden => ApproveRecordError::Forbidden,
+            UpdateRecordError::InvalidTransition => ApproveRecordError::InvalidTransition,
         })?;
-    Ok(ApiMessage::new("Disapprove apply successfully"))
+    Ok(ApiMessage::new("Approve application successfully"))
+}
+
+#[skyzen::error]
+pub enum CancelRecordError {
+    #[error("Session expired", status = FORBIDDEN)]
+    SessionExpired,
+
+    #[error("Forbidden", status = FORBIDDEN)]
+    Forbidden,
+
+    #[error("Invalid record id", status = BAD_REQUEST)]
+    InvalidRecordId,
+
+    #[error("Record not exists", status = NOT_FOUND)]
+    NotFound,
+
+    #[error("Activity not exists", status = NOT_FOUND)]
+    ActivityNotFound,
+
+    #[error("Invalid record state transition", status = CONFLICT)]
+    InvalidTransition,
+}
+
+/// Cancel a volunteer application or participation
+#[skyzen::openapi]
+pub async fn cancel(
+    database: State<AppDatabase>,
+    hub: State<PushHub>,
+    session: AuthSession,
+    params: Params,
+) -> Result<ApiMessage, CancelRecordError> {
+    let auth = session.into_auth().await.map_err(|err| match err {
+        AuthError::SessionExpired => CancelRecordError::SessionExpired,
+        _ => CancelRecordError::Forbidden,
+    })?;
+    let record_id = parse_oid(
+        params
+            .get("id")
+            .map_err(|_| CancelRecordError::InvalidRecordId)?,
+    )
+    .map_err(|_| CancelRecordError::InvalidRecordId)?;
+    update_record_state(&database, &hub, &auth, record_id, RecordState::Canceled, None)
+        .await
+        .map_err(|err| match err {
+            UpdateRecordError::RecordNotFound => CancelRecordError::NotFound,
+            UpdateRecordError::ActivityNotFound => CancelRecordError::ActivityNotFound,
+            UpdateRecordError::Forbidden => CancelRecordError::Forbidden,
+            UpdateRecordError::InvalidTransition => CancelRecordError::InvalidTransition,
+        })?;
+    Ok(ApiMessage::new("Cancel record successfully"))
+}
+
+pub async fn recalculate_activity_volunteer_num(
+    database: &AppDatabase,
+    activity_id: Id,
+) -> Result<(), sqlx::Error> {
+    let row = sqlx::query(
+        database
+            .sql("SELECT COUNT(*) AS count FROM records WHERE activity_id = ?1 AND state = ?2")
+            .as_ref(),
+    )
+    .bind(activity_id.to_string())
+    .bind(RecordState::Approved.as_str())
+    .fetch_one(database.sqlx())
+    .await?;
+    let count = row.try_get::<i64, _>("count")?;
+
+    sqlx::query(
+        database
+            .sql("UPDATE activities SET volunteer_num = ?1 WHERE id = ?2")
+            .as_ref(),
+    )
+    .bind(count)
+    .bind(activity_id.to_string())
+    .execute(database.sqlx())
+    .await?;
+    Ok(())
+}
+
+pub async fn sync_activity_channel_members(
+    database: &AppDatabase,
+    activity_id: Id,
+) -> Result<(), sqlx::Error> {
+    let rows = sqlx::query(
+        database
+            .sql("SELECT user_id FROM records WHERE activity_id = ?1 AND state IN ('approved', 'confirmed')")
+            .as_ref(),
+    )
+    .bind(activity_id.to_string())
+    .fetch_all(database.sqlx())
+    .await?;
+    let mut allowed_members = Vec::with_capacity(rows.len());
+    for row in rows {
+        let user_id: String = row.try_get("user_id")?;
+        allowed_members.push(user_id);
+    }
+
+    let channels = sqlx::query(
+        database
+            .sql("SELECT id, owner_id FROM channels WHERE activity_id = ?1")
+            .as_ref(),
+    )
+    .bind(activity_id.to_string())
+    .fetch_all(database.sqlx())
+    .await?;
+
+    for channel in channels {
+        let channel_id: String = channel.try_get("id")?;
+        let owner_id: String = channel.try_get("owner_id")?;
+
+        sqlx::query(
+            database
+                .sql("DELETE FROM channel_members WHERE channel_id = ?1 AND user_id != ?2")
+                .as_ref(),
+        )
+        .bind(&channel_id)
+        .bind(&owner_id)
+        .execute(database.sqlx())
+        .await?;
+
+        for user_id in &allowed_members {
+            let exists = sqlx::query(
+                database
+                    .sql("SELECT 1 FROM channel_members WHERE channel_id = ?1 AND user_id = ?2 LIMIT 1")
+                    .as_ref(),
+            )
+            .bind(&channel_id)
+            .bind(user_id)
+            .fetch_optional(database.sqlx())
+            .await?
+            .is_some();
+            if !exists {
+                sqlx::query(
+                    database
+                        .sql("INSERT INTO channel_members (channel_id, user_id) VALUES (?1, ?2)")
+                        .as_ref(),
+                )
+                .bind(&channel_id)
+                .bind(user_id)
+                .execute(database.sqlx())
+                .await?;
+            }
+        }
+    }
+
+    Ok(())
 }
 
 async fn is_activity_manager_opt(
@@ -544,7 +777,7 @@ mod tests {
         .await
         .expect("fetch record");
 
-        assert_eq!(row.get::<String, _>("state"), "todo");
+        assert_eq!(row.get::<String, _>("state"), "pending_approval");
         assert_eq!(row.get::<String, _>("user_id"), user_id.to_string());
         assert_eq!(row.get::<String, _>("activity_id"), activity_id.to_string());
         assert_eq!(row.get::<i64, _>("confirmed_minutes"), 0);
@@ -561,8 +794,8 @@ mod tests {
 
         let now = OffsetDateTime::now_utc().to_string();
         let records = vec![
-            (Id::new(), user_one, "todo"),
-            (Id::new(), user_two, "done"),
+            (Id::new(), user_one, "approved"),
+            (Id::new(), user_two, "confirmed"),
             (Id::new(), user_three, "canneled"),
             (Id::new(), user_four, "canceled"),
         ];

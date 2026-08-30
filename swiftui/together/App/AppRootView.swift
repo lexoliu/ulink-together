@@ -32,9 +32,6 @@ private struct LaunchScreenView: View {
                 VStack(spacing: 8) {
                     Text("Together")
                         .font(.largeTitle.weight(.bold))
-                    Text("Preparing your volunteer workspace")
-                        .font(.headline)
-                        .foregroundStyle(.secondary)
                 }
                 ProgressView()
                     .controlSize(.large)

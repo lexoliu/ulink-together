@@ -1,4 +1,4 @@
-import { format, parseISO } from 'date-fns'
+import { format, isValid, parseISO } from 'date-fns'
 
 import type { ActivityState, RecordState } from '@/lib/types'
 
@@ -60,10 +60,12 @@ export function activityStateLabel(state: ActivityState): string {
 
 export function recordStateLabel(state: RecordState): string {
   switch (state) {
-    case 'todo':
-      return 'Joined'
-    case 'done':
-      return 'Completed'
+    case 'pending_approval':
+      return 'Pending approval'
+    case 'approved':
+      return 'Approved'
+    case 'confirmed':
+      return 'Confirmed'
     case 'canceled':
       return 'Cancelled'
   }
@@ -86,11 +88,17 @@ export function shortIdentifier(value: string): string {
 }
 
 function parseKnownDate(value: string): Date {
-  try {
-    return parseISO(value)
-  } catch {
-    return parseISO(normalizeServerTimestamp(value))
+  const direct = parseISO(value)
+  if (isValid(direct)) {
+    return direct
   }
+
+  const normalized = parseISO(normalizeServerTimestamp(value))
+  if (isValid(normalized)) {
+    return normalized
+  }
+
+  throw new Error(`Invalid date: ${value}`)
 }
 
 function normalizeServerTimestamp(value: string): string {

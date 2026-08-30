@@ -28,22 +28,16 @@ pub fn view(activity: &ActivitySummary, state: &AppState) -> NavigationView {
                 spacer(),
                 state_badge(activity.state),
             )),
-
             Divider,
-
             // Info section
             info_section(activity),
-
             Divider,
-
             // Description
             vstack((
                 text!("Description").font(font::Headline),
                 text!("{description}").font(font::Body),
             )),
-
             Divider,
-
             // Volunteer info
             vstack((
                 text!("Volunteer List").font(font::Headline),
@@ -53,9 +47,7 @@ pub fn view(activity: &ActivitySummary, state: &AppState) -> NavigationView {
                     volunteer_count_text(volunteer_num, max_volunteer_num),
                 )),
             )),
-
             spacer_min(24.0),
-
             // Join button (only show if activity is open)
             watch(is_joining.clone(), {
                 let activity_id = activity_id.clone();
@@ -67,42 +59,44 @@ pub fn view(activity: &ActivitySummary, state: &AppState) -> NavigationView {
 
                     if !can_join {
                         match activity_state {
-                            ActivityState::Ended => AnyView::new(text!("Ended").foreground(MutedForeground)),
-                            ActivityState::Canceled => AnyView::new(text!("Canceled").foreground(Accent)),
+                            ActivityState::Ended => {
+                                AnyView::new(text!("Ended").foreground(MutedForeground))
+                            }
+                            ActivityState::Canceled => {
+                                AnyView::new(text!("Canceled").foreground(Accent))
+                            }
                             _ => AnyView::new(text!("Full").foreground(MutedForeground)),
                         }
                     } else if joining {
                         AnyView::new(text!("Loading...").foreground(MutedForeground))
                     } else {
-                        AnyView::new(button(text!("Join Activity"))
-                            .action({
+                        AnyView::new(button(text!("Join Activity")).action({
+                            let activity_id = activity_id.clone();
+                            let state = state.clone();
+                            let is_joining = is_joining.clone();
+                            move || {
                                 let activity_id = activity_id.clone();
                                 let state = state.clone();
                                 let is_joining = is_joining.clone();
-                                move || {
-                                    let activity_id = activity_id.clone();
-                                    let state = state.clone();
-                                    let is_joining = is_joining.clone();
 
-                                    is_joining.set(true);
-                                    spawn_local(async move {
-                                        let api = state.api.get();
-                                        match api.join_activity(&activity_id).await {
-                                            Ok(_) => {
-                                                // Optionally show success message
-                                            }
-                                            Err(e) => {
-                                                state.set_error(e.to_string());
-                                            }
+                                is_joining.set(true);
+                                spawn_local(async move {
+                                    let api = state.api.get();
+                                    match api.join_activity(&activity_id).await {
+                                        Ok(_) => {
+                                            // Optionally show success message
                                         }
-                                        is_joining.set(false);
-                                    });
-                                }
-                            }))
+                                        Err(e) => {
+                                            state.set_error(e.to_string());
+                                        }
+                                    }
+                                    is_joining.set(false);
+                                });
+                            }
+                        }))
                     }
                 }
             }),
-
             spacer(),
         )))
         .padding(),
@@ -123,7 +117,6 @@ fn info_section(activity: &ActivitySummary) -> impl View {
             spacer(),
             text!("{location}"),
         )),
-
         // Date
         activity.date.as_ref().map(|date| {
             let date = date.clone();
@@ -134,7 +127,6 @@ fn info_section(activity: &ActivitySummary) -> impl View {
                 text!("{date}"),
             ))
         }),
-
         // Duration
         hstack((
             SystemIcon::from_static("clock"),
@@ -142,7 +134,6 @@ fn info_section(activity: &ActivitySummary) -> impl View {
             spacer(),
             text!("{duration} hours"),
         )),
-
         // Promoter
         hstack((
             SystemIcon::PERSON,

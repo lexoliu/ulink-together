@@ -2,27 +2,26 @@ import { Suspense, lazy, startTransition, useDeferredValue, useMemo, useState } 
 import {
   ArrowRight,
   Download,
-  FileSpreadsheet,
   FolderKanban,
   House,
-  ListFilter,
   LogOut,
   MessageSquareMore,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
   Search,
+  Trash2,
+  Users,
 } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import './App.css'
 import { ActivityRecordsTable } from '@/components/activity-records-table'
-import { ChannelStatusCard } from '@/components/channel-status-card'
 import { CommandPalette } from '@/components/command-palette'
+import { UsersPage } from '@/components/users-page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
@@ -32,7 +31,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
@@ -44,21 +42,26 @@ import {
   formatDuration,
 } from '@/lib/format'
 import type {
+  ActivityComment,
   ActivityDetail,
   ActivityDraft,
   ActivitySummary,
+  AdminCreateUserForm,
   AuthorityName,
-  ChannelMessage,
-  ChannelResponse,
+  ActivityTransitionAction,
   ExportBatchResponse,
   RecordEntry,
+  UpdateUserForm,
   UserProfile,
 } from '@/lib/types'
+import {
+  activityTransitionActions,
+} from '@/lib/types'
 
-type PanelTab = 'overview' | 'records' | 'channel'
+type PanelTab = 'overview' | 'records' | 'channel' | 'comments'
 type ActivityScope = 'all' | 'mine'
 type ActivityFilter = 'all' | 'need_volunteer' | 'going' | 'ended' | 'canceled'
-type AdminView = 'home' | 'activities' | 'chats'
+type AdminView = 'home' | 'activities' | 'chats' | 'students'
 
 const api = new AdminApiClient()
 const ActivityFormDialog = lazy(async () =>
@@ -99,6 +102,33 @@ const emptyDraft: ActivityDraft = {
   duration: 120,
 }
 
+const emptyStudents: UserProfile[] = []
+
+const activityTransitionMeta = {
+  need_volunteer: {
+    label: 'Recruiting',
+    variant: 'outline',
+  },
+  go: {
+    label: 'Start',
+    variant: 'outline',
+  },
+  end: {
+    label: 'Complete',
+    variant: 'outline',
+  },
+  cancel: {
+    label: 'Cancel',
+    variant: 'destructive',
+  },
+} as const satisfies Record<
+  ActivityTransitionAction,
+  {
+    label: string
+    variant: 'outline' | 'destructive'
+  }
+>
+
 function App() {
   const queryClient = useQueryClient()
   const location = useLocation()
@@ -111,21 +141,28 @@ function App() {
   const [loginError, setLoginError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [chatSearch, setChatSearch] = useState('')
+  const [studentSearch, setStudentSearch] = useState('')
+  const [userGroupFilter, setUserGroupFilter] = useState<'student' | 'teacher' | 'all'>('student')
   const [scope, setScope] = useState<ActivityScope>('all')
   const [stateFilter, setStateFilter] = useState<ActivityFilter>('all')
   const [formOpen, setFormOpen] = useState(false)
   const [editingActivity, setEditingActivity] = useState<ActivityDetail | null>(null)
   const [exportBatch, setExportBatch] = useState<ExportBatchResponse | null>(null)
   const [recordActionId, setRecordActionId] = useState<string | null>(null)
+  const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null)
+  const [savingStudentId, setSavingStudentId] = useState<string | null>(null)
+  const [deletingStudentId, setDeletingStudentId] = useState<string | null>(null)
   const [commandOpen, setCommandOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   const deferredSearch = useDeferredValue(search)
   const deferredChatSearch = useDeferredValue(chatSearch)
+  const deferredStudentSearch = useDeferredValue(studentSearch)
 
   const currentView = viewFromPath(location.pathname)
   const selectedActivityId = searchParams.get('activity')
   const selectedChatActivityId = searchParams.get('chat')
+  const selectedStudentId = searchParams.get('student')
   const panelTab = (searchParams.get('tab') as PanelTab | null) ?? 'overview'
 
   const currentUserQuery = useQuery({
@@ -149,10 +186,15 @@ function App() {
   })
 
   const authorities = authoritiesQuery.data ?? ({} as Record<AuthorityName, boolean>)
+  const canViewAllActivities = authorities.view_all_activities === true
 
   const activitiesQuery = useQuery({
-    queryKey: ['activities', currentUser?.id],
-    queryFn: () => api.activities({ displayAll: true }),
+    queryKey: ['activities', currentUser?.id, canViewAllActivities],
+    queryFn: () =>
+      api.activities({
+        displayAll: true,
+        user: canViewAllActivities ? undefined : currentUser?.id,
+      }),
     enabled: Boolean(currentUser),
   })
 
@@ -182,7 +224,7 @@ function App() {
 
   const resolvedSelectedActivityId =
     selectedActivityId &&
-    filteredActivities.some((activity) => activity.id === selectedActivityId)
+    (activitiesQuery.isLoading || filteredActivities.some((activity) => activity.id === selectedActivityId))
       ? selectedActivityId
       : filteredActivities[0]?.id ?? null
 
@@ -204,9 +246,40 @@ function App() {
 
   const resolvedSelectedChatActivityId =
     selectedChatActivityId &&
-    chatActivities.some((activity) => activity.id === selectedChatActivityId)
+    (activitiesQuery.isLoading || chatActivities.some((activity) => activity.id === selectedChatActivityId))
       ? selectedChatActivityId
       : chatActivities[0]?.id ?? null
+
+  const studentsQuery = useQuery({
+    queryKey: ['students', currentUser?.id, userGroupFilter, deferredStudentSearch],
+    queryFn: () =>
+      api.users({
+        group: userGroupFilter,
+        search: deferredStudentSearch.trim() || undefined,
+        limit: 500,
+      }),
+    enabled: Boolean(currentUser) && authorities.view_user === true,
+  })
+  const studentClassesQuery = useQuery({
+    queryKey: ['student-classes', currentUser?.id, userGroupFilter],
+    queryFn: () => api.userClasses({ group: userGroupFilter }),
+    enabled: Boolean(currentUser) && authorities.view_user === true,
+  })
+  const students = studentsQuery.data ?? emptyStudents
+  const studentClasses = studentClassesQuery.data ?? []
+  const resolvedSelectedStudentId =
+    selectedStudentId &&
+    (studentsQuery.isLoading || students.some((student) => student.id === selectedStudentId))
+      ? selectedStudentId
+      : students[0]?.id ?? null
+  const selectedStudent = useMemo(
+    () => students.find((student) => student.id === resolvedSelectedStudentId) ?? null,
+    [resolvedSelectedStudentId, students],
+  )
+  const selectedStudentPending =
+    Boolean(resolvedSelectedStudentId) &&
+    selectedStudent === null &&
+    (studentsQuery.isLoading || studentsQuery.isFetching)
 
   const selectedDetailQuery = useQuery({
     queryKey: ['activity-detail', resolvedSelectedActivityId],
@@ -215,6 +288,10 @@ function App() {
   })
 
   const selectedDetail = selectedDetailQuery.data ?? null
+  const selectedDetailPending =
+    Boolean(resolvedSelectedActivityId) &&
+    selectedDetail === null &&
+    (selectedDetailQuery.isLoading || selectedDetailQuery.isFetching)
 
   const selectedChatDetailQuery = useQuery({
     queryKey: ['chat-activity-detail', resolvedSelectedChatActivityId],
@@ -223,10 +300,19 @@ function App() {
   })
 
   const selectedChatDetail = selectedChatDetailQuery.data ?? null
+  const selectedChatDetailPending =
+    Boolean(resolvedSelectedChatActivityId) &&
+    selectedChatDetail === null &&
+    (selectedChatDetailQuery.isLoading || selectedChatDetailQuery.isFetching)
 
   const recordsQuery = useQuery({
     queryKey: ['activity-records', resolvedSelectedActivityId],
     queryFn: () => api.records(resolvedSelectedActivityId!),
+    enabled: Boolean(resolvedSelectedActivityId),
+  })
+  const commentsQuery = useQuery({
+    queryKey: ['activity-comments', resolvedSelectedActivityId],
+    queryFn: () => api.activityComments(resolvedSelectedActivityId!),
     enabled: Boolean(resolvedSelectedActivityId),
   })
 
@@ -246,15 +332,6 @@ function App() {
     enabled: participantIds.length > 0 && authorities.view_user === true,
   })
 
-  const channelQuery = useQuery({
-    queryKey: ['channels', resolvedSelectedActivityId],
-    queryFn: async () => {
-      const channels = await api.channels(resolvedSelectedActivityId!)
-      return channels[0] ?? null
-    },
-    enabled: Boolean(resolvedSelectedActivityId),
-  })
-
   const chatChannelQuery = useQuery({
     queryKey: ['chat-channels', resolvedSelectedChatActivityId],
     queryFn: async () => {
@@ -262,12 +339,6 @@ function App() {
       return channels[0] ?? null
     },
     enabled: Boolean(resolvedSelectedChatActivityId),
-  })
-
-  const messagesQuery = useQuery({
-    queryKey: ['messages', channelQuery.data?.id],
-    queryFn: () => api.messages(channelQuery.data!.id),
-    enabled: Boolean(channelQuery.data?.id),
   })
 
   const chatMessagesQuery = useQuery({
@@ -359,7 +430,7 @@ function App() {
       action,
     }: {
       id: string
-      action: 'need_volunteer' | 'go' | 'end' | 'cancel'
+      action: ActivityTransitionAction
     }) => api.transitionActivity(id, action),
     onSuccess: async () => {
       toast.success('Activity status updated.')
@@ -372,12 +443,14 @@ function App() {
     mutationFn: async ({
       id,
       action,
+      options,
     }: {
       id: string
-      action: 'approve_apply' | 'done' | 'disapprove_apply'
+      action: 'approve' | 'confirm' | 'cancel'
+      options?: { confirmedMinutes?: number }
     }) => {
       setRecordActionId(id)
-      await api.updateRecord(id, action)
+      await api.updateRecord(id, action, options)
     },
     onSuccess: async () => {
       setRecordActionId(null)
@@ -416,6 +489,118 @@ function App() {
       ])
     },
     onError: showMutationError,
+  })
+
+  const invalidateStudentQueries = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['students'] }),
+      queryClient.invalidateQueries({ queryKey: ['student-classes'] }),
+      queryClient.invalidateQueries({ queryKey: ['participant-names'] }),
+      queryClient.invalidateQueries({ queryKey: ['chat-message-names'] }),
+    ])
+  }
+
+  const updateStudentMutation = useMutation({
+    mutationFn: async ({
+      id,
+      form,
+    }: {
+      id: string
+      form: UpdateUserForm
+    }) => {
+      setSavingStudentId(id)
+      return api.updateUser(id, form)
+    },
+    onSuccess: async (student) => {
+      toast.success('Student profile updated.')
+      await invalidateStudentQueries()
+      if (currentUser?.id === student.id) {
+        await queryClient.invalidateQueries({ queryKey: ['current-user'] })
+      }
+    },
+    onError: showMutationError,
+    onSettled: () => {
+      setSavingStudentId(null)
+    },
+  })
+
+  const deleteStudentMutation = useMutation({
+    mutationFn: async (id: string) => {
+      setDeletingStudentId(id)
+      await api.deleteUser(id)
+      return id
+    },
+    onSuccess: async (deletedId) => {
+      toast.success('Student deleted.')
+      if (resolvedSelectedStudentId === deletedId) {
+        navigateStudents()
+      }
+      await invalidateStudentQueries()
+    },
+    onError: showMutationError,
+    onSettled: () => {
+      setDeletingStudentId(null)
+    },
+  })
+
+  const importStudentsMutation = useMutation({
+    mutationFn: ({ csvText, defaultPassword }: { csvText: string; defaultPassword: string }) =>
+      api.importUsersCsv(csvText, defaultPassword),
+    onSuccess: async (result) => {
+      toast.success(`Imported ${result.affected} students.`)
+      await invalidateStudentQueries()
+    },
+    onError: showMutationError,
+  })
+
+  const createUserMutation = useMutation({
+    mutationFn: (form: AdminCreateUserForm) => api.adminCreateUser(form),
+    onSuccess: async () => {
+      toast.success('User created.')
+      await invalidateStudentQueries()
+    },
+    onError: showMutationError,
+  })
+
+  const batchUpdateClassMutation = useMutation({
+    mutationFn: ({ fromClassname, toClassname }: { fromClassname: string; toClassname: string }) =>
+      api.batchUpdateClass(fromClassname, toClassname),
+    onSuccess: async (result) => {
+      toast.success(`Updated ${result.affected} students.`)
+      await invalidateStudentQueries()
+    },
+    onError: showMutationError,
+  })
+
+  const batchDeleteClassMutation = useMutation({
+    mutationFn: ({ classname }: { classname: string }) => api.batchDeleteClass(classname),
+    onSuccess: async (result) => {
+      toast.success(`Deleted ${result.affected} students.`)
+      navigateStudents()
+      await invalidateStudentQueries()
+    },
+    onError: showMutationError,
+  })
+
+  const deleteCommentMutation = useMutation({
+    mutationFn: async ({
+      activityId,
+      commentId,
+    }: {
+      activityId: string
+      commentId: string
+    }) => {
+      setDeletingCommentId(commentId)
+      await api.deleteActivityComment(activityId, commentId)
+    },
+    onSuccess: async () => {
+      toast.success('Comment deleted.')
+      await queryClient.invalidateQueries({ queryKey: ['activity-comments'] })
+    },
+    onError: showMutationError,
+    onSettled: () => {
+      setDeletingCommentId(null)
+    },
   })
 
   const participantNames = participantNamesQuery.data ?? {}
@@ -459,6 +644,19 @@ function App() {
     })
   }
 
+  const navigateStudents = (studentId?: string) => {
+    const params = new URLSearchParams()
+    if (studentId) {
+      params.set('student', studentId)
+    }
+    startTransition(() => {
+      navigate({
+        pathname: '/students',
+        search: params.toString(),
+      })
+    })
+  }
+
   const recentActivities = useMemo(
     () =>
       (activitiesQuery.data ?? [])
@@ -473,7 +671,7 @@ function App() {
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
         <div className="grid w-full max-w-sm gap-3">
           <Skeleton className="h-8 w-40" />
-          <Skeleton className="h-32 w-full rounded-2xl" />
+          <Skeleton className="h-32 w-full rounded-lg" />
         </div>
       </div>
     )
@@ -499,48 +697,43 @@ function App() {
 
   const canCreateActivity = authorities.create_activity === true
   const canGenerateExport = authorities.generate_export === true
+  const canViewStudents = authorities.view_user === true
+  const canEditStudents = authorities.update_user_anyway === true
+  const canDeleteStudents = authorities.delete_user === true
+  const canManageComments = authorities.manage_comment_anyway === true
   const canManageSelectedActivity =
     selectedDetail !== null &&
     (selectedDetail.promoter === currentUser?.id || authorities.manage_record_anyway === true)
 
   return (
     <>
-      <div className="min-h-screen bg-[radial-gradient(circle_at_top_right,_rgba(148,163,184,0.1),_transparent_28%),radial-gradient(circle_at_bottom_left,_rgba(120,137,128,0.08),_transparent_32%),linear-gradient(to_bottom,_#f7f5f2,_#f1efe9)] xl:h-screen xl:overflow-hidden">
-        <div className="mx-auto flex min-h-screen max-w-[1600px] gap-6 px-6 py-6 xl:h-full xl:min-h-0">
+      <div className="xl:h-screen xl:overflow-hidden">
+        <div className="mx-auto flex min-h-screen max-w-[1600px] xl:h-full xl:min-h-0">
           <aside
-            className={`hidden shrink-0 flex-col rounded-[2rem] border border-white/70 bg-white/88 shadow-xl shadow-slate-200/50 backdrop-blur transition-all duration-300 lg:flex ${
-              sidebarCollapsed ? 'w-24 p-4' : 'w-72 p-6'
+            className={`hidden shrink-0 flex-col border-r border-border bg-white transition-all duration-200 lg:flex ${
+              sidebarCollapsed ? 'w-16 px-2 py-4' : 'w-56 px-3 py-4'
             }`}
           >
-            <div className={`flex items-start justify-between gap-3 ${sidebarCollapsed ? 'mb-2' : 'mb-1'}`}>
+            <div className={`flex items-center ${sidebarCollapsed ? 'justify-center mb-4' : 'justify-between px-2 mb-4'}`}>
               {sidebarCollapsed ? (
-                <div className="flex size-11 items-center justify-center rounded-2xl bg-slate-950 text-white">
-                  <span className="text-sm font-semibold tracking-tight">T</span>
+                <div className="flex size-8 items-center justify-center rounded-lg bg-slate-950 text-white">
+                  <span className="text-xs font-semibold">T</span>
                 </div>
               ) : (
-                <div className="space-y-5">
-                  <div>
-                    <h1 className="text-2xl font-semibold tracking-tight text-slate-950">
-                      Together Admin
-                    </h1>
-                  </div>
-                </div>
+                <span className="text-sm font-semibold text-slate-950">Together</span>
               )}
 
               <Button
                 variant="ghost"
                 size="icon-sm"
-                className="shrink-0 rounded-xl text-slate-500"
+                className="shrink-0 text-slate-400"
                 onClick={() => setSidebarCollapsed((value) => !value)}
               >
                 {sidebarCollapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
-                <span className="sr-only">{sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}</span>
               </Button>
             </div>
 
-            <Separator className="my-6" />
-
-            <nav className="grid gap-2">
+            <nav className="grid gap-1">
               <SidebarItem
                 active={currentView === 'home'}
                 icon={<House className="size-4" />}
@@ -562,106 +755,86 @@ function App() {
                 collapsed={sidebarCollapsed}
                 onClick={() => navigateChats(selectedChatActivityId ?? undefined)}
               />
+              {canViewStudents ? (
+                <SidebarItem
+                  active={currentView === 'students'}
+                  icon={<Users className="size-4" />}
+                  label="Users"
+                  collapsed={sidebarCollapsed}
+                  onClick={() => navigateStudents(selectedStudentId ?? undefined)}
+                />
+              ) : null}
             </nav>
 
-            <Button
-              variant="outline"
-              className={`mt-4 rounded-2xl border-slate-200 bg-slate-50/90 text-left text-slate-700 ${
-                sidebarCollapsed ? 'justify-center px-0' : 'justify-between px-4 py-5'
-              }`}
-              onClick={() => setCommandOpen(true)}
-              title="Quick switch"
-            >
-              <span className="flex items-center gap-2">
-                <Search className="size-4" />
-                {sidebarCollapsed ? null : 'Quick switch'}
-              </span>
-              {sidebarCollapsed ? null : (
-                <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-400">
-                  ⌘K
-                </span>
-              )}
-            </Button>
-
-            <div className={`mt-auto rounded-2xl border border-slate-200/80 bg-slate-50/90 shadow-sm ${sidebarCollapsed ? 'px-3 py-3' : 'px-4 py-4'}`}>
-              <div className={`flex ${sidebarCollapsed ? 'justify-center' : 'items-center gap-3'}`}>
-                <div className="flex size-10 items-center justify-center rounded-full bg-slate-900 text-sm font-semibold text-white">
-                  {initials(currentUser)}
-                </div>
-                {sidebarCollapsed ? null : (
-                  <div className="min-w-0">
-                    <p className="truncate font-medium text-slate-950">{currentUser?.realname}</p>
-                    <p className="truncate text-sm text-slate-500">{currentUser?.email}</p>
-                  </div>
-                )}
-              </div>
-
-              <Button
-                variant="outline"
-                className={`mt-4 ${sidebarCollapsed ? 'w-full justify-center px-0' : 'w-full justify-center'}`}
-                disabled={logoutMutation.isPending}
+            <div className={`mt-auto flex items-center gap-2 ${sidebarCollapsed ? 'justify-center' : 'px-2'}`}>
+              <button
+                type="button"
+                className="flex size-8 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white"
                 onClick={() => logoutMutation.mutate()}
-                title="Sign out"
+                title={`Sign out ${currentUser?.realname ?? ''}`}
               >
-                <LogOut className={`size-4 ${sidebarCollapsed ? '' : 'mr-2'}`} />
-                {sidebarCollapsed ? null : 'Sign out'}
-              </Button>
+                {initials(currentUser)}
+              </button>
+              {sidebarCollapsed ? null : (
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-slate-950">{currentUser?.realname}</p>
+                </div>
+              )}
             </div>
           </aside>
 
-          <main className="flex min-w-0 flex-1 flex-col gap-6 xl:min-h-0">
-            <header className="rounded-[2rem] border border-white/70 bg-white/80 px-6 py-5 shadow-lg shadow-slate-200/45 backdrop-blur lg:hidden">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-medium text-slate-500">Admin</p>
-                  <h1 className="text-2xl font-semibold tracking-tight text-slate-950">
-                    Volunteer operations
-                  </h1>
-                </div>
+          <main className="flex min-w-0 flex-1 flex-col gap-4 p-4 xl:min-h-0 xl:overflow-hidden">
+            <header className="flex items-center justify-between rounded-xl border border-border bg-white px-4 py-3 lg:hidden">
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-semibold text-slate-950">Together</span>
+              </div>
+              <div className="flex items-center gap-2">
                 <Button
-                  variant="outline"
-                  size="sm"
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => setCommandOpen(true)}
+                >
+                  <Search className="size-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
                   disabled={logoutMutation.isPending}
                   onClick={() => logoutMutation.mutate()}
                 >
-                  <LogOut className="mr-2 size-4" />
-                  Sign out
+                  <LogOut className="size-4" />
                 </Button>
               </div>
-
-              <div className="mt-4 flex gap-2">
-                <SidebarItem
-                  active={currentView === 'home'}
-                  icon={<House className="size-4" />}
-                  label="Home"
-                  onClick={navigateHome}
-                />
-                <SidebarItem
-                  active={currentView === 'activities'}
-                  icon={<FolderKanban className="size-4" />}
-                  label="Activities"
-                  onClick={() => navigateActivities(selectedActivityId ?? undefined, panelTab)}
-                />
-                <SidebarItem
-                  active={currentView === 'chats'}
-                  icon={<MessageSquareMore className="size-4" />}
-                  label="Chats"
-                  onClick={() => navigateChats(selectedChatActivityId ?? undefined)}
-                />
-              </div>
-
-              <Button
-                variant="outline"
-                className="mt-4 w-full justify-between rounded-2xl border-slate-200 bg-slate-50/90"
-                onClick={() => setCommandOpen(true)}
-              >
-                <span className="flex items-center gap-2">
-                  <Search className="size-4" />
-                  Quick switch
-                </span>
-                <span className="text-xs text-slate-400">⌘K</span>
-              </Button>
             </header>
+
+            <nav className="flex gap-1 overflow-x-auto lg:hidden">
+              <SidebarItem
+                active={currentView === 'home'}
+                icon={<House className="size-4" />}
+                label="Home"
+                onClick={navigateHome}
+              />
+              <SidebarItem
+                active={currentView === 'activities'}
+                icon={<FolderKanban className="size-4" />}
+                label="Activities"
+                onClick={() => navigateActivities(selectedActivityId ?? undefined, panelTab)}
+              />
+              <SidebarItem
+                active={currentView === 'chats'}
+                icon={<MessageSquareMore className="size-4" />}
+                label="Chats"
+                onClick={() => navigateChats(selectedChatActivityId ?? undefined)}
+              />
+              {canViewStudents ? (
+                <SidebarItem
+                  active={currentView === 'students'}
+                  icon={<Users className="size-4" />}
+                  label="Users"
+                  onClick={() => navigateStudents(selectedStudentId ?? undefined)}
+                />
+              ) : null}
+            </nav>
 
             {currentView === 'home' ? (
               <div className="xl:min-h-0 xl:flex-1 xl:overflow-auto xl:pr-1">
@@ -686,6 +859,7 @@ function App() {
                     activities={chatActivities}
                     selectedActivityId={resolvedSelectedChatActivityId}
                     selectedActivity={selectedChatDetail}
+                    selectedActivityPending={selectedChatDetailPending}
                     channel={chatChannelQuery.data ?? null}
                     messages={chatMessagesQuery.data ?? []}
                     senderNames={chatSenderNames}
@@ -694,13 +868,6 @@ function App() {
                     search={chatSearch}
                     onSearchChange={setChatSearch}
                     onSelectActivity={(activityId) => navigateChats(activityId)}
-                    onOpenActivities={() => {
-                      if (resolvedSelectedChatActivityId) {
-                        navigateActivities(resolvedSelectedChatActivityId)
-                      } else {
-                        navigateActivities()
-                      }
-                    }}
                     onSendMessage={async (content) => {
                       if (!chatChannelQuery.data) {
                         throw new ApiError('No channel is available yet.', 400)
@@ -714,6 +881,52 @@ function App() {
                   />
                 </Suspense>
               </div>
+            ) : currentView === 'students' ? (
+              <UsersPage
+                search={studentSearch}
+                students={students}
+                studentsLoading={studentsQuery.isLoading}
+                classSummaries={studentClasses}
+                classSummariesLoading={studentClassesQuery.isLoading}
+                selectedStudentId={resolvedSelectedStudentId}
+                selectedStudent={selectedStudent}
+                selectedStudentPending={selectedStudentPending}
+                canViewStudents={canViewStudents}
+                canEditStudents={canEditStudents}
+                canDeleteStudents={canDeleteStudents}
+                canCreateUsers={canEditStudents}
+                savingStudentId={savingStudentId}
+                deletingStudentId={deletingStudentId}
+                importingStudents={importStudentsMutation.isPending}
+                batchUpdatingClass={batchUpdateClassMutation.isPending}
+                batchDeletingClass={batchDeleteClassMutation.isPending}
+                creatingUser={createUserMutation.isPending}
+                userGroupFilter={userGroupFilter}
+                onUserGroupFilterChange={setUserGroupFilter}
+                onCreateUser={async (form) => {
+                  await createUserMutation.mutateAsync(form)
+                }}
+                onSearchChange={setStudentSearch}
+                onSelectStudent={(studentId) => navigateStudents(studentId)}
+                onImportStudents={async (csvText, defaultPassword) => {
+                  await importStudentsMutation.mutateAsync({ csvText, defaultPassword })
+                }}
+                onBatchUpdateClass={async (fromClassname, toClassname) => {
+                  await batchUpdateClassMutation.mutateAsync({ fromClassname, toClassname })
+                }}
+                onBatchDeleteClass={async (classname) => {
+                  await batchDeleteClassMutation.mutateAsync({ classname })
+                }}
+                onSaveStudent={async (studentId, draft) => {
+                  await updateStudentMutation.mutateAsync({
+                    id: studentId,
+                    form: draft,
+                  })
+                }}
+                onDeleteStudent={async (studentId) => {
+                  await deleteStudentMutation.mutateAsync(studentId)
+                }}
+              />
             ) : (
               <ActivitiesPage
                 search={search}
@@ -723,15 +936,17 @@ function App() {
                 selectedActivityId={resolvedSelectedActivityId}
                 activitiesLoading={activitiesQuery.isLoading}
                 selectedDetail={selectedDetail}
+                selectedDetailPending={selectedDetailPending}
                 records={recordsQuery.data ?? []}
+                comments={commentsQuery.data ?? []}
                 participantNames={participantNames}
                 panelTab={panelTab}
-                channel={channelQuery.data ?? null}
-                messages={messagesQuery.data ?? []}
                 recordActionId={recordActionId}
+                deletingCommentId={deletingCommentId}
                 canCreateActivity={canCreateActivity}
                 canGenerateExport={canGenerateExport}
                 canManageSelectedActivity={canManageSelectedActivity}
+                canManageComments={canManageComments}
                 isExporting={exportMutation.isPending}
                 onSearchChange={setSearch}
                 onScopeChange={setScope}
@@ -759,7 +974,10 @@ function App() {
                   }
                 }}
                 onPanelTabChange={(value) => navigateActivities(selectedDetail?.id, value)}
-                onRecordAction={(id, action) => recordActionMutation.mutate({ id, action })}
+                onRecordAction={(id, action, options) => recordActionMutation.mutate({ id, action, options })}
+                onDeleteComment={async (activityId, commentId) => {
+                  await deleteCommentMutation.mutateAsync({ activityId, commentId })
+                }}
               />
             )}
           </main>
@@ -771,6 +989,7 @@ function App() {
         onOpenChange={setCommandOpen}
         activities={activitiesQuery.data ?? []}
         onOpenHome={navigateHome}
+        onOpenStudents={canViewStudents ? () => navigateStudents(selectedStudentId ?? undefined) : undefined}
         onOpenActivity={(activityId) => navigateActivities(activityId)}
         onOpenChat={(activityId) => navigateChats(activityId)}
         onCreateActivity={
@@ -787,11 +1006,6 @@ function App() {
         <ActivityFormDialog
           open={formOpen}
           title={editingActivity ? 'Edit activity' : 'Create activity'}
-          description={
-            editingActivity
-              ? 'Refine the activity plan without leaving the dashboard.'
-              : 'Publish a new volunteer opportunity with clean, complete details.'
-          }
           initialValue={draftFromActivity(editingActivity)}
           onOpenChange={(open) => {
             setFormOpen(open)
@@ -837,73 +1051,109 @@ function HomePage({
   onCreateActivity: () => void
   onOpenActivity: (activityId: string) => void
 }) {
-  const totalActivities = activities.length
   const recruitingCount = activities.filter((activity) => activity.state === 'need_volunteer').length
   const liveCount = activities.filter((activity) => activity.state === 'going').length
   const completedCount = activities.filter((activity) => activity.state === 'ended').length
 
+  const needsAttention = activities.filter(
+    (activity) =>
+      (activity.state === 'need_volunteer' && activity.volunteer_num >= (activity.max_volunteer_num ?? Number.MAX_SAFE_INTEGER)) ||
+      activity.state === 'going',
+  )
+
   return (
-    <div className="grid gap-6">
-      <Card className="overflow-hidden border-white/70 bg-white/88 shadow-xl shadow-slate-200/45">
-        <CardHeader className="gap-5 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <CardDescription>Home</CardDescription>
-            <CardTitle className="mt-1 text-3xl font-semibold tracking-tight text-slate-950">
-              Welcome back, {user?.realname ?? 'admin'}
-            </CardTitle>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            {canCreateActivity ? (
-              <Button onClick={onCreateActivity}>
-                <Plus className="mr-2 size-4" />
-                New activity
-              </Button>
-            ) : null}
-          </div>
-        </CardHeader>
-      </Card>
-
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <HomeStatCard label="Activities" value={totalActivities.toString()} />
-        <HomeStatCard label="Recruiting" value={recruitingCount.toString()} />
-        <HomeStatCard label="Live" value={liveCount.toString()} />
-        <HomeStatCard label="Completed" value={completedCount.toString()} />
+    <div className="grid gap-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-slate-950">
+          {user?.realname ?? 'Admin'}
+        </h2>
+        <div className="flex gap-2">
+          {canCreateActivity ? (
+            <Button size="sm" onClick={onCreateActivity}>
+              <Plus className="mr-1.5 size-3.5" />
+              New activity
+            </Button>
+          ) : null}
+        </div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-        <Card className="border-white/70 bg-white/88 shadow-lg shadow-slate-200/40">
-          <CardHeader>
-            <CardTitle>Recent activities</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-3">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="rounded-lg border bg-white px-4 py-3">
+          <p className="text-xs font-medium text-muted-foreground">Recruiting</p>
+          <p className="mt-1 text-2xl font-bold">{recruitingCount}</p>
+        </div>
+        <div className="rounded-lg border bg-white px-4 py-3">
+          <p className="text-xs font-medium text-muted-foreground">In Progress</p>
+          <p className="mt-1 text-2xl font-bold">{liveCount}</p>
+        </div>
+        <div className="rounded-lg border bg-white px-4 py-3">
+          <p className="text-xs font-medium text-muted-foreground">Completed</p>
+          <p className="mt-1 text-2xl font-bold">{completedCount}</p>
+        </div>
+      </div>
+
+      {needsAttention.length > 0 ? (
+        <div className="rounded-lg border bg-white">
+          <div className="border-b px-4 py-2.5">
+            <h3 className="text-sm font-semibold text-slate-950">Needs attention</h3>
+          </div>
+          <div className="divide-y">
+            {needsAttention.slice(0, 5).map((activity) => (
+              <button
+                key={activity.id}
+                type="button"
+                className="flex w-full items-center justify-between px-4 py-3 text-left transition hover:bg-muted/50"
+                onClick={() => onOpenActivity(activity.id)}
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-slate-950">{activity.name}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {formatDateOnly(activity.date)} · {activity.location}
+                  </p>
+                </div>
+                <div className="ml-3 flex items-center gap-2">
+                  <Badge variant="secondary">{activityStateLabel(activity.state)}</Badge>
+                  <ArrowRight className="size-3.5 text-slate-400" />
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="grid gap-4 xl:grid-cols-[1fr_1.2fr]">
+        <div className="rounded-lg border bg-white">
+          <div className="border-b px-4 py-2.5">
+            <h3 className="text-sm font-semibold text-slate-950">Recent</h3>
+          </div>
+          <div className="divide-y">
             {recentActivities.length > 0 ? (
               recentActivities.map((activity) => (
                 <button
                   key={activity.id}
                   type="button"
-                  className="flex items-center justify-between rounded-2xl border border-border/70 bg-background px-4 py-4 text-left outline-none transition hover:border-slate-300 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-slate-300/80 focus-visible:ring-offset-2"
+                  className="flex w-full items-center justify-between px-4 py-3 text-left transition hover:bg-muted/50"
                   onClick={() => onOpenActivity(activity.id)}
                 >
-                  <div>
-                    <p className="font-medium text-slate-950">{activity.name}</p>
-                    <p className="mt-1 text-sm text-slate-600">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-slate-950">{activity.name}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
                       {formatDateOnly(activity.date)} · {activity.location}
                     </p>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="ml-3 flex items-center gap-2">
                     <Badge variant="secondary">{activityStateLabel(activity.state)}</Badge>
-                    <ArrowRight className="size-4 text-slate-400" />
+                    <ArrowRight className="size-3.5 text-slate-400" />
                   </div>
                 </button>
               ))
             ) : (
-              <div className="rounded-2xl border border-dashed border-border bg-muted/20 p-6 text-sm text-muted-foreground">
-                No activities have been published yet.
+              <div className="px-4 py-6 text-center text-sm text-muted-foreground">
+                No activities yet.
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         <Suspense fallback={<WorkspaceFallback />}>
           <HomeActivityChart activities={activities} />
@@ -921,15 +1171,17 @@ function ActivitiesPage({
   selectedActivityId,
   activitiesLoading,
   selectedDetail,
+  selectedDetailPending,
   records,
+  comments,
   participantNames,
   panelTab,
-  channel,
-  messages,
   recordActionId,
+  deletingCommentId,
   canCreateActivity,
   canGenerateExport,
   canManageSelectedActivity,
+  canManageComments,
   isExporting,
   onSearchChange,
   onScopeChange,
@@ -942,6 +1194,7 @@ function ActivitiesPage({
   onTransition,
   onPanelTabChange,
   onRecordAction,
+  onDeleteComment,
 }: {
   search: string
   scope: ActivityScope
@@ -950,15 +1203,17 @@ function ActivitiesPage({
   selectedActivityId: string | null
   activitiesLoading: boolean
   selectedDetail: ActivityDetail | null
+  selectedDetailPending: boolean
   records: RecordEntry[]
+  comments: ActivityComment[]
   participantNames: Record<string, string>
   panelTab: PanelTab
-  channel: ChannelResponse | null
-  messages: ChannelMessage[]
   recordActionId: string | null
+  deletingCommentId: string | null
   canCreateActivity: boolean
   canGenerateExport: boolean
   canManageSelectedActivity: boolean
+  canManageComments: boolean
   isExporting: boolean
   onSearchChange: (value: string) => void
   onScopeChange: (value: ActivityScope) => void
@@ -968,265 +1223,194 @@ function ActivitiesPage({
   onEditActivity: () => void
   onOpenChat: () => void
   onGenerateExport: () => void
-  onTransition: (action: 'need_volunteer' | 'go' | 'end' | 'cancel') => void
+  onTransition: (action: ActivityTransitionAction) => void
   onPanelTabChange: (value: PanelTab) => void
-  onRecordAction: (id: string, action: 'approve_apply' | 'done' | 'disapprove_apply') => void
+  onRecordAction: (
+    id: string,
+    action: 'approve' | 'confirm' | 'cancel',
+    options?: { confirmedMinutes?: number },
+  ) => void
+  onDeleteComment: (activityId: string, commentId: string) => Promise<void>
 }) {
+  const availableTransitions: readonly ActivityTransitionAction[] = selectedDetail
+    ? activityTransitionActions(selectedDetail.state)
+    : []
+
   return (
     <>
-      <div className="flex h-full min-h-0 flex-col gap-4">
-        <div className="shrink-0 rounded-[2.3rem] border border-white/75 bg-white/76 px-7 py-6 shadow-[0_28px_80px_-34px_rgba(15,23,42,0.24)] backdrop-blur-xl">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Activities</p>
-              <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">
-                Manage publishing, records, and readiness
-              </h2>
-            </div>
-            {canCreateActivity ? (
-              <Button className="rounded-2xl px-4" onClick={onCreateActivity}>
-                <Plus className="mr-2 size-4" />
-                New activity
-              </Button>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="min-h-0 flex-1 rounded-[2.4rem] border border-white/70 bg-white/70 p-2 shadow-[0_34px_100px_-42px_rgba(15,23,42,0.3)] backdrop-blur-xl">
-          <div className="grid h-full min-h-0 gap-2 xl:grid-cols-[340px_minmax(0,1fr)]">
-            <aside className="flex min-h-0 flex-col rounded-[2rem] bg-[linear-gradient(180deg,rgba(240,245,250,0.98),rgba(234,240,246,0.84))] p-5">
-              <div className="shrink-0">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Activity rail</p>
-                <h3 className="mt-2 text-lg font-semibold text-slate-950">Pick the event you want to work on.</h3>
-              </div>
-
-              <div className="mt-5 shrink-0 grid gap-3">
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+      <div className="flex h-full min-h-0 flex-col gap-3">
+        <div className="min-h-0 flex-1 rounded-xl border bg-white">
+          <div className="grid h-full min-h-0 xl:grid-cols-[320px_minmax(0,1fr)]">
+            <aside className="flex min-h-0 flex-col border-r p-3">
+              <div className="shrink-0 flex items-center justify-between gap-2 mb-3">
+                <div className="relative flex-1">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
                   <Input
-                    className="rounded-2xl border-slate-200/80 bg-white/90 pl-9"
-                    placeholder="Search activity name or location"
+                    className="h-8 pl-8 text-sm"
+                    placeholder="Search"
                     value={search}
                     onChange={(event) => onSearchChange(event.target.value)}
                   />
                 </div>
+                {canCreateActivity ? (
+                  <Button size="icon-sm" onClick={onCreateActivity} title="New activity">
+                    <Plus className="size-4" />
+                  </Button>
+                ) : null}
+              </div>
 
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Select value={scope} onValueChange={(value) => onScopeChange(value as ActivityScope)}>
-                    <SelectTrigger className="w-full rounded-2xl border-slate-200/80 bg-white/90">
-                      <SelectValue placeholder="Scope" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All activities</SelectItem>
-                      <SelectItem value="mine">My activities</SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  <Select
-                    value={stateFilter}
-                    onValueChange={(value) => onStateFilterChange(value as ActivityFilter)}
+              <div className="shrink-0 mb-3 flex flex-wrap gap-1.5">
+                {(['all', 'need_volunteer', 'going', 'ended', 'canceled'] as const).map((state) => (
+                  <button
+                    key={state}
+                    type="button"
+                    onClick={() => onStateFilterChange(state)}
+                    className={`rounded-md px-2 py-1 text-xs font-medium transition ${
+                      stateFilter === state
+                        ? 'bg-slate-900 text-white'
+                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                    }`}
                   >
-                    <SelectTrigger className="w-full rounded-2xl border-slate-200/80 bg-white/90">
-                      <ListFilter className="size-4" />
-                      <SelectValue placeholder="State" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All states</SelectItem>
-                      <SelectItem value="need_volunteer">Recruiting</SelectItem>
-                      <SelectItem value="going">In progress</SelectItem>
-                      <SelectItem value="ended">Completed</SelectItem>
-                      <SelectItem value="canceled">Cancelled</SelectItem>
-                    </SelectContent>
-                  </Select>
+                    {state === 'all' ? 'All' : activityStateLabel(state)}
+                  </button>
+                ))}
+
+                <Select value={scope} onValueChange={(value) => onScopeChange(value as ActivityScope)}>
+                  <SelectTrigger className="h-6 w-auto gap-1 rounded-md border-none bg-transparent px-2 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="mine">Mine</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <ScrollArea className="min-h-0 flex-1">
+                <div className="grid gap-1">
+                  {activitiesLoading ? (
+                    <>
+                      <Skeleton className="h-16 rounded-lg" />
+                      <Skeleton className="h-16 rounded-lg" />
+                    </>
+                  ) : filteredActivities.length > 0 ? (
+                    filteredActivities.map((activity) => (
+                      <button
+                        key={activity.id}
+                        type="button"
+                        onClick={() => onSelectActivity(activity.id)}
+                        className={`rounded-lg px-3 py-2.5 text-left outline-none transition ${
+                          activity.id === selectedActivityId
+                            ? 'bg-accent'
+                            : 'hover:bg-muted/50'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="text-sm font-medium leading-5 text-slate-950 line-clamp-1">{activity.name}</h3>
+                          <Badge variant="secondary" className="shrink-0 text-[10px]">{activityStateLabel(activity.state)}</Badge>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {formatDateOnly(activity.date)} · {activity.location}
+                        </p>
+                      </button>
+                    ))
+                  ) : (
+                    <p className="px-3 py-6 text-center text-sm text-muted-foreground">No activities.</p>
+                  )}
                 </div>
-              </div>
-
-              <div className="mt-5 min-h-0 flex-1 rounded-[1.8rem] bg-white/72 p-2 ring-1 ring-white/80">
-                <ScrollArea className="h-full pr-2">
-                  <div className="grid gap-4 pb-4">
-                    {activitiesLoading ? (
-                      <>
-                        <Skeleton className="h-32 rounded-2xl" />
-                        <Skeleton className="h-32 rounded-2xl" />
-                      </>
-                    ) : filteredActivities.length > 0 ? (
-                      filteredActivities.map((activity) => (
-                        <button
-                          key={activity.id}
-                          type="button"
-                          onClick={() => onSelectActivity(activity.id)}
-                          className={`rounded-[1.6rem] border px-4 py-4 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-slate-300/80 focus-visible:ring-offset-2 ${
-                            activity.id === selectedActivityId
-                              ? 'border-white bg-white shadow-[0_18px_40px_-26px_rgba(15,23,42,0.28)] ring-1 ring-slate-200/90'
-                              : 'border-transparent bg-transparent hover:bg-white/85'
-                          }`}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <h3 className="text-[15px] font-semibold leading-6 text-slate-950">{activity.name}</h3>
-                              <p className="mt-1 line-clamp-2 text-sm leading-6 text-slate-500">
-                                {activity.brief_description}
-                              </p>
-                            </div>
-                            <Badge variant="secondary">{activityStateLabel(activity.state)}</Badge>
-                          </div>
-
-                          <div className="mt-4 grid gap-2 text-xs text-slate-500">
-                            <div className="flex items-center justify-between">
-                              <span>{formatDateOnly(activity.date)}</span>
-                              <span>
-                                {activity.volunteer_num}/{activity.max_volunteer_num ?? '∞'}
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span>{activity.location}</span>
-                              <span>{formatDuration(activity.duration)}</span>
-                            </div>
-                          </div>
-                        </button>
-                      ))
-                    ) : (
-                      <div className="rounded-[1.5rem] border border-dashed border-slate-200 bg-white/80 p-6 text-sm text-slate-500">
-                        No activities match the current filters.
-                      </div>
-                    )}
-                  </div>
-                </ScrollArea>
-              </div>
+              </ScrollArea>
             </aside>
 
-            <div className="min-h-0 rounded-[2rem] bg-white px-5 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
+            <div className="min-h-0 px-4 py-4">
               {selectedDetail ? (
-                <div className="flex h-full min-h-0 flex-col gap-4">
-                  <Card className="shrink-0 overflow-hidden border-slate-200/70 bg-[linear-gradient(180deg,rgba(255,255,255,1),rgba(248,251,255,0.96))] shadow-none">
-                    <CardHeader className="gap-4 p-5">
-                      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                        <div className="space-y-3">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Badge variant="secondary">{activityStateLabel(selectedDetail.state)}</Badge>
-                            <Badge variant="outline" className="hidden sm:inline-flex">{formatDuration(selectedDetail.duration)}</Badge>
-                          </div>
-
-                          <CardTitle className="text-3xl font-semibold tracking-tight text-slate-950">
-                            {selectedDetail.name}
-                          </CardTitle>
-
-                          <div className="flex flex-wrap gap-3 text-sm">
-                            <CompactMeta label="Organiser" value={selectedDetail.promoter_name} />
-                            <CompactMeta label="Date" value={formatDateTime(selectedDetail.date)} />
-                            <CompactMeta label="Location" value={selectedDetail.location} />
-                          </div>
+                <div className="flex h-full min-h-0 flex-col gap-3">
+                  <div className="shrink-0 space-y-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <h2 className="text-xl font-semibold text-slate-950 truncate">{selectedDetail.name}</h2>
+                          <Badge variant="secondary">{activityStateLabel(selectedDetail.state)}</Badge>
                         </div>
-
-                        <div className="flex flex-wrap gap-2">
-                          {canManageSelectedActivity ? (
-                            <Button size="sm" variant="outline" onClick={onEditActivity}>
-                              Edit
-                            </Button>
-                          ) : null}
-
-                          <Button size="sm" variant="outline" onClick={onOpenChat}>
-                            <MessageSquareMore className="mr-2 size-4" />
-                            Open chat
+                        <p className="text-xs text-muted-foreground">
+                          {selectedDetail.promoter_name} · {formatDateTime(selectedDetail.date)} · {selectedDetail.location} · {formatDuration(selectedDetail.duration)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {canManageSelectedActivity ? (
+                          <Button size="sm" variant="outline" onClick={onEditActivity}>
+                            Edit
                           </Button>
-                        </div>
+                        ) : null}
+                        <Button size="sm" variant="ghost" onClick={onOpenChat} title="Open chat">
+                          <MessageSquareMore className="size-4" />
+                        </Button>
                       </div>
+                    </div>
 
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          size="sm"
-                          variant={selectedDetail.state === 'need_volunteer' ? 'default' : 'outline'}
-                          disabled={!canManageSelectedActivity}
-                          onClick={() => onTransition('need_volunteer')}
-                        >
-                          Recruiting
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant={selectedDetail.state === 'going' ? 'default' : 'outline'}
-                          disabled={!canManageSelectedActivity}
-                          onClick={() => onTransition('go')}
-                        >
-                          Start
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant={selectedDetail.state === 'ended' ? 'default' : 'outline'}
-                          disabled={!canManageSelectedActivity}
-                          onClick={() => onTransition('end')}
-                        >
-                          Complete
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          disabled={!canManageSelectedActivity}
-                          onClick={() => onTransition('cancel')}
-                        >
-                          Cancel
-                        </Button>
+                    {availableTransitions.length > 0 ? (
+                      <div className="flex gap-1.5">
+                        {availableTransitions.map((action) => (
+                          <Button
+                            key={action}
+                            size="sm"
+                            variant={activityTransitionMeta[action].variant}
+                            disabled={!canManageSelectedActivity}
+                            onClick={() => onTransition(action)}
+                          >
+                            {activityTransitionMeta[action].label}
+                          </Button>
+                        ))}
                       </div>
-                    </CardHeader>
-                  </Card>
+                    ) : null}
+                  </div>
 
                   <Tabs
                     value={panelTab}
                     onValueChange={(value) => onPanelTabChange(value as PanelTab)}
-                    className="min-h-0 flex-1 gap-3"
+                    className="min-h-0 flex-1 gap-2"
                   >
-                    <TabsList variant="line" className="shrink-0 rounded-2xl bg-slate-50 p-1 shadow-none">
+                    <TabsList variant="line" className="shrink-0">
                       <TabsTrigger value="overview">Overview</TabsTrigger>
                       <TabsTrigger value="records">Records</TabsTrigger>
-                      <TabsTrigger value="channel">Coordination</TabsTrigger>
+                      <TabsTrigger value="comments">Comments</TabsTrigger>
                     </TabsList>
 
                     <TabsContent value="overview" className="min-h-0 flex-1">
                       <ScrollArea className="h-full pr-2">
-                        <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-                          <Card className="border-slate-200/70 bg-slate-50/65 shadow-none">
-                            <CardHeader className="p-5">
-                              <CardTitle>Brief</CardTitle>
-                            </CardHeader>
-                            <CardContent className="px-5 pb-5 pt-0">
-                              <p className="text-sm leading-6 text-slate-700">{selectedDetail.description}</p>
-                            </CardContent>
-                          </Card>
+                        <div className="space-y-4">
+                          <div>
+                            <p className="text-sm leading-6 text-slate-700">{selectedDetail.description}</p>
+                          </div>
 
-                          <Card className="border-slate-200/70 bg-slate-50/65 shadow-none">
-                            <CardHeader className="p-5">
-                              <CardTitle>Participation</CardTitle>
-                            </CardHeader>
-                            <CardContent className="grid gap-3 px-5 pb-5 pt-0">
-                              <div>
-                                <p className="text-3xl font-semibold tracking-tight text-slate-950">
-                                  {selectedDetail.volunteer_num}/{selectedDetail.max_volunteer_num ?? '∞'}
-                                </p>
-                                <p className="mt-1 text-sm text-slate-600">Volunteers</p>
-                              </div>
+                          <div className="flex items-center gap-4">
+                            <div>
+                              <p className="text-2xl font-semibold text-slate-950">
+                                {selectedDetail.volunteer_num}/{selectedDetail.max_volunteer_num ?? '∞'}
+                              </p>
+                              <p className="text-xs text-muted-foreground">Volunteers</p>
+                            </div>
 
-                              <div className="h-2 overflow-hidden rounded-full bg-slate-200">
-                                <div
-                                  className="h-full rounded-full bg-slate-900 transition-[width]"
-                                  style={{
-                                    width: `${activityCapacityRatio(selectedDetail)}%`,
-                                  }}
-                                />
-                              </div>
+                            <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
+                              <div
+                                className="h-full rounded-full bg-slate-900 transition-[width]"
+                                style={{
+                                  width: `${activityCapacityRatio(selectedDetail)}%`,
+                                }}
+                              />
+                            </div>
 
-                              {canGenerateExport ? (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="justify-between rounded-2xl"
-                                  disabled={isExporting}
-                                  onClick={onGenerateExport}
-                                >
-                                  <span>{isExporting ? 'Preparing…' : 'Export records'}</span>
-                                  <Download className="size-4 text-slate-400" />
-                                </Button>
-                              ) : null}
-                            </CardContent>
-                          </Card>
+                            {canGenerateExport ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={isExporting}
+                                onClick={onGenerateExport}
+                              >
+                                <Download className="mr-1.5 size-3.5" />
+                                {isExporting ? 'Exporting…' : 'Export'}
+                              </Button>
+                            ) : null}
+                          </div>
                         </div>
                       </ScrollArea>
                     </TabsContent>
@@ -1234,6 +1418,7 @@ function ActivitiesPage({
                     <TabsContent value="records" className="min-h-0 flex-1">
                       <ScrollArea className="h-full pr-2">
                         <ActivityRecordsTable
+                          activityState={selectedDetail.state}
                           records={records}
                           names={participantNames}
                           canManage={canManageSelectedActivity}
@@ -1243,32 +1428,51 @@ function ActivitiesPage({
                       </ScrollArea>
                     </TabsContent>
 
-                    <TabsContent value="channel" className="min-h-0 flex-1">
+                    <TabsContent value="comments" className="min-h-0 flex-1">
                       <ScrollArea className="h-full pr-2">
-                        <ChannelStatusCard
-                          channel={channel}
-                          activityState={selectedDetail.state}
-                          messages={messages}
-                          onOpenChat={onOpenChat}
-                        />
+                        <div className="divide-y">
+                          {comments.length > 0 ? (
+                            comments.map((comment) => (
+                              <div key={comment.id} className="py-3">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-medium text-slate-950">{comment.author_name}</p>
+                                    <p className="text-xs text-muted-foreground">{formatDateTime(comment.date)}</p>
+                                  </div>
+                                  {canManageComments ? (
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="text-destructive"
+                                      disabled={deletingCommentId === comment.id}
+                                      onClick={() => {
+                                        void onDeleteComment(selectedDetail.id, comment.id)
+                                      }}
+                                    >
+                                      {deletingCommentId === comment.id ? '…' : <Trash2 className="size-3.5" />}
+                                    </Button>
+                                  ) : null}
+                                </div>
+                                <p className="mt-1.5 text-sm leading-6 text-slate-700">{comment.content}</p>
+                              </div>
+                            ))
+                          ) : (
+                            <p className="py-8 text-center text-sm text-muted-foreground">No comments yet.</p>
+                          )}
+                        </div>
                       </ScrollArea>
                     </TabsContent>
                   </Tabs>
                 </div>
+              ) : selectedDetailPending ? (
+                <div className="flex h-full min-h-[480px] flex-col gap-3 p-4">
+                  <Skeleton className="h-20 rounded-lg" />
+                  <Skeleton className="h-full rounded-lg" />
+                </div>
               ) : (
-                <Card className="h-full border-slate-200/70 bg-slate-50/65 shadow-none">
-                  <CardContent className="flex h-full min-h-[480px] flex-col items-center justify-center gap-4 text-center">
-                    <div className="flex size-14 items-center justify-center rounded-2xl bg-slate-950 text-white">
-                      <FileSpreadsheet className="size-6" />
-                    </div>
-                    <div>
-                      <h2 className="text-xl font-semibold text-slate-950">Choose an activity</h2>
-                      <p className="mt-2 max-w-md text-sm leading-6 text-slate-600">
-                        Activity detail, participant records, channel traffic, and export controls appear here.
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
+                <div className="flex h-full min-h-[480px] items-center justify-center text-center text-muted-foreground">
+                  <p className="text-sm">Select an activity to view details.</p>
+                </div>
               )}
             </div>
           </div>
@@ -1296,7 +1500,7 @@ function SidebarItem({
       type="button"
       onClick={onClick}
       title={label}
-      className={`flex items-center rounded-2xl px-4 py-3 text-left text-sm font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-slate-300/80 ${
+      className={`flex items-center rounded-lg px-4 py-3 text-left text-sm font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-slate-300/80 ${
         active
           ? 'bg-slate-950 text-white shadow-sm'
           : 'bg-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-950'
@@ -1308,36 +1512,12 @@ function SidebarItem({
   )
 }
 
-function HomeStatCard({
-  label,
-  value,
-}: {
-  label: string
-  value: string
-}) {
-  return (
-    <div className="rounded-[1.7rem] border border-white/70 bg-white/88 px-5 py-5 shadow-lg shadow-slate-200/35">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">{label}</p>
-      <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">{value}</p>
-    </div>
-  )
-}
-
-function CompactMeta({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2">
-      <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">{label}</p>
-      <p className="mt-1 text-sm font-medium text-slate-900">{value}</p>
-    </div>
-  )
-}
-
 function FullscreenFallback() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-50">
       <div className="grid w-full max-w-sm gap-3">
         <Skeleton className="h-8 w-40" />
-        <Skeleton className="h-32 w-full rounded-2xl" />
+        <Skeleton className="h-32 w-full rounded-lg" />
       </div>
     </div>
   )
@@ -1346,8 +1526,8 @@ function FullscreenFallback() {
 function WorkspaceFallback() {
   return (
     <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
-      <Skeleton className="h-[70vh] rounded-[2rem]" />
-      <Skeleton className="h-[70vh] rounded-[2rem]" />
+      <Skeleton className="h-[70vh] rounded-lg" />
+      <Skeleton className="h-[70vh] rounded-lg" />
     </div>
   )
 }
@@ -1396,6 +1576,7 @@ async function invalidateSelectedActivity(queryClient: QueryClient, activityId: 
   if (activityId) {
     await queryClient.invalidateQueries({ queryKey: ['activity-detail', activityId] })
     await queryClient.invalidateQueries({ queryKey: ['activity-records', activityId] })
+    await queryClient.invalidateQueries({ queryKey: ['activity-comments', activityId] })
     await queryClient.invalidateQueries({ queryKey: ['channels', activityId] })
   }
 }
@@ -1419,6 +1600,9 @@ function viewFromPath(pathname: string): AdminView {
   }
   if (pathname.startsWith('/chats')) {
     return 'chats'
+  }
+  if (pathname.startsWith('/students')) {
+    return 'students'
   }
   return 'home'
 }

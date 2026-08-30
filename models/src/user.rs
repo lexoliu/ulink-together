@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::Id;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -22,4 +22,5 @@ pub struct RegisterForm {
     pub password: String,
     pub gender: String,
     pub classname: String,
+    pub avatar: Option<String>,
 }

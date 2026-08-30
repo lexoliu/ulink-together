@@ -2,7 +2,7 @@ use crate::{
     auth::{AuthError, AuthSession},
     database::AppDatabase,
     user,
-    utils::{parse_oid, Id},
+    utils::{parse_oid, ApiMessage, Id},
 };
 use serde::{Deserialize, Serialize};
 use skyzen::{
@@ -56,9 +56,12 @@ pub async fn list(
         AuthError::SessionExpired => ListCommentsError::SessionExpired,
         _ => ListCommentsError::Forbidden,
     })?;
-    let activity_id =
-        parse_oid(params.get("id").map_err(|_| ListCommentsError::InvalidActivityId)?)
-            .map_err(|_| ListCommentsError::InvalidActivityId)?;
+    let activity_id = parse_oid(
+        params
+            .get("id")
+            .map_err(|_| ListCommentsError::InvalidActivityId)?,
+    )
+    .map_err(|_| ListCommentsError::InvalidActivityId)?;
     let rows = sqlx::query(
         database
             .sql(
@@ -127,9 +130,12 @@ pub async fn post(
         AuthError::SessionExpired => PostCommentError::SessionExpired,
         _ => PostCommentError::Forbidden,
     })?;
-    let activity_id =
-        parse_oid(params.get("id").map_err(|_| PostCommentError::InvalidActivityId)?)
-            .map_err(|_| PostCommentError::InvalidActivityId)?;
+    let activity_id = parse_oid(
+        params
+            .get("id")
+            .map_err(|_| PostCommentError::InvalidActivityId)?,
+    )
+    .map_err(|_| PostCommentError::InvalidActivityId)?;
     let exists = sqlx::query(
         database
             .sql("SELECT 1 FROM activities WHERE id = ?1 LIMIT 1")
@@ -173,4 +179,68 @@ pub async fn post(
         content,
         date: now,
     }))
+}
+
+#[skyzen::error]
+pub enum DeleteCommentError {
+    #[error("Session expired", status = FORBIDDEN)]
+    SessionExpired,
+
+    #[error("Forbidden", status = FORBIDDEN)]
+    Forbidden,
+
+    #[error("Invalid comment id", status = BAD_REQUEST)]
+    InvalidCommentId,
+
+    #[error("Comment not exists", status = NOT_FOUND)]
+    NotFound,
+}
+
+#[skyzen::openapi]
+pub async fn delete(
+    database: State<AppDatabase>,
+    session: AuthSession,
+    params: Params,
+) -> Result<ApiMessage, DeleteCommentError> {
+    let auth = session.into_auth().await.map_err(|err| match err {
+        AuthError::SessionExpired => DeleteCommentError::SessionExpired,
+        _ => DeleteCommentError::Forbidden,
+    })?;
+    let comment_id = parse_oid(
+        params
+            .get("comment_id")
+            .map_err(|_| DeleteCommentError::InvalidCommentId)?,
+    )
+    .map_err(|_| DeleteCommentError::InvalidCommentId)?;
+
+    let row = sqlx::query(
+        database
+            .sql("SELECT author_id FROM activity_comments WHERE id = ?1")
+            .as_ref(),
+    )
+    .bind(comment_id.to_string())
+    .fetch_optional(database.sqlx())
+    .await
+    .expect("Database error")
+    .ok_or(DeleteCommentError::NotFound)?;
+    let author_id: String = row.try_get("author_id").expect("Database error");
+    let can_manage_anyway = auth
+        .match_authority("manage_comment_anyway")
+        .await
+        .map_err(|_| DeleteCommentError::Forbidden)?;
+    if author_id != auth.uid().to_string() && !can_manage_anyway {
+        return Err(DeleteCommentError::Forbidden);
+    }
+
+    sqlx::query(
+        database
+            .sql("DELETE FROM activity_comments WHERE id = ?1")
+            .as_ref(),
+    )
+    .bind(comment_id.to_string())
+    .execute(database.sqlx())
+    .await
+    .expect("Database error");
+
+    Ok(ApiMessage::new("Delete comment successfully"))
 }

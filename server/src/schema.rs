@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use sqlx::{Any, Pool, Row, PgPool, SqlitePool};
+use sqlx::{Any, PgPool, Pool, Row, SqlitePool};
 use uuid::Uuid;
 
 pub fn schema_statements() -> &'static [&'static str] {
@@ -30,7 +30,6 @@ pub fn schema_statements() -> &'static [&'static str] {
             classname TEXT NOT NULL,
             avatar_path TEXT,
             password_hash TEXT NOT NULL,
-            salt TEXT NOT NULL,
             group_id TEXT NOT NULL
         )
         "#,
@@ -97,16 +96,6 @@ pub fn schema_statements() -> &'static [&'static str] {
         "CREATE INDEX IF NOT EXISTS messages_channel_idx ON messages(channel_id)",
         "CREATE INDEX IF NOT EXISTS messages_sender_idx ON messages(sender_id)",
         r#"
-        CREATE TABLE IF NOT EXISTS notifications (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            title TEXT NOT NULL,
-            content TEXT NOT NULL,
-            created_at TEXT NOT NULL
-        )
-        "#,
-        "CREATE INDEX IF NOT EXISTS notifications_user_idx ON notifications(user_id)",
-        r#"
         CREATE TABLE IF NOT EXISTS records (
             id TEXT PRIMARY KEY,
             activity_id TEXT NOT NULL,
@@ -163,6 +152,47 @@ pub fn schema_statements() -> &'static [&'static str] {
         )
         "#,
         "CREATE INDEX IF NOT EXISTS check_mails_email_idx ON check_mails(email)",
+        r#"
+        CREATE TABLE IF NOT EXISTS notifications (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            notification_type TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            read_at TEXT,
+            created_at TEXT NOT NULL
+        )
+        "#,
+        "CREATE INDEX IF NOT EXISTS notifications_user_idx ON notifications(user_id)",
+        "CREATE INDEX IF NOT EXISTS notifications_user_read_idx ON notifications(user_id, read_at)",
+        r#"
+        CREATE TABLE IF NOT EXISTS notification_preferences (
+            user_id TEXT NOT NULL,
+            notification_type TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            PRIMARY KEY (user_id, notification_type)
+        )
+        "#,
+    ]
+}
+
+pub fn reset_schema_statements() -> &'static [&'static str] {
+    &[
+        "DROP TABLE IF EXISTS notification_preferences",
+        "DROP TABLE IF EXISTS notifications",
+        "DROP TABLE IF EXISTS export_items",
+        "DROP TABLE IF EXISTS export_batches",
+        "DROP TABLE IF EXISTS resources",
+        "DROP TABLE IF EXISTS records",
+        "DROP TABLE IF EXISTS messages",
+        "DROP TABLE IF EXISTS channel_members",
+        "DROP TABLE IF EXISTS channels",
+        "DROP TABLE IF EXISTS activity_comments",
+        "DROP TABLE IF EXISTS activities",
+        "DROP TABLE IF EXISTS sessions",
+        "DROP TABLE IF EXISTS users",
+        "DROP TABLE IF EXISTS check_mails",
+        "DROP TABLE IF EXISTS group_authorities",
+        "DROP TABLE IF EXISTS groups",
     ]
 }
 
@@ -187,21 +217,143 @@ pub async fn apply_schema_any(pool: &Pool<Any>) -> Result<(), sqlx::Error> {
     Ok(())
 }
 
+pub async fn reset_schema_any(pool: &Pool<Any>) -> Result<(), sqlx::Error> {
+    for statement in reset_schema_statements() {
+        sqlx::query(statement).execute(pool).await?;
+    }
+    Ok(())
+}
+
+/// Built-in role catalogue.
+///
+/// This is the single source of truth for which authorities each role
+/// carries. The catalogue is applied at startup by [`seed_builtin_groups_any`]
+/// and is never mutated at runtime: the platform recognises exactly three
+/// roles, and changing what they can do is a code change, not a database
+/// edit.
+///
+/// * `admin` carries `allow_all_authorities = true` and bypasses individual
+///   checks. Its `authorities` slice is therefore intentionally empty.
+/// * `teacher` is the activity organiser role: it can publish activities,
+///   open team chats, approve/confirm volunteer hours, view records, and
+///   generate ISMAS exports.
+/// * `student` is the volunteer role and gets no special authorities;
+///   day-to-day actions like applying to an activity rely on per-record
+///   permission rules in the relevant handlers, not on a group-level flag.
+const BUILTIN_ROLES: &[BuiltinRole] = &[
+    BuiltinRole {
+        code: "admin",
+        allow_all_authorities: true,
+        authorities: &[],
+    },
+    BuiltinRole {
+        code: "teacher",
+        allow_all_authorities: false,
+        authorities: &[
+            "create_activity",
+            "manage_activity_anyway",
+            "view_all_activities",
+            "create_channel",
+            "view_channel_anyway",
+            "send_message_anyway",
+            "view_record_anyway",
+            "manage_record_anyway",
+            "manage_comment_anyway",
+            "generate_export",
+            "view_user",
+        ],
+    },
+    BuiltinRole {
+        code: "student",
+        allow_all_authorities: false,
+        authorities: &[],
+    },
+];
+
+struct BuiltinRole {
+    code: &'static str,
+    allow_all_authorities: bool,
+    authorities: &'static [&'static str],
+}
+
 pub async fn seed_builtin_groups_sqlite(pool: &SqlitePool) -> Result<(), sqlx::Error> {
-    ensure_group_sqlite(pool, "admin", true).await?;
-    ensure_group_sqlite(pool, "student", false).await?;
+    for role in BUILTIN_ROLES {
+        let group_id = ensure_group_sqlite(pool, role.code, role.allow_all_authorities).await?;
+        replace_group_authorities_sqlite(pool, &group_id, role.authorities).await?;
+    }
     Ok(())
 }
 
 pub async fn seed_builtin_groups_postgres(pool: &PgPool) -> Result<(), sqlx::Error> {
-    ensure_group_postgres(pool, "admin", true).await?;
-    ensure_group_postgres(pool, "student", false).await?;
+    for role in BUILTIN_ROLES {
+        let group_id = ensure_group_postgres(pool, role.code, role.allow_all_authorities).await?;
+        replace_group_authorities_postgres(pool, &group_id, role.authorities).await?;
+    }
     Ok(())
 }
 
 pub async fn seed_builtin_groups_any(pool: &Pool<Any>) -> Result<(), sqlx::Error> {
-    ensure_group_any(pool, "admin", true).await?;
-    ensure_group_any(pool, "student", false).await?;
+    for role in BUILTIN_ROLES {
+        let group_id = ensure_group_any(pool, role.code, role.allow_all_authorities).await?;
+        replace_group_authorities_any(pool, &group_id, role.authorities).await?;
+    }
+    Ok(())
+}
+
+async fn replace_group_authorities_sqlite(
+    pool: &SqlitePool,
+    group_id: &str,
+    authorities: &[&str],
+) -> Result<(), sqlx::Error> {
+    sqlx::query("DELETE FROM group_authorities WHERE group_id = ?1")
+        .bind(group_id)
+        .execute(pool)
+        .await?;
+    for authority in authorities {
+        sqlx::query("INSERT INTO group_authorities (group_id, authority) VALUES (?1, ?2)")
+            .bind(group_id)
+            .bind(*authority)
+            .execute(pool)
+            .await?;
+    }
+    Ok(())
+}
+
+async fn replace_group_authorities_postgres(
+    pool: &PgPool,
+    group_id: &str,
+    authorities: &[&str],
+) -> Result<(), sqlx::Error> {
+    sqlx::query("DELETE FROM group_authorities WHERE group_id = $1")
+        .bind(group_id)
+        .execute(pool)
+        .await?;
+    for authority in authorities {
+        sqlx::query("INSERT INTO group_authorities (group_id, authority) VALUES ($1, $2)")
+            .bind(group_id)
+            .bind(*authority)
+            .execute(pool)
+            .await?;
+    }
+    Ok(())
+}
+
+async fn replace_group_authorities_any(
+    pool: &Pool<Any>,
+    group_id: &str,
+    authorities: &[&str],
+) -> Result<(), sqlx::Error> {
+    sqlx::query("DELETE FROM group_authorities WHERE group_id = ?1")
+        .bind(group_id)
+        .execute(pool)
+        .await?;
+    for authority in authorities {
+        sqlx::query("INSERT INTO group_authorities (group_id, authority) VALUES (?1, ?2)")
+            .bind(group_id)
+            .bind(*authority)
+            .execute(pool)
+            .await?;
+    }
     Ok(())
 }
 
@@ -219,12 +371,14 @@ pub async fn ensure_group_sqlite(
     }
 
     let id = Uuid::new_v4().to_string();
-    sqlx::query("INSERT OR IGNORE INTO groups (id, code, allow_all_authorities) VALUES (?1, ?2, ?3)")
-        .bind(&id)
-        .bind(code)
-        .bind(if allow_all { 1 } else { 0 })
-        .execute(pool)
-        .await?;
+    sqlx::query(
+        "INSERT OR IGNORE INTO groups (id, code, allow_all_authorities) VALUES (?1, ?2, ?3)",
+    )
+    .bind(&id)
+    .bind(code)
+    .bind(if allow_all { 1 } else { 0 })
+    .execute(pool)
+    .await?;
     Ok(id)
 }
 
@@ -276,25 +430,3 @@ pub async fn ensure_group_any(
     Ok(id)
 }
 
-pub async fn ensure_group_authority_any(
-    pool: &Pool<Any>,
-    group_id: &str,
-    authority: &str,
-) -> Result<(), sqlx::Error> {
-    let exists = sqlx::query(
-        "SELECT 1 FROM group_authorities WHERE group_id = ?1 AND authority = ?2 LIMIT 1",
-    )
-    .bind(group_id)
-    .bind(authority)
-    .fetch_optional(pool)
-    .await?
-    .is_some();
-    if !exists {
-        sqlx::query("INSERT INTO group_authorities (group_id, authority) VALUES (?1, ?2)")
-            .bind(group_id)
-            .bind(authority)
-            .execute(pool)
-            .await?;
-    }
-    Ok(())
-}

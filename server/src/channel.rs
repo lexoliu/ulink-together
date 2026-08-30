@@ -81,12 +81,13 @@ pub enum FindChannelsError {
 }
 
 fn parse_db_oid(value: &str) -> Result<Id, FindChannelsError> {
-    value
-        .parse()
-        .map_err(|_| FindChannelsError::CorruptedData)
+    value.parse().map_err(|_| FindChannelsError::CorruptedData)
 }
 
-pub async fn members_of(database: &AppDatabase, channel_hex: &str) -> Result<Vec<Id>, FindChannelsError> {
+pub async fn members_of(
+    database: &AppDatabase,
+    channel_hex: &str,
+) -> Result<Vec<Id>, FindChannelsError> {
     let rows = sqlx::query(
         database
             .sql("SELECT user_id FROM channel_members WHERE channel_id = ?1")
@@ -98,7 +99,9 @@ pub async fn members_of(database: &AppDatabase, channel_hex: &str) -> Result<Vec
     .expect("Database error");
     let mut members = Vec::with_capacity(rows.len());
     for row in rows {
-        members.push(parse_db_oid(&row.try_get::<String, _>("user_id").expect("Database error"))?);
+        members.push(parse_db_oid(
+            &row.try_get::<String, _>("user_id").expect("Database error"),
+        )?);
     }
     Ok(members)
 }
@@ -211,7 +214,9 @@ pub async fn activity_channel_is_writable(
     .expect("Database error")
     .ok_or(AuthError::Forbidden)?;
 
-    let state = row.try_get::<Option<String>, _>("state").expect("Database error");
+    let state = row
+        .try_get::<Option<String>, _>("state")
+        .expect("Database error");
     let Some(state) = state else {
         return Ok(true);
     };
@@ -401,7 +406,9 @@ pub async fn find(
         .await
         .map_err(|_| FindChannelsError::Forbidden)?
     {
-        query = query.bind(auth.uid().to_string()).bind(auth.uid().to_string());
+        query = query
+            .bind(auth.uid().to_string())
+            .bind(auth.uid().to_string());
     }
 
     let rows = query

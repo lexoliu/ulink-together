@@ -1,28 +1,31 @@
-use serde::{Deserialize, Serialize};
 use crate::Id;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum RecordState {
-    Todo,
-    Done,
+    PendingApproval,
+    Approved,
+    Confirmed,
     Canceled,
 }
 
 impl RecordState {
     pub fn as_str(&self) -> &'static str {
         match self {
-            RecordState::Todo => "todo",
-            RecordState::Done => "done",
+            RecordState::PendingApproval => "pending_approval",
+            RecordState::Approved => "approved",
+            RecordState::Confirmed => "confirmed",
             RecordState::Canceled => "canceled",
         }
     }
 
     pub fn from_db(value: &str) -> Option<Self> {
         Some(match value {
-            "todo" => RecordState::Todo,
-            "done" => RecordState::Done,
+            "pending_approval" => RecordState::PendingApproval,
+            "approved" | "todo" => RecordState::Approved,
+            "confirmed" | "done" => RecordState::Confirmed,
             "canneled" | "canceled" | "cancelled" => RecordState::Canceled,
             _ => return None,
         })
@@ -50,4 +53,10 @@ pub struct RecordEntry {
 pub struct FindRecordForm {
     pub user: Option<Id>,
     pub activity: Option<Id>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MarkDoneCustomForm {
+    pub confirmed_minutes: u16,
 }

@@ -14,53 +14,44 @@ struct ActivityChannelView: View {
     @State private var pushTask: Task<Void, Never>?
 
     var body: some View {
-        ZStack {
-            AppBackgroundView()
-
-            VStack(spacing: 16) {
-                if isLoading {
-                    LoadingCard(title: "Loading channel")
-                } else if let channel {
-                    channelHeader(channel: channel)
-
-                    if activity.state.channelIsReadOnly {
-                        InlineErrorBanner(message: "This room is archived because the activity has already ended.")
-                    }
-
-                    if !session.canViewUserDetails {
-                        InlineErrorBanner(message: "Sender names are limited on this account.")
-                    }
-
-                    messageTimeline
-                } else {
-                    EmptyStateCard(
-                        title: "Channel unavailable",
-                        message: "This activity room is not available yet.",
-                        systemImage: "bubble.left.and.bubble.right"
-                    )
-                }
+        Group {
+            if isLoading {
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if !canAccessChannel {
+                ContentUnavailableView(
+                    "Join Required",
+                    systemImage: "lock.fill",
+                    description: Text("Apply to the activity to join the team chat.")
+                )
+            } else if channel != nil {
+                messageTimeline
+            } else {
+                ContentUnavailableView(
+                    "Channel Unavailable",
+                    systemImage: "bubble.left.and.bubble.right"
+                )
             }
-            .frame(maxWidth: AppTheme.contentWidth)
-            .padding(.horizontal, 20)
-            .padding(.top, 18)
-            .padding(.bottom, 12)
         }
-        .navigationTitle("Channel")
+        .navigationTitle(activity.name)
         .navigationBarTitleDisplayMode(.inline)
         .refreshable {
-            await load()
+            if canAccessChannel {
+                await load()
+            }
         }
         .safeAreaInset(edge: .bottom) {
-            if channel != nil {
+            if channel != nil && !activity.state.channelIsReadOnly {
                 composerBar
-                    .padding(.horizontal, 20)
-                    .padding(.top, 8)
-                    .padding(.bottom, 12)
-                    .background(.clear)
+            } else if channel != nil {
+                archivedFooter
             }
         }
         .task {
-            await load()
+            if canAccessChannel {
+                await load()
+            } else {
+                isLoading = false
+            }
         }
         .onDisappear {
             pushTask?.cancel()
@@ -72,148 +63,130 @@ struct ActivityChannelView: View {
         messages.sorted { $0.datetime < $1.datetime }
     }
 
-    private func channelHeader(channel: ChannelResponse) -> some View {
-        CardPanel {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(channel.name)
-                            .font(.title2.weight(.semibold))
-                        Text(activity.name)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
+    private var canAccessChannel: Bool {
+        activity.viewerParticipating || canManageActivity
+    }
 
-                    Spacer()
-
-                    StateChip(
-                        title: activity.state.channelIsReadOnly ? "Archive" : "Live",
-                        tint: activity.state.channelIsReadOnly ? AppTheme.neutralTint : AppTheme.accentTint
-                    )
-                }
-
-                HStack(spacing: 10) {
-                    StateChip(title: "\(channel.members.count) members", tint: AppTheme.neutralTint)
-                    StateChip(title: activity.state.title, tint: AppTheme.stateTint(for: activity.state))
-                }
-            }
-        }
+    private var canManageActivity: Bool {
+        activity.promoter == session.currentUser?.id || session.canManageRecords || session.canCreateActivities
     }
 
     private var messageTimeline: some View {
-        CardPanel {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(spacing: 16) {
-                        if sortedMessages.isEmpty {
-                            ContentUnavailableView(
-                                "No Messages Yet",
-                                systemImage: "message.badge.waveform",
-                                description: Text("Updates and volunteer replies will appear here.")
-                            )
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 60)
-                        } else {
-                            ForEach(Array(sortedMessages.enumerated()), id: \.element.id) { index, message in
-                                if dayLabel(at: index) != dayLabel(at: index - 1) {
-                                    dayDivider(for: message.datetime)
-                                }
-
-                                MessageBubbleRow(
-                                    message: message,
-                                    isCurrentUser: session.isCurrentUser(id: message.sender),
-                                    senderName: senderLabel(for: message.sender)
-                                )
-                                .id(message.id)
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 2) {
+                    if sortedMessages.isEmpty {
+                        ContentUnavailableView(
+                            "No Messages Yet",
+                            systemImage: "message",
+                            description: Text("Be the first to say hello.")
+                        )
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 80)
+                    } else {
+                        let grouped = groupedMessages
+                        ForEach(Array(grouped.enumerated()), id: \.offset) { index, group in
+                            if index == 0 || grouped[index - 1].dayLabel != group.dayLabel {
+                                DayDivider(label: group.dayLabel)
+                                    .padding(.vertical, 8)
                             }
+                            MessageGroupView(
+                                group: group,
+                                isCurrentUser: session.isCurrentUser(id: group.senderID),
+                                senderName: senderLabel(for: group.senderID)
+                            )
+                            .id(group.firstID)
                         }
                     }
-                    .padding(.vertical, 6)
                 }
-                .frame(minHeight: 320)
-                .onChange(of: sortedMessages.last?.id) { _, newValue in
-                    guard let newValue else {
-                        return
-                    }
-
-                    withAnimation(.snappy) {
-                        proxy.scrollTo(newValue, anchor: .bottom)
-                    }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            .onChange(of: sortedMessages.last?.id) { _, newValue in
+                guard let newValue else { return }
+                withAnimation(.snappy) {
+                    proxy.scrollTo(newValue, anchor: .bottom)
                 }
-                .onAppear {
-                    if let lastID = sortedMessages.last?.id {
-                        proxy.scrollTo(lastID, anchor: .bottom)
-                    }
+            }
+            .onAppear {
+                if let lastID = sortedMessages.last?.id {
+                    proxy.scrollTo(lastID, anchor: .bottom)
                 }
             }
         }
+    }
+
+    private var groupedMessages: [MessageGroup] {
+        var groups: [MessageGroup] = []
+        for message in sortedMessages {
+            let day = ServerDate.dateText(message.datetime)
+            if let last = groups.last,
+               last.senderID == message.sender,
+               last.dayLabel == day,
+               minutesBetween(last.lastTimestamp, message.datetime) < 5 {
+                var updated = last
+                updated.messages.append(message)
+                updated.lastTimestamp = message.datetime
+                groups[groups.count - 1] = updated
+            } else {
+                groups.append(
+                    MessageGroup(
+                        senderID: message.sender,
+                        dayLabel: day,
+                        firstID: message.id,
+                        firstTimestamp: message.datetime,
+                        lastTimestamp: message.datetime,
+                        messages: [message]
+                    )
+                )
+            }
+        }
+        return groups
+    }
+
+    private func minutesBetween(_ lhs: String, _ rhs: String) -> Int {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let left = formatter.date(from: lhs) ?? ISO8601DateFormatter().date(from: lhs)
+        let right = formatter.date(from: rhs) ?? ISO8601DateFormatter().date(from: rhs)
+        guard let left, let right else { return 999 }
+        return Int(right.timeIntervalSince(left) / 60)
     }
 
     private var composerBar: some View {
-        CardPanel {
-            VStack(alignment: .leading, spacing: 12) {
-                Text(activity.state.channelIsReadOnly ? "Channel archive" : "New message")
-                    .font(.headline)
-
-                TextField(
-                    activity.state.channelIsReadOnly ? "This room is archived" : "Write an update for this activity",
-                    text: $composer,
-                    axis: .vertical
-                )
-                .lineLimit(1 ... 5)
+        HStack(spacing: 10) {
+            TextField("Message", text: $composer, axis: .vertical)
                 .textFieldStyle(.roundedBorder)
-                .disabled(activity.state.channelIsReadOnly)
+                .lineLimit(1 ... 5)
 
-                if let errorMessage {
-                    InlineErrorBanner(message: errorMessage)
-                }
-
-                HStack {
-                    Text(activity.state.channelIsReadOnly ? "Read only" : "Visible to everyone in this activity room")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-
-                    Spacer()
-
-                    Button {
-                        Task {
-                            await sendMessage()
-                        }
-                    } label: {
-                        if session.demoData == nil && composer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            Text("Send")
-                        } else {
-                            Label("Send", systemImage: "arrow.up.circle.fill")
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(AppTheme.accentTint)
-                    .disabled(activity.state.channelIsReadOnly || composer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
+            Button {
+                Task { await sendMessage() }
+            } label: {
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.title)
+                    .foregroundStyle(canSend ? AppTheme.accentTint : Color.gray.opacity(0.5))
             }
+            .buttonStyle(.plain)
+            .disabled(!canSend)
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(.bar)
     }
 
-    private func dayDivider(for value: String) -> some View {
-        HStack(spacing: 12) {
-            Capsule()
-                .fill(.quaternary)
-                .frame(height: 1)
-            Text(ServerDate.dateText(value))
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-            Capsule()
-                .fill(.quaternary)
-                .frame(height: 1)
-        }
-        .padding(.vertical, 2)
+    private var archivedFooter: some View {
+        Text("This channel is archived.")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(.bar)
     }
 
-    private func dayLabel(at index: Int) -> String {
-        guard sortedMessages.indices.contains(index) else {
-            return ""
-        }
-        return ServerDate.dateText(sortedMessages[index].datetime)
+    private var canSend: Bool {
+        !composer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !activity.state.channelIsReadOnly
     }
 
     private func senderLabel(for senderID: String) -> String {
@@ -226,7 +199,7 @@ struct ActivityChannelView: View {
         if let senderName = senderNames[senderID] {
             return senderName
         }
-        return "Member • \(DisplayText.shortIdentifier(senderID))"
+        return "Member"
     }
 
     private func load() async {
@@ -245,15 +218,13 @@ struct ActivityChannelView: View {
         }
 
         guard let serverURL = session.serverURL else {
-            errorMessage = "The server URL is invalid."
+            errorMessage = "Enter a valid service address."
             isLoading = false
             return
         }
 
         isLoading = true
-        defer {
-            isLoading = false
-        }
+        defer { isLoading = false }
 
         do {
             let channels = try await session.apiClient.fetchChannels(baseURL: serverURL, activityID: activity.id)
@@ -276,9 +247,7 @@ struct ActivityChannelView: View {
 
     private func sendMessage() async {
         let content = composer.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !content.isEmpty else {
-            return
-        }
+        guard !content.isEmpty else { return }
 
         if session.demoData != nil, let channel {
             messages.append(
@@ -287,7 +256,7 @@ struct ActivityChannelView: View {
                     channel: channel.id,
                     sender: session.currentUser?.id ?? "demo-user",
                     content: content,
-                    datetime: "2026-03-13T12:15:00Z"
+                    datetime: "2026-04-10T12:15:00Z"
                 )
             )
             composer = ""
@@ -316,17 +285,11 @@ struct ActivityChannelView: View {
             do {
                 let stream = await session.pushClient.stream(baseURL: baseURL)
                 for try await event in stream {
-                    guard event.name == "message" else {
-                        continue
-                    }
-                    guard let data = event.data.data(using: .utf8) else {
-                        continue
-                    }
+                    guard event.name == "message" else { continue }
+                    guard let data = event.data.data(using: .utf8) else { continue }
 
                     let pushed = try JSONDecoder().decode(ChannelMessage.self, from: data)
-                    guard pushed.channel == channelID else {
-                        continue
-                    }
+                    guard pushed.channel == channelID else { continue }
 
                     await MainActor.run {
                         if !messages.contains(where: { $0.id == pushed.id }) {
@@ -347,9 +310,7 @@ struct ActivityChannelView: View {
     }
 
     private func hydrateNamesIfNeeded(serverURL: URL) async {
-        guard session.canViewUserDetails else {
-            return
-        }
+        guard session.canViewUserDetails else { return }
 
         for senderID in Set(messages.map(\.sender)) where senderNames[senderID] == nil && !session.isCurrentUser(id: senderID) {
             do {
@@ -359,48 +320,83 @@ struct ActivityChannelView: View {
                 }
             } catch {
                 await MainActor.run {
-                    senderNames[senderID] = "Member • \(DisplayText.shortIdentifier(senderID))"
+                    senderNames[senderID] = "Member"
                 }
             }
         }
     }
 }
 
-private struct MessageBubbleRow: View {
-    let message: ChannelMessage
+private struct MessageGroup {
+    let senderID: String
+    let dayLabel: String
+    let firstID: String
+    let firstTimestamp: String
+    var lastTimestamp: String
+    var messages: [ChannelMessage]
+}
+
+private struct MessageGroupView: View {
+    let group: MessageGroup
     let isCurrentUser: Bool
     let senderName: String
 
     var body: some View {
-        HStack {
-            if isCurrentUser {
-                Spacer(minLength: 40)
-            }
-
-            VStack(alignment: isCurrentUser ? .trailing : .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    Text(senderName)
+        HStack(alignment: .top, spacing: 10) {
+            Circle()
+                .fill(avatarColor)
+                .overlay(
+                    Text(senderInitial)
                         .font(.caption.weight(.semibold))
-                    Text(ServerDate.dateTimeText(message.datetime))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.white)
+                )
+                .frame(width: 36, height: 36)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(senderName)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(isCurrentUser ? AppTheme.accentTint : .primary)
+                    Text(ServerDate.dateTimeText(group.firstTimestamp))
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
                 }
 
-                Text(message.content)
-                    .font(.body)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .background(
-                        isCurrentUser
-                            ? AppTheme.accentTint.opacity(0.14)
-                            : Color(.secondarySystemBackground),
-                        in: RoundedRectangle(cornerRadius: AppTheme.compactCardRadius, style: .continuous)
-                    )
+                ForEach(group.messages, id: \.id) { message in
+                    Text(message.content)
+                        .font(.body)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
+        }
+        .padding(.vertical, 6)
+    }
 
-            if !isCurrentUser {
-                Spacer(minLength: 40)
-            }
+    private var senderInitial: String {
+        guard let first = senderName.first else { return "?" }
+        return String(first).uppercased()
+    }
+
+    private var avatarColor: Color {
+        let hash = senderName.unicodeScalars.reduce(0) { $0 + Int($1.value) }
+        let palette: [Color] = [
+            .blue, .purple, .pink, .orange, .teal, .indigo, .mint, .cyan,
+        ]
+        return palette[hash % palette.count]
+    }
+}
+
+private struct DayDivider: View {
+    let label: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Rectangle().fill(.quaternary).frame(height: 1)
+            Text(label)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Rectangle().fill(.quaternary).frame(height: 1)
         }
     }
 }

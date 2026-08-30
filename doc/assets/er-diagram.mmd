@@ -1,0 +1,93 @@
+erDiagram
+    GROUPS ||--o{ GROUP_AUTHORITIES : "grants"
+    GROUPS ||--o{ USERS : "assigns"
+    USERS ||--o{ SESSIONS : "owns"
+    USERS ||--o{ ACTIVITIES : "creates"
+    USERS ||--o{ EXPORT_BATCHES : "triggers"
+    USERS ||--o{ ACTIVITY_COMMENTS : "writes"
+    USERS ||--o{ RECORDS : "participates"
+    USERS ||--o{ CHANNELS : "owns"
+    USERS ||--o{ CHANNEL_MEMBERS : "joins"
+    USERS ||--o{ MESSAGES : "sends"
+    USERS ||--o{ EXPORT_ITEMS : "reported in"
+    ACTIVITIES ||--o{ ACTIVITY_COMMENTS : "receives"
+    ACTIVITIES ||--o{ CHANNELS : "opens"
+    ACTIVITIES ||--o{ RECORDS : "contains"
+    ACTIVITIES ||--o{ EXPORT_ITEMS : "reported in"
+    CHANNELS ||--o{ CHANNEL_MEMBERS : "includes"
+    CHANNELS ||--o{ MESSAGES : "stores"
+    EXPORT_BATCHES ||--o{ EXPORT_ITEMS : "contains"
+
+    GROUPS {
+        text id PK
+        text code UK
+        int allow_all_authorities
+    }
+    GROUP_AUTHORITIES {
+        text group_id PK
+        text authority PK
+    }
+    USERS {
+        text id PK
+        text email UK
+        text realname
+        text classname
+        text group_id FK
+    }
+    SESSIONS {
+        text id PK
+        text user_id FK
+        text generated_at
+        text ip
+    }
+    ACTIVITIES {
+        text id PK
+        text promoter_id FK
+        text name
+        text state
+        int volunteer_num
+        int max_volunteer_num
+    }
+    ACTIVITY_COMMENTS {
+        text id PK
+        text activity_id FK
+        text author_id FK
+        text content
+    }
+    RECORDS {
+        text id PK
+        text activity_id FK
+        text user_id FK
+        text state
+        int confirmed_minutes
+        text confirmed_by FK
+    }
+    CHANNELS {
+        text id PK
+        text owner_id FK
+        text activity_id FK
+    }
+    CHANNEL_MEMBERS {
+        text channel_id PK
+        text user_id PK
+    }
+    MESSAGES {
+        text id PK
+        text channel_id FK
+        text sender_id FK
+        text content
+        text sent_at
+    }
+    EXPORT_BATCHES {
+        text id PK
+        text creator_id FK
+        text target_format
+        text status
+    }
+    EXPORT_ITEMS {
+        text id PK
+        text batch_id FK
+        text user_id FK
+        text activity_id FK
+        int confirmed_minutes
+    }

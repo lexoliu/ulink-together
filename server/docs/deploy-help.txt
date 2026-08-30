@@ -1,0 +1,12 @@
+together-server deploy
+
+USAGE:
+  cargo run -p together-server --bin deploy -- \
+    --database-url <DATABASE_URL> \
+    --admin-email <EMAIL> \
+    --admin-password <PASSWORD> \
+    [--admin-realname <NAME>] \
+    [--admin-gender <GENDER>] \
+    [--admin-classname <CLASSNAME>] \
+    [--admin-description <DESC>] \
+    [--non-interactive]

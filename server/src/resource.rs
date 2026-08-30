@@ -2,12 +2,13 @@ use std::path::{Component, Path};
 
 use crate::{auth::AuthSession, database::AppDatabase, utils::Id};
 use async_std::{
-    fs::File,
+    fs::{remove_file, File},
     io::{self, BufReader},
 };
 
 use serde::{Deserialize, Serialize};
 use skyzen::{extract::Query, routing::Params, utils::Json, utils::State, Body};
+use sqlx::Row;
 use time::OffsetDateTime;
 use utoipa::ToSchema;
 
@@ -124,6 +125,71 @@ pub async fn access(params: Params, session: AuthSession) -> Result<Body, Access
     Ok(Body::from_reader(BufReader::new(file), len))
 }
 
+#[skyzen::error]
+pub enum DeleteResourceError {
+    #[error("Session expired", status = FORBIDDEN)]
+    SessionExpired,
+
+    #[error("Illegal access", status = FORBIDDEN)]
+    IllegalAccess,
+
+    #[error("Delete resource failed", status = INTERNAL_SERVER_ERROR)]
+    DeleteFailed,
+}
+
+#[skyzen::openapi]
+pub async fn delete(
+    params: Params,
+    session: AuthSession,
+    database: State<AppDatabase>,
+) -> Result<crate::utils::ApiMessage, DeleteResourceError> {
+    let auth = session
+        .into_auth()
+        .await
+        .map_err(|_| DeleteResourceError::SessionExpired)?;
+    let filename = params
+        .get("filename")
+        .map_err(|_| DeleteResourceError::IllegalAccess)?;
+    let filename = sanitize_filename(filename).ok_or(DeleteResourceError::IllegalAccess)?;
+    let filename_path = Path::new(filename);
+    let (resource_id, extension) =
+        parse_resource_identity(filename_path).ok_or(DeleteResourceError::IllegalAccess)?;
+
+    let resource = sqlx::query(
+        database
+            .sql("SELECT creator_id, extension FROM resources WHERE id = ?1")
+            .as_ref(),
+    )
+    .bind(resource_id.to_string())
+    .fetch_optional(database.sqlx())
+    .await
+    .expect("Database error")
+    .ok_or(DeleteResourceError::IllegalAccess)?;
+
+    let creator_id: String = resource.try_get("creator_id").expect("Database error");
+    let stored_extension: String = resource.try_get("extension").expect("Database error");
+    if creator_id != auth.uid().to_string() || stored_extension != extension {
+        return Err(DeleteResourceError::IllegalAccess);
+    }
+
+    sqlx::query(database.sql("DELETE FROM resources WHERE id = ?1").as_ref())
+        .bind(resource_id.to_string())
+        .execute(database.sqlx())
+        .await
+        .expect("Database error");
+
+    let full_path = Path::new("./resource").join(filename_path);
+    match remove_file(&full_path).await {
+        Ok(()) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(_) => return Err(DeleteResourceError::DeleteFailed),
+    }
+
+    Ok(crate::utils::ApiMessage::new(
+        "Delete resource successfully",
+    ))
+}
+
 fn sanitize_filename(name: &str) -> Option<&str> {
     if name.is_empty() {
         return None;
@@ -134,6 +200,12 @@ fn sanitize_filename(name: &str) -> Option<&str> {
         (Some(Component::Normal(os)), None) if os.to_str() == Some(name) => Some(name),
         _ => None,
     }
+}
+
+fn parse_resource_identity(filename: &Path) -> Option<(Id, String)> {
+    let id = filename.file_stem()?.to_str()?.parse().ok()?;
+    let extension = filename.extension()?.to_str()?;
+    Some((id, sanitize_extension(extension)))
 }
 
 fn sanitize_extension(extension: &str) -> String {

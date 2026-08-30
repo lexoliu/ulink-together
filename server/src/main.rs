@@ -3,14 +3,14 @@ mod auth;
 mod channel;
 mod comment;
 mod database;
-mod login;
+mod export;
 mod leaderboard;
+mod login;
 mod message;
 mod notification;
 mod push;
 mod record;
 mod resource;
-mod export;
 mod schema;
 mod user;
 mod utils;
@@ -22,13 +22,14 @@ use crate::auth::AuthError;
 use database::AppDatabase;
 use push::PushHub;
 use skyzen::{
-    middleware::ErrorHandlingMiddleware, routing::Router, utils::State, CreateRouteNode, Route,
+    middleware::ErrorHandlingMiddleware, routing::Router, utils::Json, utils::State,
+    CreateRouteNode, Route,
 };
 use std::env;
 
 pub fn api() -> Route {
     Route::new((
-        "/user".route("/{id}".at(user::get).put(user::update).delete(user::delete)),
+        "/health".at(health),
         "/channel"
             .at(channel::find)
             .post(channel::create)
@@ -36,35 +37,63 @@ pub fn api() -> Route {
         "/activity"
             .at(activity::list)
             .post(activity::create)
-            .route(("/{id}".at(activity::get).put(activity::update).delete(activity::delete).route((
-                "/apply".post(activity::join),
-                "/comment".at(comment::list).post(comment::post),
-                "/need_volunteer".post(activity::turn_need_volunteer),
-                "/go".post(activity::turn_going),
-                "/end".post(activity::turn_ended),
-                "/cancel".post(activity::turn_canceled),
+            .route(("/{id}"
+                .at(activity::get)
+                .put(activity::update)
+                .delete(activity::delete)
+                .route((
+                    "/apply".post(activity::apply),
+                    "/withdraw".post(activity::withdraw),
+                    "/comment".at(comment::list).post(comment::post),
+                    "/comment/{comment_id}".delete(comment::delete),
+                    "/need_volunteer".post(activity::turn_need_volunteer),
+                    "/go".post(activity::turn_going),
+                    "/end".post(activity::turn_ended),
+                    "/cancel".post(activity::turn_canceled),
+                )),)),
+        "/record"
+            .at(record::find)
+            .post(record::find)
+            .route(("/{id}".route((
+                "/confirm".post(record::confirm),
+                "/confirm_custom".post(record::confirm_custom),
+                "/approve".post(record::approve),
+                "/cancel".post(record::cancel),
             )),)),
-        "/record".at(record::find).post(record::find).route(("/{id}".route((
-            "/done".post(record::mark_done),
-            "/approve_apply".post(record::approve_apply),
-            "/disapprove_apply".post(record::disapprove_apply),
-        )),)),
         "/message"
             .at(message::find)
             .route(("/{id}".at(message::get).delete(message::delete),)),
+        "/notification"
+            .at(notification::list)
+            .route((
+                "/read".post(notification::mark_read),
+                "/unread_count".at(notification::unread_count),
+                "/preferences"
+                    .at(notification::get_preferences)
+                    .put(notification::update_preferences),
+            )),
         "/leaderboard".at(leaderboard::list),
         "/export".post(export::generate),
         "/resource"
             .post(resource::create)
-            .route(("/{filename}".at(resource::access),)),
-        "/notification"
-            .at(notification::list)
-            .post(notification::create),
+            .route(("/{filename}".at(resource::access).delete(resource::delete),)),
         "/push".at(push::handler),
-        "/auth/check/{authority}".at(check_authority),
+        "/auth".route(("/check/{authority}".at(check_authority),)),
         "/login".post(login::handler),
         "/logout".post(login::logout),
-        "/user".post(user::register),
+        "/password".route((
+            "/change".post(login::change_password),
+            "/reset/request".post(login::request_password_reset),
+            "/reset/confirm".post(login::confirm_password_reset),
+        )),
+        "/user".at(user::list).post(user::register).route((
+            "/{id}".at(user::get).put(user::update).delete(user::delete),
+            "/classes".at(user::list_classes),
+            "/admin_create".post(user::admin_create),
+            "/batch/import_csv".post(user::import_csv),
+            "/batch/update_class".post(user::batch_update_class),
+            "/batch/delete_class".post(user::batch_delete_class),
+        )),
     ))
     .enable_api_doc()
 }
@@ -75,14 +104,18 @@ pub(crate) fn build_router(database: AppDatabase, push_hub: PushHub) -> Router {
         .middleware(State(database))
         .middleware(State(push_hub))
         .middleware(ErrorHandlingMiddleware::new(|error| async move {
-            crate::utils::ApiMessage::with_status(error.to_string(), error.status())
+            crate::utils::ApiMessage::with_status(
+                crate::utils::normalize_endpoint_error_message(&error.to_string()).into_owned(),
+                error.status(),
+            )
         }))
         .build()
 }
 
 #[skyzen::main]
 async fn main() -> Router {
-    let sqlx_database_url = parse_database_url().unwrap_or_else(|| "sqlite://together.db".to_string());
+    let sqlx_database_url =
+        parse_database_url().unwrap_or_else(|| "sqlite://together.db".to_string());
     let sqlx_pool = database::build_database(&sqlx_database_url)
         .await
         .expect("connect sql database");
@@ -103,6 +136,16 @@ fn parse_database_url() -> Option<String> {
         }
     }
     None
+}
+
+#[derive(Debug, serde::Serialize, utoipa::ToSchema)]
+pub struct HealthResponse {
+    status: &'static str,
+}
+
+#[skyzen::openapi]
+pub async fn health() -> Json<HealthResponse> {
+    Json(HealthResponse { status: "ok" })
 }
 
 #[derive(Debug, serde::Serialize, utoipa::ToSchema)]
