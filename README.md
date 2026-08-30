@@ -11,39 +11,40 @@ The iPad UI is landscape-only with a persistent split view. Activities list on t
 Other screens:
 
 | Records | Leaderboard | Account |
-|---------|-------------|---------|
+|:---:|:---:|:---:|
 | ![Records](design/assets/records-preview.png) | ![Leaderboard](design/assets/leaderboard-preview.png) | ![Account](design/assets/account-preview.png) |
 
 ## Admin web panel (React + Tailwind)
 
 | Activities | Students | Operations |
-|------------|----------|------------|
+|:---:|:---:|:---:|
 | ![Activities](design/assets/admin-activities-viewport.png) | ![Students](design/assets/admin-students-viewport.png) | ![Operations](design/assets/admin-operations-viewport.png) |
 
 The admin panel gives teachers a sidebar-driven workspace. They can search and filter activities, drill into participation records and export them, batch-import students from CSV, edit individual profiles, and send push notifications scoped by activity or class. Organiser permissions are managed through a group authority system rather than fixed roles.
 
 ## Architecture
 
-```
-┌─────────────┐      ┌─────────────┐
-│  iPad app   │      │ Admin panel │
-│  (SwiftUI)  │      │ (React/TS)  │
-└──────┬──────┘      └──────┬──────┘
-       │    HTTP + SSE      │
-       └────────┬───────────┘
-                │
-         ┌──────┴──────┐
-         │   Backend   │
-         │ (Rust/SQLx) │
-         └──────┬──────┘
-                │
-         ┌──────┴──────┐
-         │   SQLite /  │
-         │  PostgreSQL  │
-         └─────────────┘
+```mermaid
+flowchart TD
+    subgraph Clients["Clients"]
+        iPad["iPad App\n(SwiftUI)"]
+        Admin["Admin Web Panel\n(React 19 / TypeScript)"]
+    end
+
+    subgraph Backend["Backend Layer"]
+        Server["Backend Server\n(Rust / Skyzen / SQLx / Tokio)"]
+    end
+
+    subgraph Storage["Database Layer"]
+        DB[("Database\nSQLite (Dev) / PostgreSQL (Prod)")]
+    end
+
+    iPad -->|"HTTP + SSE"| Server
+    Admin -->|"REST / JSON"| Server
+    Server -->|"SQL Queries / Migrations"| DB
 ```
 
-The backend is built on [Skyzen](https://github.com/aspect-build/skyzen) (a Rust HTTP framework) with SQLx for database access. Auth is cookie-based. Real-time updates go over SSE at `/api/v1/push`. Organiser permissions use an authority model rather than hard-coded roles.
+The backend is built on [Skyzen](https://github.com/zen-rs/skyzen) (a Rust HTTP framework) with SQLx for database access. Auth is cookie-based. Real-time updates go over SSE at `/api/v1/push`. Organiser permissions use an authority model rather than hard-coded roles.
 
 ## Tech stack
 
@@ -104,3 +105,7 @@ Open `swiftui/together.xcodeproj` in Xcode, pick an iPad target, and run. On the
 ```bash
 cargo test -p together-server
 ```
+
+## License
+
+MIT License. See [LICENSE](LICENSE) for details.
